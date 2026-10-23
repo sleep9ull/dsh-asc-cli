@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Download latest asc
+        run: |
+          mkdir -p vendor
+          url=$(curl -fsSL https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/latest \
+            | grep -o '"browser_download_url": "[^"]*linux_amd64"' | head -1 | cut -d'"' -f4)
+          test -n "$url"
+          curl -fsSL -o vendor/asc "$url"
+          chmod +x vendor/asc
+          ./vendor/asc version
+      - name: Contract test (every command still accepted)
+        run: node scripts/contract.mjs ./vendor/asc

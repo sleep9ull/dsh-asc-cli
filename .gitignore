@@ -1,0 +1,8 @@
+node_modules/
+lib/
+coverage/
+*.tgz
+.npm-cache/
+.vitest/
+DSH_*
+vendor/

@@ -1,0 +1,48 @@
+name: upstream-watch
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Download latest asc
+        run: |
+          mkdir -p vendor
+          url=$(curl -fsSL https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/latest \
+            | grep -o '"browser_download_url": "[^"]*linux_amd64"' | head -1 | cut -d'"' -f4)
+          test -n "$url"
+          curl -fsSL -o vendor/asc "$url"
+          chmod +x vendor/asc
+          ./vendor/asc version
+      - name: Contract test
+        run: node scripts/contract.mjs ./vendor/asc
+      - name: Open an issue on drift
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'asc CLI contract drift detected'
+            const body = [
+              'The scheduled contract test against the latest `asc` release failed.',
+              '',
+              'Run `node scripts/contract.mjs ./vendor/asc` locally, update `src/registry.ts` and the fixtures, then bump the tested version in the README.',
+            ].join('\n')
+            const existing = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'upstream-drift' })
+            if (existing.data.length === 0) {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['upstream-drift'] })
+            }

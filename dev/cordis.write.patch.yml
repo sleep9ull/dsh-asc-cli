@@ -1,0 +1,7 @@
+# Local development overlay: write mode, for exercising the approval gate.
+- insert:
+    - id: asc-tools-dev
+      name: /Users/jinchunxu/dev/dsh-asc-cli/lib/index.js
+      config:
+        mode: write
+        ascPath: /Users/jinchunxu/dev/dsh-asc-cli/vendor/asc

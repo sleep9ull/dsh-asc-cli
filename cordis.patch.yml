@@ -1,0 +1,5 @@
+- insert:
+    - id: asc-tools
+      name: dsh-asc-cli
+      config:
+        mode: read-only
