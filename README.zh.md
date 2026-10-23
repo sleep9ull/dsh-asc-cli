@@ -1,8 +1,10 @@
 # dsh-asc-cli
 
+> npm 包名：[`@sleep9ull/dsh-asc-cli`](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)。由 `dsh-asc-cli@0.1.0` 更名而来，旧包已标记 deprecated。
+
 **DeepSeek Harness 的 App Store Connect 操作台，底层是 [`asc` CLI](https://github.com/rorkai/App-Store-Connect-CLI)。**
 
-这是一个 DSH **bundle 插件**：不重写 App Store Connect API，`asc`（Go 二进制）仍是执行引擎；插件负责让 AI 安全、准确、省 token 地使用它。
+`@sleep9ull/dsh-asc-cli` 是一个 DSH **bundle 插件**：不重写 App Store Connect API，`asc`（Go 二进制）仍是执行引擎；插件负责让 AI 安全、准确、省 token 地使用它。
 
 - **默认只读**：任何写操作都需要显式 `confirm` + 宿主审批。
 - **意图级工具**：应用、构建、TestFlight、元数据、发布五条主流程；长尾用 `asc_search` + `asc_run`。
@@ -32,11 +34,11 @@ asc auth status --validate
 
 ```bash
 # npm（发布后）
-dsh plugin --profile desktop add dsh-asc-cli
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
 
 # 本地 checkout / tarball
 npm run build && npm pack
-dsh plugin --profile desktop add ./dsh-asc-cli-0.1.0.tgz
+dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.1.tgz
 ```
 
 重启或重新加载 profile。从内置模板创建的 profile 在**首次启动**时可能会生成模板自带的用户 patch 文件，因此请在首次启动之后再编辑 `cordis.patch.yml`（或直接用 `--patch` overlay）。默认插入一行配置：
@@ -44,7 +46,7 @@ dsh plugin --profile desktop add ./dsh-asc-cli-0.1.0.tgz
 ```yaml
 - insert:
     - id: asc-tools
-      name: dsh-asc-cli
+      name: '@sleep9ull/dsh-asc-cli'
       config:
         mode: read-only
 ```
@@ -53,7 +55,7 @@ dsh plugin --profile desktop add ./dsh-asc-cli-0.1.0.tgz
 
 ```yaml
 - id: asc-tools
-  name: dsh-asc-cli
+  name: '@sleep9ull/dsh-asc-cli'
   config:
     mode: write
     requireApproval: true

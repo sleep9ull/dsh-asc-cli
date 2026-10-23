@@ -1,5 +1,5 @@
 - insert:
     - id: asc-tools
-      name: dsh-asc-cli
+      name: '@sleep9ull/dsh-asc-cli'
       config:
         mode: read-only

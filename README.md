@@ -1,8 +1,10 @@
 # dsh-asc-cli
 
+> Published on npm as [`@sleep9ull/dsh-asc-cli`](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli). Renamed from `dsh-asc-cli@0.1.0`; the old name is deprecated.
+
 **App Store Connect operations for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), powered by the [`asc` CLI](https://github.com/rorkai/App-Store-Connect-CLI).**
 
-`dsh-asc-cli` is a DeepSeek Harness **bundle plugin**. It does not reimplement the App Store Connect API — `asc` (a Go binary) remains the execution engine. The plugin turns `asc` into something an agent can use safely and productively:
+`@sleep9ull/dsh-asc-cli` is a DeepSeek Harness **bundle plugin**. It does not reimplement the App Store Connect API — `asc` (a Go binary) remains the execution engine. The plugin turns `asc` into something an agent can use safely and productively:
 
 - **Read-only by default.** Mutations need an explicit `confirm` and a host approval.
 - **Typed, intent-level tools** for the release workflows that matter, with `asc_run` + `asc_search` for the long tail.
@@ -47,14 +49,14 @@ For CI/headless machines without keychain access, use `--bypass-keychain` and se
 From npm (published package):
 
 ```bash
-dsh plugin --profile desktop add dsh-asc-cli
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
 ```
 
 From a checkout or tarball:
 
 ```bash
 npm run build && npm pack
-dsh plugin --profile desktop add ./dsh-asc-cli-0.1.0.tgz
+dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.1.tgz
 ```
 
 Restart or reload the profile. The first boot of a profile created from a shipped template may materialize that template's user patch file, so edit `cordis.patch.yml` **after** the first boot (or pass an overlay with `--patch`). The bundle inserts one row:
@@ -63,7 +65,7 @@ Restart or reload the profile. The first boot of a profile created from a shippe
 # shipped by the package
 - insert:
     - id: asc-tools
-      name: dsh-asc-cli
+      name: '@sleep9ull/dsh-asc-cli'
       config:
         mode: read-only
 ```
@@ -72,7 +74,7 @@ Override it in `~/.dsh/profiles/<profile>/cordis.patch.yml`. A patch **replaces 
 
 ```yaml
 - id: asc-tools
-  name: dsh-asc-cli
+  name: '@sleep9ull/dsh-asc-cli'
   config:
     mode: write          # required for uploads / submissions / metadata apply
     requireApproval: true

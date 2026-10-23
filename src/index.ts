@@ -1,5 +1,5 @@
 /**
- * dsh-asc-cli — App Store Connect operations for DeepSeek Harness.
+ * @sleep9ull/dsh-asc-cli — App Store Connect operations for DeepSeek Harness.
  *
  * The plugin is a thin, opinionated layer over the `asc` CLI:
  *  - typed tools for the high-frequency release workflows,
@@ -8,7 +8,7 @@
  *    every mutation,
  *  - compact, structured results instead of raw JSON.
  *
- * @module dsh-asc-cli
+ * @module @sleep9ull/dsh-asc-cli
  */
 
 import type { Context } from '@deepseek-ai/cordis'

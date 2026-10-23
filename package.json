@@ -1,6 +1,6 @@
 {
-  "name": "dsh-asc-cli",
-  "version": "0.1.0",
+  "name": "@sleep9ull/dsh-asc-cli",
+  "version": "0.1.1",
   "description": "DeepSeek Harness plugin: App Store Connect operations through the asc CLI, with read-only defaults, per-call approvals and structured output.",
   "license": "MIT",
   "type": "module",
