@@ -36,7 +36,6 @@
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
     "@deepseek-ai/schemastery": "~3.18.5"
   },
-  "peerDependenciesMeta": {},
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
     "@deepseek-ai/dsh-subprocess": "0.2.1-rc.2",
@@ -72,5 +71,8 @@
   "homepage": "https://github.com/sleep9ull/dsh-asc-cli#readme",
   "bugs": {
     "url": "https://github.com/sleep9ull/dsh-asc-cli/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
