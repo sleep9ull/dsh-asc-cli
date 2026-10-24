@@ -128,6 +128,18 @@ They cover first-run choices, authentication and CI, release readiness, TestFlig
 
 ---
 
+## Documentation
+
+| Document | Covers |
+|---|---|
+| [Contract](docs/CONTRACT.md) | What the plugin promises and refuses, the policy matrix, the ten invariants |
+| [Commands](docs/COMMANDS.md) | Tools, actions, jobs, skills, slash commands, config, result shape |
+| [Architecture](docs/ARCHITECTURE.md) | Layers, module map, data flow, extension points |
+| [Testing](docs/TESTING.md) | Test patterns, fixtures, known gaps |
+| [Contributing](CONTRIBUTING.md) | Setup, Git flow, quality gates, release steps |
+| [Specs](docs/SPECS.md) | Spec-first workflow and the spec index |
+| [Roadmap](docs/ROADMAP.md) | Version plan and acceptance targets |
+
 ## Why a plugin instead of "just run asc in bash"?
 
 - **Approvals, not vibes.** Read-only by default; writes need an explicit `confirm` and a human approval. The model can't self-approve.

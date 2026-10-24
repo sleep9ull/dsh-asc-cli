@@ -1,6 +1,6 @@
 # NNN · <一句话标题>
 
-> 复制本文件到 `docs/specs/NNN-kebab-case.md` 后填写；`000` 保留给模板。规范见 [`../SPEC.md`](../SPEC.md)。
+> 复制本文件到 `docs/specs/NNN-kebab-case.md` 后填写；`000` 保留给模板。规范见 [`../SPECS.md`](../SPECS.md)。
 
 | 字段 | 值 |
 |---|---|
@@ -8,7 +8,7 @@
 | status | draft |
 | created | YYYY-MM-DD |
 | owner | @handle（可选） |
-| related | PRINCIPLES §x；roadmap 版本；issue / PR 链接 |
+| related | CONTRACT §x；roadmap 版本；issue / PR 链接 |
 
 **一句话**：<用户可观察的变化>
 
@@ -73,7 +73,7 @@
 - [ ] README / README.zh
 - [ ] CHANGELOG
 - [ ] `skills/*`（工具面变更时）
-- [ ] `PRINCIPLES.md`（契约变化时）
+- [ ] `CONTRACT.md`（契约变化时）
 
 ## 11. 开放问题
 

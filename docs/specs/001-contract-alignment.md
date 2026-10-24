@@ -6,7 +6,7 @@
 | status | implemented |
 | created | 2026-10-24 |
 | owner | @sleep9ull |
-| related | PRINCIPLES §2.1（`asc` 读 action）、§8 第 5 条（失真即缺陷）；SPEC §2 |
+| related | CONTRACT §4（能力承诺）、§6 第 5 条（失真即缺陷）；SPECS §2 |
 
 **一句话**：让 `asc builds-next-number --exclude-expired` 真正生效，并把 README/skill 里两处与实现不符的安全声明改成事实。
 
@@ -28,7 +28,7 @@
 - `test/registry.test.ts`：新增回归用例（两个 action 都断言）。
 - `README.md` / `README.zh.md`：修正两处安全声明（confirm 语义、拒绝面），以及 `dataOmitted` / `spillPath` 的语义表述。
 - `skills/dsh-asc-quickstart/SKILL.md`：修正 `run` 不绕过确认的表述。
-- `AGENTS.md` / `docs/PRINCIPLES.md`：精确化只读注入与测试基线表述；路线图移除已完成项。
+- `AGENTS.md` / `docs/CONTRACT.md`（原 `PRINCIPLES.md`）：精确化只读注入与测试基线表述；路线图移除已完成项。
 - `CHANGELOG.md`：新增 Unreleased 记录。
 
 ## 3. 非目标
@@ -58,7 +58,7 @@
 ## 6. 安全与审批影响
 
 - 对 I1–I10：无影响。`builds-next-number` 是 `read`，read-only 与 write 模式都可执行；不新增写路径、不涉及凭据或本地文件。
-- 文档修正降低“失真”风险（PRINCIPLES §8 第 5 条），不放松任何闸门。
+- 文档修正降低“失真”风险（CONTRACT §6 第 5 条），不放松任何闸门。
 
 ## 7. 兼容与迁移
 
@@ -88,7 +88,7 @@
 - [x] README / README.zh（安全模型两条）
 - [x] CHANGELOG（Unreleased / Fixed）
 - [x] `skills/dsh-asc-quickstart/SKILL.md`
-- [x] `AGENTS.md`（I1 表述、质量门基线）与 `docs/PRINCIPLES.md`（§2.1、§6、§7）
+- [x] `AGENTS.md`（I1 表述、质量门基线）与 `docs/CONTRACT.md`（原 `PRINCIPLES.md`）
 
 ## 11. 开放问题
 
