@@ -18,6 +18,10 @@ export type AscToolResult = {
   errorClass?: string
   hint?: string
   data?: JsonValue
+  /** Present when `data` was dropped because it exceeded `maxDataBytes`. */
+  dataOmitted?: boolean
+  /** Byte size of the JSON that was dropped from `data`. */
+  dataBytes?: number
   text?: string
   stderrTail?: string
   truncated?: boolean
@@ -116,6 +120,92 @@ function compactJson(value: unknown, limit = 1_200): string {
   return text.length > limit ? `${text.slice(0, limit)}…` : text
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function numberField(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/**
+ * `asc validate` returns `{summary:{errors,warnings,infos,blocking},
+ * remediation:{totalActionable,steps[]}, checks[]}`. Agents need the ordered
+ * remediation steps, not a truncated JSON blob.
+ */
+function readinessSummary(record: Record<string, unknown>): string | undefined {
+  const summary = record.summary
+  if (!isRecord(summary)) return undefined
+  const blocking = numberField(summary, 'blocking')
+  const errors = numberField(summary, 'errors')
+  const warnings = numberField(summary, 'warnings')
+  if (blocking === undefined && errors === undefined && warnings === undefined) return undefined
+  const parts: string[] = []
+  if (blocking !== undefined) parts.push(`blocking=${blocking}`)
+  if (errors !== undefined) parts.push(`errors=${errors}`)
+  if (warnings !== undefined) parts.push(`warnings=${warnings}`)
+  const remediation = record.remediation
+  const steps = isRecord(remediation) && Array.isArray(remediation.steps) ? remediation.steps : []
+  if (steps.length === 0) return parts.join(' ')
+  const rows = steps.slice(0, 6).map((step, index) => {
+    const item = isRecord(step) ? step : {}
+    const severity = stringField(item, 'severity')
+    const message = stringField(item, 'message') ?? stringField(item, 'title') ?? stringField(item, 'action') ?? ''
+    return `${index + 1}. ${severity === undefined ? '' : `[${severity}] `}${message}`
+  })
+  return `${parts.join(' ')}\n${rows.join('\n')}`
+}
+
+/**
+ * `asc status` keeps its headline facts under `summary`
+ * (`health/nextAction/blockers/nextCommands`).
+ */
+function dashboardSummary(record: Record<string, unknown>): string | undefined {
+  const summary = record.summary
+  if (!isRecord(summary)) return undefined
+  const health = stringField(summary, 'health')
+  const nextAction = stringField(summary, 'nextAction')
+  if (health === undefined && nextAction === undefined) return undefined
+  const lines: string[] = []
+  if (health !== undefined) lines.push(`health=${health}`)
+  if (nextAction !== undefined) lines.push(`next=${nextAction}`)
+  const blockers = Array.isArray(summary.blockers) ? summary.blockers : []
+  for (const blocker of blockers.slice(0, 4)) {
+    const item = isRecord(blocker) ? blocker : {}
+    lines.push(`- blocker: ${stringField(item, 'message') ?? stringField(item, 'title') ?? compactJson(blocker, 120)}`)
+  }
+  const nextCommands = Array.isArray(summary.nextCommands) ? summary.nextCommands : []
+  if (nextCommands.length > 0) {
+    lines.push(`nextCommands:\n${nextCommands.slice(0, 5).map((command) => `- ${String(command)}`).join('\n')}`)
+  }
+  return lines.join('\n')
+}
+
+/** `asc metadata apply` reports flat counters. */
+function metadataSummary(record: Record<string, unknown>): string | undefined {
+  const total = numberField(record, 'total')
+  const succeeded = numberField(record, 'succeeded')
+  const failed = numberField(record, 'failed')
+  if (total === undefined && succeeded === undefined && failed === undefined) return undefined
+  const parts: string[] = []
+  if (total !== undefined) parts.push(`total=${total}`)
+  if (succeeded !== undefined) parts.push(`succeeded=${succeeded}`)
+  if (failed !== undefined) parts.push(`failed=${failed}`)
+  const applied = numberField(record, 'applied')
+  if (applied !== undefined) parts.push(`applied=${applied}`)
+  for (const key of ['adds', 'updates', 'deletes']) {
+    const value = record[key]
+    if (Array.isArray(value)) parts.push(`${key}=${value.length}`)
+  }
+  return parts.join(' ')
+}
+
 /** Summarize `asc` JSON for a human and for a token budget. */
 export function summarize(data: unknown, limit = 8): string {
   if (data === null || data === undefined) return 'no JSON payload'
@@ -161,8 +251,23 @@ export function summarize(data: unknown, limit = 8): string {
     return `${record.credentials.length} stored credential(s) in ${storage}${env}\n${compactJson(data, 800)}`
   }
 
+  const projected = readinessSummary(record) ?? dashboardSummary(record) ?? metadataSummary(record)
+  if (projected !== undefined) return projected
+
   const summaryParts: string[] = []
-  for (const key of ['state', 'ready', 'status', 'outcome', 'reached', 'version', 'buildNumber']) {
+  for (const key of [
+    'state',
+    'ready',
+    'status',
+    'outcome',
+    'reached',
+    'version',
+    'buildNumber',
+    'nextBuildNumber',
+    'processingState',
+    'health',
+    'nextAction',
+  ]) {
     const value = record[key]
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
       summaryParts.push(`${key}=${String(value)}`)
@@ -189,7 +294,11 @@ export function stderrTail(stderr: string, limit = 2_000): string | undefined {
 }
 
 /** Build the canonical result value for one invocation. */
-export function formatResult(outcome: AscExecOutcome, command: string): AscToolResult {
+export function formatResult(
+  outcome: AscExecOutcome,
+  command: string,
+  options: { maxDataBytes?: number } = {},
+): AscToolResult {
   const errorClass = classifyError(outcome)
   const rawText = outcome.stdout.trim()
   const text = outcome.data === undefined && rawText.length > 0 ? redact(rawText).slice(0, 2_000) : undefined
@@ -206,6 +315,25 @@ export function formatResult(outcome: AscExecOutcome, command: string): AscToolR
   } else {
     summary = `exited with code ${outcome.exitCode}`
   }
+
+  let data: unknown
+  let dataOmitted: boolean | undefined
+  let dataBytes: number | undefined
+  if (outcome.data !== undefined) {
+    let serialized = ''
+    try {
+      serialized = JSON.stringify(outcome.data)
+    } catch {
+      serialized = ''
+    }
+    if (serialized.length > 0 && serialized.length > (options.maxDataBytes ?? 8_000)) {
+      dataOmitted = true
+      dataBytes = serialized.length
+    } else {
+      data = outcome.data
+    }
+  }
+
   return {
     ok: outcome.ok,
     exitCode: outcome.exitCode,
@@ -213,7 +341,8 @@ export function formatResult(outcome: AscExecOutcome, command: string): AscToolR
     durationMs: outcome.durationMs,
     summary,
     ...(errorClass === undefined ? {} : { errorClass, hint: HINTS[errorClass] }),
-    ...(outcome.data === undefined ? {} : { data: outcome.data as JsonValue }),
+    ...(data === undefined ? {} : { data: data as JsonValue }),
+    ...(dataOmitted ? { dataOmitted: true, ...(dataBytes === undefined ? {} : { dataBytes }) } : {}),
     ...(text === undefined ? {} : { text }),
     ...(stderrTail(outcome.stderr) === undefined ? {} : { stderrTail: stderrTail(outcome.stderr) }),
     ...(outcome.truncated ? { truncated: true } : {}),
@@ -229,13 +358,15 @@ export function renderResult(value: AscToolResult): ContentBlock[] {
   if (!value.ok) lines.push(`exit code ${value.exitCode}`)
   lines.push(value.summary)
   if (value.text && value.text !== value.summary) lines.push(value.text)
+  if (value.dataOmitted) {
+    lines.push(
+      `payload omitted (${value.dataBytes ?? 'many'} bytes): narrow the query (filters/limit) or read the spilled output${
+        value.spillPath === undefined ? '' : ` at ${value.spillPath}`
+      }`,
+    )
+  }
   if (value.stderrTail) lines.push(`stderr (tail):\n${value.stderrTail}`)
   if (value.hint) lines.push(`next: ${value.hint}`)
   if (value.spillPath) lines.push(`full output: ${value.spillPath}`)
   return [{ type: 'text', text: lines.join('\n') }]
-}
-
-/** Render a pre-execution refusal (not an `asc` result). */
-export function renderRefusal(reason: string): ContentBlock[] {
-  return [{ type: 'text', text: reason }]
 }

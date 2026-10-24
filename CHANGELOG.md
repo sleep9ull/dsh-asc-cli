@@ -2,6 +2,57 @@
 
 All notable changes to this plugin are documented here.
 
+## 0.1.3 — 2026-10-24 (capabilities release)
+
+The plugin becomes a self-contained product surface: jobs, a bundled skill pack,
+human commands and an engine manager. Installing the plugin is enough to know
+how to use it; installing `asc` itself is guided by the plugin.
+
+### Added
+
+- **Engine manager** (`src/control/engine.ts`). Resolves `asc` from `ascPath` →
+  `ASC_CLI_PATH` → the plugin cache → `PATH`; probes the version once and
+  compares it with the tested range (`>=5.16.0 <6.0.0`); reports one next step.
+- **Provisioning** (`asc_setup` action `provision`, opt-in via
+  `allowProvision: true`). Downloads the pinned `asc 5.16.0` release asset for
+  the current platform, verifies it against the published SHA-256 checksums,
+  and caches it under `$DSH_HOME/cache/asc-cli/<version>/<platform>-<arch>/`.
+  Never runs implicitly; needs `confirm` and approval.
+- **`asc_setup` actions `diagnose` and `provision`**; `/asc-doctor` renders the
+  same report for humans.
+- **`/asc` command**: capability card with engine state, the four jobs and the
+  next step, without creating a model message.
+- **Four jobs via `asc_job`**: `release-check` (read), `ship-testflight`
+  (write), `stage-release` (write), `triage-feedback` (read). Each returns
+  per-step summaries; write jobs require `mode: write`, `confirm` and approval.
+  `runJob` re-checks the gate so the runner is safe when called directly.
+- **Five bundled skills** (`skills/`), registered through the host skill
+  registry at the bundled rank (600): quickstart, auth, release readiness,
+  TestFlight shipping, feedback triage. No `git`, no global skill directory and
+  no manual `asc install-skills` are required; a user-installed upstream pack
+  wins same-named entries because bundled rank is the lowest.
+- **Structured projectors** for `validate` (`blocking/errors/warnings` + ordered
+  remediation steps), `status` (`health/nextAction/blockers/nextCommands`) and
+  `metadata` counters, plus `nextBuildNumber`/`processingState` fields.
+
+### Changed
+
+- Results larger than `maxDataBytes` (default 8 KB) no longer inline `data`;
+  they set `dataOmitted` and `dataBytes` and point at the spill file.
+- `asc_setup` was rewritten as a dedicated tool (engine actions plus the
+  existing registry actions); `asc_setup.diagnose` and `provision` are also part
+  of the pre-execution policy (`provision` requires confirm + approval).
+- Removed the unused `renderRefusal` helper and updated the smoke test to cover
+  the engine report and the `/asc` card against a real binary.
+
+### Tests
+
+- 132 tests across 10 files (from 85/6), adding engine resolution/provisioning,
+  job orchestration and policy, command rendering/registration, bundled-skill
+  discovery, structured projectors and the payload size guard.
+- Smoke test now prints `asc_setup.diagnose` and the `/asc` capability card
+  against `vendor/asc`.
+
 ## 0.1.2 — 2026-10-24 (security release)
 
 Two P0 issues and four local-write gaps found in an independent audit are fixed.

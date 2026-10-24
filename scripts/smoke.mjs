@@ -6,6 +6,8 @@
 
 import { spawn as nodeSpawn } from 'node:child_process'
 import { resolve } from 'node:path'
+import { renderStartCard } from '../lib/commands.js'
+import { createEngine } from '../lib/control/engine.js'
 import { createRuntime } from '../lib/runtime.js'
 
 const ASC = resolve('vendor/asc')
@@ -70,6 +72,10 @@ const config = {
   maxOutputBytes: 262_144,
   bypassKeychain: false,
   telemetryDisabled: true,
+  allowValueExpansion: false,
+  unknownCommands: 'ask',
+  allowProvision: false,
+  maxDataBytes: 8_000,
   env: {},
 }
 
@@ -96,3 +102,11 @@ for (const [tool, action, args] of cases) {
     console.log(`\n### ${label} THREW: ${error.message}`)
   }
 }
+
+// Engine manager + capability card (the /asc front door), against the real binary.
+const engine = createEngine(config, spawnAdapter)
+const report = await engine.diagnose({ validateAuth: false })
+console.log('\n### asc_setup.diagnose')
+console.log(`binary=${report.checks.find((check) => check.name === 'binary')?.ok} version=${report.version ?? '-'} compat=${report.compat} auth=${report.authenticated}`)
+console.log('\n### /asc (capability card)')
+console.log(renderStartCard(report, { skills: 5 }))
