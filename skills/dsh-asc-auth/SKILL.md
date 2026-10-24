@@ -23,14 +23,14 @@ asc auth status --validate
 - `--network` validates during login; `--skip-validation` defers it. Neither replaces `auth status --validate`.
 - Headless: add `--bypass-keychain`; credentials go to `ASC_CONFIG_PATH` or `~/.asc/config.json`.
 
-Read-only checks from the agent (the user can also run `/asc-doctor`):
+Checks (the user can also run `/asc-doctor`):
 
 ```
 asc_setup { action: "auth-status" }   # auth status --validate
 asc_setup { action: "doctor" }        # keychain, config, key files
 ```
 
-`auth-status` is the network truth; `doctor` diagnoses local storage. Run both before changing configuration.
+`auth-status` is the network truth; `doctor` diagnoses local storage. With `checkUpdates` (default true), `/asc-doctor` also reports the latest upstream release and an upgrade hint; the plugin never upgrades itself.
 
 ## Failure branches
 
@@ -53,13 +53,17 @@ One profile per team. Set `profile: "MyApp"` in the plugin config to pass `asc -
 
 The plugin forwards `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY_PATH`, and `ASC_PRIVATE_KEY` because the harness scrubs credential-shaped variables. Prefer a path over inline key material, a dedicated least-privilege key, and `bypassKeychain` on runners without a keychain. Never put keys in plugin config, `cordis.patch.yml`, or the workspace `.asc/` directory (`--local` writes repository-local credentials).
 
+## Audit and approvals
+
+With `auditLog`, each asc call writes JSONL (tool/action/argv/exit/duration/errorClass/app), never keys. `approvedActions` globs waive only the approval prompt, only in write mode; `confirm` remains; neither bypasses auth or read-only.
+
 ## Private-key hygiene
 
 Use paths only, never contents. Do not ask the user to paste a `.p8` or a base64 key. Do not write key material into the repo, logs, spill files, or examples. If a key appears in output, stop, tell the user to rotate it, and do not repeat it.
 
 ## Do not
 
-- Run `asc auth login`/`logout`, or any `web auth` command through `asc_run`.
+- Run `asc auth login`/`logout`, or any `web auth` command through `asc action:"run"`.
 - Set `mode: write` or disable approval to fix auth.
 - Treat 403 as a missing login; it is a permission problem.
 - Retry keychain-hanging commands in a loop or in parallel.

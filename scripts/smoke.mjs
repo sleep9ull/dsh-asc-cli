@@ -84,16 +84,16 @@ const runtime = createRuntime(ctx, config, spawnAdapter)
 const exec = { signal: new AbortController().signal }
 
 const cases = [
-  ['asc_setup', 'version', {}],
-  ['asc_search', undefined, { query: 'upload a build', limit: 3 }],
-  ['asc_setup', 'auth-status', {}],
-  ['asc_apps', 'list', {}],
+  ['asc_setup.version', () => runtime.runAction('asc_setup', 'version', {}, exec)],
+  ['asc.discover', () => runtime.runArgv(['search', '--limit', '3', 'upload a build'], { confirm: false }, exec)],
+  ['asc_setup.auth-status', () => runtime.runAction('asc_setup', 'auth-status', {}, exec)],
+  ['asc.apps-list', () => runtime.runAction('asc', 'apps-list', {}, exec)],
+  ['asc_plan.validate', () => runtime.runAction('asc_plan', 'validate', { app: '123456789' }, exec)],
 ]
 
-for (const [tool, action, args] of cases) {
-  const label = action ? `${tool}.${action}` : tool
+for (const [label, run] of cases) {
   try {
-    const result = await runtime.runAction(tool, action, args, exec)
+    const result = await run()
     console.log(`\n### ${label}`)
     console.log(`ok=${result.ok} exit=${result.exitCode} class=${result.errorClass ?? '-'}`)
     console.log(result.summary.slice(0, 600))
@@ -109,4 +109,4 @@ const report = await engine.diagnose({ validateAuth: false })
 console.log('\n### asc_setup.diagnose')
 console.log(`binary=${report.checks.find((check) => check.name === 'binary')?.ok} version=${report.version ?? '-'} compat=${report.compat} auth=${report.authenticated}`)
 console.log('\n### /asc (capability card)')
-console.log(renderStartCard(report, { skills: 5 }))
+console.log(renderStartCard(report, { skills: 6 }))

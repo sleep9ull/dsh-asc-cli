@@ -1,5 +1,5 @@
 /**
- * Mutation classifier for arbitrary `asc` invocations used by `asc_run`.
+ * Mutation classifier for arbitrary `asc` invocations used by `asc.run`.
  *
  * Typed tools declare their kind in the registry; only the generic escape
  * hatch needs to infer it. The classifier is deliberately conservative:
@@ -55,6 +55,7 @@ const WRITE_VERBS = new Set([
 const READ_VERBS = new Set([
   'capabilities',
   'count',
+  'current',
   'diff',
   'docs',
   'doctor',
@@ -103,8 +104,33 @@ const READ_ROOTS = new Set([
  * stays `unknown` and is treated as a mutation.
  */
 const STRUCTURED_ROOTS = new Set([
+  'accessibility',
+  'account',
+  'ads',
+  'age-rating',
+  'agreements',
+  'analytics',
   'app-events',
+  'app-tags',
   'apps',
+  'asset-library',
+  'actors',
+  'background-assets',
+  'build-bundles',
+  'categories',
+  'devices',
+  'encryption',
+  'eula',
+  'finance',
+  'game-center',
+  'insights',
+  'performance',
+  'pre-orders',
+  'pricing',
+  'product-pages',
+  'routing-coverage',
+  'users',
+  'xcode-cloud',
   'build-localizations',
   'builds',
   'bundle-ids',

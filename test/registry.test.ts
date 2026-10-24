@@ -15,20 +15,21 @@ describe('command registry', () => {
     const keys = actionKeys()
     for (const key of [
       'asc_setup.version',
-      'asc_search',
-      'asc_apps.list',
-      'asc_builds.upload',
-      'asc_testflight.crashes',
-      'asc_metadata.apply',
-      'asc_release.publish',
+      'asc.apps-list',
+      'asc.testflight-crashes',
+      'asc_plan.validate',
+      'asc_plan.status',
+      'asc_apply.upload',
+      'asc_apply.metadata-apply',
+      'asc_apply.publish',
     ]) {
       expect(keys).toContain(key)
     }
   })
 
   it('builds read commands with explicit JSON-friendly limits', () => {
-    expect(build('asc_apps', 'list')).toEqual(['apps', 'list', '--limit', '20'])
-    expect(build('asc_apps', 'list', { name: 'Focus', limit: 5 })).toEqual([
+    expect(build('asc', 'apps-list')).toEqual(['apps', 'list', '--limit', '20'])
+    expect(build('asc', 'apps-list', { name: 'Focus', limit: 5 })).toEqual([
       'apps',
       'list',
       '--limit',
@@ -36,8 +37,8 @@ describe('command registry', () => {
       '--name',
       'Focus',
     ])
-    expect(build('asc_apps', 'view')).toEqual(['apps', 'view', '--id', '111'])
-    expect(build('asc_builds', 'list', { app: '42', platform: 'IOS' })).toEqual([
+    expect(build('asc', 'apps-view')).toEqual(['apps', 'view', '--id', '111'])
+    expect(build('asc', 'builds-list', { app: '42', platform: 'IOS' })).toEqual([
       'builds',
       'list',
       '--app',
@@ -47,7 +48,7 @@ describe('command registry', () => {
       '--platform',
       'IOS',
     ])
-    expect(build('asc_testflight', 'groups', { internal: true })).toEqual([
+    expect(build('asc', 'testflight-groups', { internal: true })).toEqual([
       'testflight',
       'groups',
       'list',
@@ -55,10 +56,20 @@ describe('command registry', () => {
       '111',
       '--internal',
     ])
+    expect(build('asc', 'reviews-list', { app: '7', limit: 5, sort: '-createdDate' })).toEqual([
+      'reviews',
+      'list',
+      '--app',
+      '7',
+      '--limit',
+      '5',
+      '--sort',
+      '-createdDate',
+    ])
   })
 
   it('builds upload commands from the file extension', () => {
-    expect(build('asc_builds', 'upload', { file: '/tmp/App.ipa', version: '1.2.3' })).toEqual([
+    expect(build('asc_apply', 'upload', { file: '/tmp/App.ipa', version: '1.2.3' })).toEqual([
       'builds',
       'upload',
       '--app',
@@ -68,7 +79,7 @@ describe('command registry', () => {
       '--version',
       '1.2.3',
     ])
-    expect(build('asc_builds', 'upload', { file: '/tmp/App.pkg', buildNumber: '42', wait: true })).toEqual([
+    expect(build('asc_apply', 'upload', { file: '/tmp/App.pkg', buildNumber: '42', wait: true })).toEqual([
       'builds',
       'upload',
       '--app',
@@ -83,19 +94,19 @@ describe('command registry', () => {
 
   it('only passes --confirm where the asc command accepts it', () => {
     expect(
-      build('asc_builds', 'add-groups', { group: 'Internal', submit: true, confirm: true }),
+      build('asc_apply', 'groups', { group: 'Internal', submit: true, confirm: true }),
     ).toEqual(['builds', 'add-groups', '--app', '111', '--group', 'Internal', '--latest', '--submit', '--confirm'])
-    expect(build('asc_builds', 'add-groups', { group: 'Internal', submit: true })).not.toContain('--confirm')
-    expect(build('asc_metadata', 'apply', { version: '1.2.3', dir: './metadata', confirm: true })).toContain(
-      '--confirm',
-    )
-    expect(build('asc_metadata', 'apply', { version: '1.2.3', dir: './metadata', dryRun: true })).toContain(
-      '--dry-run',
-    )
+    expect(build('asc_apply', 'groups', { group: 'Internal', submit: true })).not.toContain('--confirm')
+    expect(
+      build('asc_apply', 'metadata-apply', { version: '1.2.3', dir: './metadata', confirm: true }),
+    ).toContain('--confirm')
+    expect(
+      build('asc_apply', 'metadata-apply', { version: '1.2.3', dir: './metadata', dryRun: true }),
+    ).toContain('--dry-run')
   })
 
   it('builds the release pipeline commands', () => {
-    expect(build('asc_release', 'status', { app: '7', until: 'review-done', timeout: '2h' })).toEqual([
+    expect(build('asc_plan', 'status', { app: '7', until: 'review-done', timeout: '2h' })).toEqual([
       'status',
       '--app',
       '7',
@@ -105,7 +116,7 @@ describe('command registry', () => {
       '2h',
     ])
     expect(
-      build('asc_release', 'publish', {
+      build('asc_apply', 'publish', {
         version: '1.2.3',
         ipa: '/tmp/App.ipa',
         submit: true,
@@ -126,28 +137,28 @@ describe('command registry', () => {
   })
 
   it('requires an app id when no default is configured', () => {
-    const spec = specFor('asc_apps', 'view')
+    const spec = specFor('asc', 'apps-view')
     if (!spec) throw new Error('missing spec')
     expect(() => spec.build({}, { config: makeConfig(), cwd: '/tmp' })).toThrow(/missing required `app`/)
   })
 
   it('rejects actions that need a version or directory', () => {
-    expect(() => build('asc_metadata', 'plan', { dir: './metadata' })).toThrow(/version/)
-    expect(() => build('asc_metadata', 'apply', { version: '1.0.0' })).toThrow(/dir/)
+    expect(() => build('asc_plan', 'metadata-plan', { dir: './metadata' })).toThrow(/version/)
+    expect(() => build('asc_apply', 'metadata-apply', { version: '1.0.0' })).toThrow(/dir/)
   })
 })
 
 describe('v0.1.2 safety contract', () => {
   it('requires confirm for every local-write action', () => {
-    expect(specFor('asc_metadata', 'init')?.kind).toBe('local-write')
-    expect(specFor('asc_metadata', 'init')?.needsConfirm).toBe(true)
-    expect(specFor('asc_metadata', 'plan')?.kind).toBe('local-write')
-    expect(specFor('asc_metadata', 'plan')?.needsConfirm).toBe(true)
+    expect(specFor('asc_apply', 'metadata-init')?.kind).toBe('local-write')
+    expect(specFor('asc_apply', 'metadata-init')?.needsConfirm).toBe(true)
+    expect(specFor('asc_plan', 'metadata-plan')?.kind).toBe('local-write')
+    expect(specFor('asc_plan', 'metadata-plan')?.needsConfirm).toBe(true)
     expect(specFor('asc_setup', 'install-skills')?.needsConfirm).toBe(true)
   })
 
   it('passes --platform to release stage', () => {
-    const argv = build('asc_release', 'stage', {
+    const argv = build('asc_apply', 'stage', {
       version: '1.2.3',
       buildId: 'b1',
       platform: 'MAC_OS',

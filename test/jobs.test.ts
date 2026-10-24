@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { AscToolResult } from '../src/format.js'
 import type { AscEngine } from '../src/control/engine.js'
-import { jobIds, jobSpecFor, runJob, type JobArgs, type JobContext } from '../src/jobs.js'
+import { jobIds, jobSpecFor, runJob, runReadOnlyArgv, type JobArgs, type JobContext } from '../src/jobs.js'
 import { makeConfig } from './helpers.js'
 
 function result(overrides: Partial<AscToolResult> = {}): AscToolResult {
@@ -39,7 +39,13 @@ function args(overrides: Partial<JobArgs> = {}): JobArgs {
 
 describe('job registry', () => {
   it('exposes the four documented jobs', () => {
-    expect(jobIds()).toEqual(['release-check', 'ship-testflight', 'stage-release', 'triage-feedback'])
+    expect(jobIds()).toEqual([
+      'release-check',
+      'ship-testflight',
+      'stage-release',
+      'triage-feedback',
+      'compliance-sweep',
+    ])
     expect(jobSpecFor('release-check')?.risk).toBe('read')
     expect(jobSpecFor('stage-release')?.needsConfirm).toBe(true)
     expect(jobSpecFor('nope')).toBeUndefined()
@@ -55,12 +61,7 @@ describe('release-check', () => {
     })
     expect(outcome.ok).toBe(true)
     expect(outcome.steps[0]?.name).toBe('validate')
-    expect(runAction).toHaveBeenCalledWith(
-      'asc_release',
-      'validate',
-      { app: '111' },
-      expect.anything(),
-    )
+    expect(runAction).toHaveBeenCalledWith('asc_plan', 'validate', { app: '111' }, expect.anything())
     expect(outcome.ascVersion).toBe('5.16.0')
   })
 
@@ -98,15 +99,15 @@ describe('ship-testflight', () => {
     expect(outcome.ok).toBe(true)
     expect(runAction).toHaveBeenNthCalledWith(
       1,
-      'asc_builds',
+      'asc_apply',
       'upload',
       expect.objectContaining({ app: '111', file: 'a.ipa', wait: true }),
       expect.anything(),
     )
     expect(runAction).toHaveBeenNthCalledWith(
       2,
-      'asc_builds',
-      'add-groups',
+      'asc_apply',
+      'groups',
       expect.objectContaining({ group: 'Internal', buildId: 'b1', submit: true, confirm: true }),
       expect.anything(),
     )
@@ -148,7 +149,7 @@ describe('stage-release', () => {
     expect(outcome.ok).toBe(true)
     expect(runAction).toHaveBeenNthCalledWith(
       2,
-      'asc_release',
+      'asc_apply',
       'stage',
       expect.objectContaining({ version: '1.2.3', buildId: 'b1', metadataDir: './metadata', confirm: true }),
       expect.anything(),
@@ -166,11 +167,10 @@ describe('stage-release', () => {
 
 describe('triage-feedback', () => {
   it('counts feedback, crashes and reviews', async () => {
-    const { ctx, runAction, runArgv } = context({
+    const { ctx, runAction } = context({
       runAction: async (tool, action) =>
-        result({ data: { data: action === 'feedback' ? [{}, {}] : [{}] } }),
+        result({ data: { data: action === 'testflight-feedback' ? [{}, {}] : action === 'reviews-list' ? [{}, {}, {}] : [{}] } }),
     })
-    runArgv.mockResolvedValue(result({ data: { data: [{}, {}, {}] } }))
     const outcome = await runJob('triage-feedback', args({ confirm: false }), {
       ...ctx,
       config: { ...ctx.config, mode: 'read-only' },
@@ -179,18 +179,57 @@ describe('triage-feedback', () => {
     expect(outcome.summary).toContain('feedback=2')
     expect(outcome.summary).toContain('crashes=1')
     expect(outcome.summary).toContain('reviews=3')
-    expect(runArgv).toHaveBeenCalledWith(
-      ['reviews', 'list', '--app', '111', '--limit', '20'],
-      { confirm: false },
+    expect(runAction).toHaveBeenCalledWith(
+      'asc',
+      'reviews-list',
+      expect.objectContaining({ app: '111', limit: 20 }),
       expect.anything(),
     )
   })
 
   it('treats reviews as optional', async () => {
-    const { ctx, runArgv } = context()
-    runArgv.mockRejectedValue(new Error('reviews not available'))
+    const { ctx } = context({
+      runAction: async (tool, action) =>
+        action === 'reviews-list'
+          ? result({ ok: false, exitCode: 1, summary: 'reviews unavailable', errorClass: 'unknown' })
+          : result({ data: { data: [] } }),
+    })
     const outcome = await runJob('triage-feedback', args({ confirm: false }), ctx)
     expect(outcome.ok).toBe(true)
     expect(outcome.summary).toContain('reviews=n/a')
+  })
+})
+
+
+describe('compliance-sweep', () => {
+  it('probes age rating, encryption, accessibility and pricing as read-only argv', async () => {
+    const { ctx, runArgv } = context({
+      runArgv: async () => result({ summary: 'probe ok', data: { data: [] } }),
+    })
+    const outcome = await runJob('compliance-sweep', args({ confirm: false }), {
+      ...ctx,
+      config: { ...ctx.config, mode: 'read-only' },
+    })
+    expect(outcome.ok).toBe(true)
+    expect(outcome.steps.map((step) => step.name)).toEqual([
+      'age-rating',
+      'encryption',
+      'accessibility',
+      'pricing',
+    ])
+    expect(runArgv).toHaveBeenCalledWith(
+      ['age-rating', 'view', '--app', '111'],
+      { confirm: false },
+      expect.anything(),
+    )
+    expect(outcome.summary).toContain('compliance:')
+  })
+
+  it('refuses to run a mutating command through the read-only helper', async () => {
+    const { ctx, runArgv } = context()
+    const step = await runReadOnlyArgv(ctx, 'probe', ['age-rating', 'edit', '--app', '111'])
+    expect(step.ok).toBe(false)
+    expect(step.summary).toMatch(/only runs read-only/)
+    expect(runArgv).not.toHaveBeenCalled()
   })
 })

@@ -70,7 +70,7 @@ describe('generic command policy', () => {
   it('runs an unrecognized command in read-only mode when the policy asks, not denies', async () => {
     const { spawn, calls } = queuedSpawn([{ exitCode: 0, stdout: '{"ok":true}' }])
     const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)
-    const result = await runtime.runArgv(['account', 'status'], { confirm: false }, execContext())
+    const result = await runtime.runArgv(['frobnicate', 'now'], { confirm: false }, execContext())
     expect(result.ok).toBe(true)
     expect(calls).toHaveLength(1)
     expect(calls[0]).toContain('--read-only')
@@ -79,7 +79,7 @@ describe('generic command policy', () => {
   it('refuses unrecognized commands in read-only mode under unknownCommands=deny', async () => {
     const { spawn, calls } = queuedSpawn([{ exitCode: 0 }])
     const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp', unknownCommands: 'deny' }), spawn)
-    await expect(runtime.runArgv(['account', 'status'], { confirm: false }, execContext())).rejects.toThrow(
+    await expect(runtime.runArgv(['frobnicate', 'now'], { confirm: false }, execContext())).rejects.toThrow(
       /unknownCommands/,
     )
     expect(calls).toHaveLength(0)

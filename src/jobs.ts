@@ -13,6 +13,7 @@
 
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { classifyArgv } from './classify.js'
 import type { CapabilityJob } from './capabilities.js'
 import { jobCapability, JOBS } from './capabilities.js'
 import type { Config } from './config.js'
@@ -147,7 +148,7 @@ const releaseCheck: JobSpec = {
     const validate = asStep(
       'validate',
       await context.runtime.runAction(
-        'asc_release',
+        'asc_plan',
         'validate',
         {
           app,
@@ -176,7 +177,7 @@ const shipTestflight: JobSpec = {
     const upload = asStep(
       'upload',
       await context.runtime.runAction(
-        'asc_builds',
+        'asc_apply',
         'upload',
         {
           app,
@@ -201,14 +202,14 @@ const shipTestflight: JobSpec = {
           ok: false,
           summary: 'upload did not report a buildId; add the build to a group manually once processing finishes',
           errorClass: 'state-conflict',
-          hint: 'wait for processing, then use asc_builds with action add-groups and a buildId',
+          hint: 'wait for processing, then use asc_apply with action groups and a buildId',
         }
       } else {
         groupStep = asStep(
           'add-groups',
           await context.runtime.runAction(
-            'asc_builds',
-            'add-groups',
+            'asc_apply',
+            'groups',
             {
               app,
               group: args.group,
@@ -250,7 +251,7 @@ const stageRelease: JobSpec = {
     const validate = asStep(
       'validate',
       await context.runtime.runAction(
-        'asc_release',
+        'asc_plan',
         'validate',
         {
           app,
@@ -268,7 +269,7 @@ const stageRelease: JobSpec = {
     const stage = asStep(
       'stage',
       await context.runtime.runAction(
-        'asc_release',
+        'asc_apply',
         'stage',
         {
           app,
@@ -300,8 +301,8 @@ const triageFeedback: JobSpec = {
     const feedback = asStep(
       'feedback',
       await context.runtime.runAction(
-        'asc_testflight',
-        'feedback',
+        'asc',
+        'testflight-feedback',
         { app, limit, sort: '-createdDate' },
         context.exec,
       ),
@@ -311,8 +312,8 @@ const triageFeedback: JobSpec = {
     const crashes = asStep(
       'crashes',
       await context.runtime.runAction(
-        'asc_testflight',
-        'crashes',
+        'asc',
+        'testflight-crashes',
         { app, limit, sort: '-createdDate' },
         context.exec,
       ),
@@ -321,23 +322,14 @@ const triageFeedback: JobSpec = {
 
     let reviews: JobStepResult | undefined
     if (crashes.ok) {
-      try {
-        const result = await context.runtime.runArgv(
-          ['reviews', 'list', '--app', app, '--limit', String(limit)],
-          { confirm: false },
-          context.exec,
-        )
-        reviews = asStep('reviews', result)
-        steps.push(reviews)
-      } catch (error) {
-        reviews = {
-          name: 'reviews',
-          ok: false,
-          summary: error instanceof Error ? error.message : String(error),
-          errorClass: 'unknown',
-        }
-        steps.push(reviews)
-      }
+      const result = await context.runtime.runAction(
+        'asc',
+        'reviews-list',
+        { app, limit, sort: '-createdDate' },
+        context.exec,
+      )
+      reviews = asStep('reviews', result)
+      steps.push(reviews)
     }
 
     const count = (step: JobStepResult | undefined): string => {
@@ -361,8 +353,65 @@ const triageFeedback: JobSpec = {
   },
 }
 
+/**
+ * Run one nested read-only argv, refusing anything the classifier does not
+ * prove read-only. Jobs must never smuggle an unknown command past the human
+ * approval gate that only sees the outer tool call.
+ */
+export async function runReadOnlyArgv(
+  context: JobContext,
+  name: string,
+  argv: readonly string[],
+): Promise<JobStepResult> {
+  const kind = classifyArgv(argv)
+  if (kind !== 'read') {
+    return {
+      name,
+      ok: false,
+      summary: `refused: this job only runs read-only commands (classified ${kind})`,
+      errorClass: 'unknown',
+    }
+  }
+  const result = await context.runtime.runArgv(argv, { confirm: false }, context.exec)
+  return asStep(name, result)
+}
+
+const complianceSweep: JobSpec = {
+  ...(JOBS.find((job) => job.id === 'compliance-sweep') as CapabilityJob),
+  async run(args, context) {
+    const app = appOf(args, context.config)
+    const probes: Array<{ name: string; argv: string[] }> = [
+      { name: 'age-rating', argv: ['age-rating', 'view', '--app', app] },
+      { name: 'encryption', argv: ['encryption', 'declarations', 'list', '--app', app] },
+      { name: 'accessibility', argv: ['accessibility', 'list', '--app', app] },
+      { name: 'pricing', argv: ['pricing', 'current', '--app', app] },
+    ]
+    const steps: JobStepResult[] = []
+    for (const probe of probes) steps.push(await runReadOnlyArgv(context, probe.name, probe.argv))
+    const counts = steps.map((step) => `${step.name}=${step.ok ? 'ok' : 'n/a'}`)
+    const failed = steps.filter((step) => !step.ok)
+    return finish(this, steps, {
+      dryRun: true,
+      summary: `compliance: ${counts.join(' ')}${failed.length === 0 ? '' : ` (${failed.length} probe(s) unavailable)`}`,
+      data: {
+        ageRating: steps[0]?.data ?? null,
+        encryption: steps[1]?.data ?? null,
+        accessibility: steps[2]?.data ?? null,
+        pricing: steps[3]?.data ?? null,
+      },
+      ignoreFailures: steps.map((step) => step.name),
+    })
+  },
+}
+
 /** Every job spec, keyed by id. */
-export const JOB_SPECS: readonly JobSpec[] = [releaseCheck, shipTestflight, stageRelease, triageFeedback]
+export const JOB_SPECS: readonly JobSpec[] = [
+  releaseCheck,
+  shipTestflight,
+  stageRelease,
+  triageFeedback,
+  complianceSweep,
+]
 
 const byId = new Map(JOB_SPECS.map((spec) => [spec.id, spec]))
 

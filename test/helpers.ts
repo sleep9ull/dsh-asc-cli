@@ -15,6 +15,8 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     unknownCommands: 'ask',
     allowProvision: false,
     maxDataBytes: 8_000,
+    approvedActions: [],
+    checkUpdates: false,
     env: {},
     ...overrides,
   }

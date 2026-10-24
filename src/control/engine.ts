@@ -13,7 +13,15 @@
  */
 
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -25,6 +33,7 @@ import {
   PINNED_ASC_VERSION,
   releaseAsset,
   releaseUrl,
+  UPSTREAM_LATEST_URL,
   type CompatStatus,
 } from '../compat.js'
 import type { Config } from '../config.js'
@@ -85,7 +94,16 @@ export interface DiagnoseReport {
   readonly defaultAppId?: string
   readonly firstApp?: AppSummary
   readonly provision: { readonly available: boolean; readonly pinned: string; readonly cached: boolean }
+  readonly latestVersion?: string
+  readonly updateAvailable?: boolean
   readonly next?: DiagnoseNext
+}
+
+/** Result of the optional upstream update check. */
+export interface UpdateInfo {
+  readonly latest: string
+  readonly checkedAt: string
+  readonly cached: boolean
 }
 
 /** Result of one provisioning attempt. */
@@ -109,7 +127,8 @@ export interface AscEngine {
   version(): Promise<string | undefined>
   authStatus(validate: boolean): Promise<EngineFact<AuthStatus>>
   listApps(limit: number): Promise<EngineFact<readonly AppSummary[]>>
-  diagnose(options?: { validateAuth?: boolean }): Promise<DiagnoseReport>
+  diagnose(options?: { validateAuth?: boolean; checkUpdates?: boolean }): Promise<DiagnoseReport>
+  latestVersion(deps?: { fetch?: typeof fetch; now?: () => number }): Promise<UpdateInfo | undefined>
   provision(deps?: ProvisionDeps): Promise<ProvisionResult>
 }
 
@@ -216,7 +235,7 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     return { ok: true, value: apps }
   }
 
-  async function diagnose(options: { validateAuth?: boolean } = {}): Promise<DiagnoseReport> {
+  async function diagnose(options: { validateAuth?: boolean; checkUpdates?: boolean } = {}): Promise<DiagnoseReport> {
     const resolution = resolve()
     const checks: DiagnoseCheck[] = []
     const found = await version()
@@ -262,6 +281,23 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
       cached: existsSync(cachedBinaryPath()),
     }
 
+    let latest: UpdateInfo | undefined
+    let updateAvailable = false
+    if (config.checkUpdates && options.checkUpdates !== false && found !== undefined) {
+      latest = await latestVersion()
+      updateAvailable = latest !== undefined && compareVersions(found, latest.latest) < 0
+      checks.push({
+        name: 'upstream',
+        ok: !updateAvailable,
+        detail:
+          latest === undefined
+            ? 'latest release unknown (offline or rate-limited)'
+            : updateAvailable
+              ? `asc ${latest.latest} is available (installed ${found}); /asc-doctor shows the upgrade path`
+              : `up to date (latest ${latest.latest})`,
+      })
+    }
+
     let next: DiagnoseNext | undefined
     if (found === undefined) {
       next = {
@@ -283,8 +319,14 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
         command: firstApp === undefined ? undefined : `set defaultAppId: "${firstApp.id}"`,
         detail:
           firstApp === undefined
-            ? 'ask for `asc_apps list` to find an app id'
+            ? 'ask for `asc action: "apps-list"` to find an app id'
             : `first available: ${firstApp.name ?? firstApp.id} (${firstApp.id})`,
+      }
+    } else if (updateAvailable) {
+      next = {
+        title: 'Upgrade asc (optional)',
+        command: 'brew upgrade asc',
+        detail: `asc ${latest?.latest} is available; the prompt is advisory and never auto-upgrades`,
       }
     } else {
       next = { title: 'Ready', detail: 'Try /asc for the capability card, or ask for a release check' }
@@ -299,7 +341,52 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
       ...(config.defaultAppId === undefined ? {} : { defaultAppId: config.defaultAppId }),
       ...(firstApp === undefined ? {} : { firstApp }),
       provision,
+      ...(latest === undefined ? {} : { latestVersion: latest.latest }),
+      ...(updateAvailable ? { updateAvailable: true } : {}),
       ...(next === undefined ? {} : { next }),
+    }
+  }
+
+  const UPDATE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+  async function latestVersion(
+    deps: { fetch?: typeof fetch; now?: () => number } = {},
+  ): Promise<UpdateInfo | undefined> {
+    const cachePath = join(cacheRoot(config), 'update-check.json')
+    const now = deps.now ?? Date.now
+    try {
+      const cached = JSON.parse(readFileSync(cachePath, 'utf8')) as { latest?: unknown; checkedAt?: unknown }
+      if (
+        typeof cached.latest === 'string' &&
+        typeof cached.checkedAt === 'string' &&
+        now() - Date.parse(cached.checkedAt) < UPDATE_CACHE_MAX_AGE_MS
+      ) {
+        return { latest: cached.latest, checkedAt: cached.checkedAt, cached: true }
+      }
+    } catch {
+      // Missing or unreadable cache: fetch below.
+    }
+    const fetchImpl = deps.fetch ?? fetch
+    try {
+      const response = await fetchImpl(UPSTREAM_LATEST_URL, {
+        headers: { accept: 'application/vnd.github+json' },
+        signal: AbortSignal.timeout(5_000),
+      })
+      if (!response.ok) return undefined
+      const payload = (await response.json()) as { tag_name?: unknown }
+      const tag = typeof payload.tag_name === 'string' ? payload.tag_name : ''
+      const latest = firstSemver(tag)
+      if (latest === undefined) return undefined
+      const checkedAt = new Date(now()).toISOString()
+      try {
+        mkdirSync(cacheRoot(config), { recursive: true })
+        writeFileSync(cachePath, `${JSON.stringify({ latest, checkedAt })}\n`)
+      } catch {
+        // Cache writes are best-effort.
+      }
+      return { latest, checkedAt, cached: false }
+    } catch {
+      return undefined
     }
   }
 
@@ -347,7 +434,7 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     }
   }
 
-  return { resolve, cachedBinaryPath, version, authStatus, listApps, diagnose, provision }
+  return { resolve, cachedBinaryPath, version, authStatus, listApps, diagnose, latestVersion, provision }
 }
 
 /** Compare the provisioned pin with a discovered version (doctor detail). */

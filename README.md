@@ -1,17 +1,157 @@
-# dsh-asc-cli
+# ASC for DeepSeek Harness
 
-> Published on npm as [`@sleep9ull/dsh-asc-cli`](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli). Renamed from `dsh-asc-cli@0.1.0`; the old name is deprecated.
+**Ship to TestFlight, check release readiness, triage feedback and audit compliance — from a conversation.**
 
-**App Store Connect operations for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), powered by the [`asc` CLI](https://github.com/rorkai/App-Store-Connect-CLI).**
+English | [中文](README.zh.md)
 
-`@sleep9ull/dsh-asc-cli` is a DeepSeek Harness **bundle plugin**. It does not reimplement the App Store Connect API — `asc` (a Go binary) remains the execution engine. The plugin turns `asc` into something an agent can use safely and productively:
+[![npm](https://img.shields.io/npm/v/@sleep9ull/dsh-asc-cli?label=npm&color=cb3837)](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.2-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
-- **Read-only by default.** Mutations need an explicit `confirm` and a host approval.
-- **Typed, intent-level tools** for the release workflows that matter, with `asc_run` + `asc_search` for the long tail.
-- **Compact, structured results** instead of raw JSON floods.
-- **Works with the official ASC skill pack** (`asc install-skills`), which DeepSeek Harness reads natively.
+App Store Connect is where iOS releases happen — and where teams lose hours to CLI flags, JSON blobs, half-documented states and approval rituals. This plugin puts it inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): install once, ask in plain language, and the agent runs the right workflow, showing a plan and stopping for approval before anything ships.
 
-> This is a plugin, not a CLI replacement. You still install and authenticate `asc` once.
+The [asc CLI](https://github.com/rorkai/App-Store-Connect-CLI) (MIT, Go) remains the engine. This plugin is the product layer around it: five task-shaped **jobs**, a small **read / plan / apply** tool surface, **bundled skills** that teach the agent how to use it, and an **engine manager** that diagnoses, provisions and version-checks `asc`.
+
+```bash
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
+```
+
+> After installing, run `/asc`. It reports the engine, authentication, default app and the one next step — no model involved.
+
+---
+
+## What you can do
+
+| Ask in the chat | What the plugin runs |
+|---|---|
+| "Is 1.2.3 ready to submit? Show blockers and fixes." | `release-check` — `asc validate`, then an ordered remediation list |
+| "Ship this build to the Internal Testers group." | `ship-testflight` — upload, wait for processing, add the build to a group |
+| "Prepare 1.2.3 with this metadata, but don't submit." | `stage-release` — validate, attach the build, apply metadata, stop before submission |
+| "What are testers complaining about?" | `triage-feedback` — TestFlight feedback + crashes + reviews, clustered |
+| "Are we compliant? Age rating, encryption, accessibility, pricing." | `compliance-sweep` — four read-only probes, best-effort |
+| "Anything else — certificates, users, analytics, ads, raw API." | `asc` reads, `discover` to find commands, `run` for the long tail |
+
+Every write follows the same shape: **plan first → `confirm: true` → host approval → execute → auditable result**.
+
+---
+
+## Quick start
+
+### 1 · Install the plugin
+
+```bash
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
+```
+
+Restart or reload the profile. The plugin inserts one row (`mode: read-only`) into the profile's `cordis.patch.yml`.
+
+### 2 · Get the engine ready
+
+```bash
+brew install asc          # or: curl -fsSL https://asccli.sh/install | bash
+asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /path/to/AuthKey.p8
+```
+
+Then run `/asc` — or ask the agent to run `asc_setup` with action `diagnose`. Nothing ready yet? The report gives exactly one next step. Do **not** paste a private key into the chat; authentication stays in your terminal.
+
+Prefer the plugin to fetch the engine? Enable `allowProvision` and run `asc_setup` action `provision`: it downloads the pinned `asc`, verifies the released SHA-256, and caches it under `$DSH_HOME/cache/asc-cli/`.
+
+### 3 · Just ask
+
+```text
+List my apps and pick com.example.focus. Set it as the default app.
+```
+
+```text
+Is 1.2.3 ready to submit? Show the blockers in priority order.
+```
+
+```text
+Upload ./build/Focus.ipa as 1.2.3 build 42 to the Internal Testers group.
+```
+
+The third request runs the `ship-testflight` job; pass `dryRun: true` first if you want to see the plan without touching App Store Connect.
+
+---
+
+## What's inside
+
+### Five jobs
+
+`asc_job` is the preferred entry point: one call, a plan-shaped result, per-step summaries, and a dry-run path where it matters.
+
+| Job | Risk | Does |
+|---|---|---|
+| `release-check` | read | Runs `asc validate`; returns blocking counts and ordered fixes |
+| `ship-testflight` | write | Uploads `.ipa`/`.pkg` (waits), extracts the build id, adds it to a TestFlight group; optional beta review |
+| `stage-release` | write | Validates, then prepares the version (metadata + build) without submitting |
+| `triage-feedback` | read | Aggregates TestFlight feedback, crashes and reviews |
+| `compliance-sweep` | read | Probes age rating, encryption declarations, accessibility, current pricing |
+
+Write jobs need `mode: write`, `confirm: true` and a host approval.
+
+### Five tools
+
+| Tool | Shape | Use for |
+|---|---|---|
+| `asc_job` | task | Whole workflows (the five jobs above) |
+| `asc` | read | apps, builds, TestFlight, reviews, offline metadata validation, plus `discover` and `run` |
+| `asc_plan` | plan | `validate`, `status`, `metadata-plan` — never mutates App Store Connect |
+| `asc_apply` | write | `upload`, `groups`, `metadata-init`, `metadata-apply`, `stage`, `publish` |
+| `asc_setup` | environment | version, auth status, doctor, system status, diagnose, provision, install skills |
+
+### Commands
+
+| Command | What it shows |
+|---|---|
+| `/asc` | Capability card: engine state, auth, default app, five jobs, next step |
+| `/asc-doctor` | Full diagnosis: binary and source, version vs tested range, auth, default app, provisioning, upstream update |
+
+Commands run directly in the host and do not create model messages.
+
+### Six bundled skills
+
+Shipped inside the package, available right after install — no `git`, no global skill directory:
+
+`dsh-asc-quickstart` · `dsh-asc-auth` · `dsh-asc-release-readiness` · `dsh-asc-testflight-ship` · `dsh-asc-feedback-triage` · `dsh-asc-compliance-sweep`
+
+They cover first-run choices, authentication and CI, release readiness, TestFlight shipping, feedback triage and compliance — in the terms of this plugin's tools.
+
+### Engine manager
+
+| Step | What happens |
+|---|---|
+| Locate | `ascPath` → `ASC_CLI_PATH` → plugin cache → `PATH` |
+| Diagnose | version, tested range, auth, default app, provisioning — one next step |
+| Provision | optional: pinned `asc 5.16.0`, SHA-256 verified, cached per platform |
+| Update | `/asc-doctor` compares with the latest GitHub release (24h cache); suggests `brew upgrade asc`, never upgrades itself |
+
+---
+
+## Why a plugin instead of "just run asc in bash"?
+
+- **Approvals, not vibes.** Read-only by default; writes need an explicit `confirm` and a human approval. The model can't self-approve.
+- **Plans before actions.** `validate`, `status` and `--dry-run` are first-class, so the agent shows the change before making it.
+- **Results fit in a conversation.** Summaries, ordered fixes and counters replace huge JSON; oversized payloads are omitted with a pointer.
+- **Jobs, not command soup.** Upload → wait → group is one deterministic call, not five that the model might reorder.
+- **The agent already knows the workflow.** Bundled skills explain jobs, policies and failure recovery.
+- **Auditable.** Opt-in JSONL audit trail of every invocation; approval decisions stay in the harness session log.
+
+---
+
+## Safety model
+
+- **Read-only mode (default).** Every call gets `--read-only` and `ASC_READ_ONLY=1`; mutations are refused before a child process starts.
+- **Write mode.** Mutations require `confirm: true` **and** (by default) a host approval prompt. The plugin never adds `--confirm` on its own.
+- **Unknown commands are never silent.** Commands that cannot be proven read-only are escalated to a human (`ask`) or refused (`unknownCommands: deny`); write mode additionally requires `confirm`.
+- **Local writes need confirmation and approval.** `metadata init/plan`, `docs init`, `doctor --fix`, `builds dsyms`, `install-skills`.
+- **No value expansion by default.** `asc` expands `@env:` / `@file:` in flag values; the plugin escapes a leading `@` unless `allowValueExpansion: true`.
+- **Credentials stay outside the model.** The plugin forwards `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY_PATH`, `ASC_PRIVATE_KEY` because the harness scrubs credential-shaped variables, but never reads, stores or prints key material.
+- **Always refused:** `auth login/logout`, web-session commands, interactive prompts.
+- **No shell.** argv is passed as an array; diagnostics are redacted; telemetry is off by default.
+- **Opt-in governance.** `auditLog` records what ran; `approvedActions` can skip the prompt for known actions in write mode only.
+
+---
 
 ## Requirements
 
@@ -22,224 +162,96 @@
 | `asc` | pinned `5.16.0`; tested range `>=5.16.0 <6.0.0` (`/asc-doctor` reports drift) |
 | App Store Connect API key | team or individual key, authenticated **outside** the agent |
 
-Install `asc`:
+---
 
-```bash
-brew install asc
-# or
-curl -fsSL https://asccli.sh/install | bash
-```
+## Configuration
 
-Authenticate once, in your own terminal (never through the agent):
-
-```bash
-asc auth login \
-  --name "MyApp" \
-  --key-id "ABC123" \
-  --issuer-id "DEF456" \
-  --private-key /path/to/AuthKey.p8
-
-asc auth status --validate
-```
-
-For CI/headless machines without keychain access, use `--bypass-keychain` and set `bypassKeychain: true` in the plugin config.
-
-## Install
-
-From npm (published package):
-
-```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
-```
-
-From a checkout or tarball:
-
-```bash
-npm run build && npm pack
-dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
-```
-
-Restart or reload the profile. The first boot of a profile created from a shipped template may materialize that template's user patch file, so edit `cordis.patch.yml` **after** the first boot (or pass an overlay with `--patch`). The bundle inserts one row:
-
-```yaml
-# shipped by the package
-- insert:
-    - id: asc-tools
-      name: '@sleep9ull/dsh-asc-cli'
-      config:
-        mode: read-only
-```
-
-Override it in `~/.dsh/profiles/<profile>/cordis.patch.yml`. A patch **replaces the whole config**, so restate every key you need:
+Override the `asc-tools` row in `~/.dsh/profiles/<profile>/cordis.patch.yml`. A patch replaces the whole config, so restate every key you need:
 
 ```yaml
 - id: asc-tools
   name: '@sleep9ull/dsh-asc-cli'
   config:
-    mode: write          # required for uploads / submissions / metadata apply
+    mode: write            # required for uploads / submissions / metadata apply
     requireApproval: true
-    profile: MyApp       # asc --profile
+    profile: MyApp         # asc --profile
     defaultAppId: "123456789"
+    allowProvision: true   # optional: let the plugin fetch the pinned engine
 ```
-
-## Quick start
-
-After installing, run `/asc` (or `/asc-doctor`): it reports the engine, authentication, default app and the one next step, without involving the model.
-
-```text
-/asc
-```
-
-Then, once authenticated:
-
-```text
-List my App Store Connect apps and pick the one with bundle id com.example.app.
-```
-
-```text
-Is version 1.2.3 ready to submit? Show me the blockers and what to fix first.
-```
-
-```text
-Upload ./build/MyApp.ipa as 1.2.3 build 42 to the Internal Testers group.
-```
-
-The last one runs the `ship-testflight` job and stops for approval before touching App Store Connect.
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `/asc` | Capability card: engine state, the four jobs, low-level tools, next step |
-| `/asc-doctor` | Full diagnosis: binary and source, version vs tested range, auth, default app, provisioning |
-
-Commands run directly against the host without creating a model message, and only probe read-only state.
-
-## Jobs
-
-`asc_job` is the preferred entry point for delivery work: one call, a plan-shaped result, per-step summaries.
-
-| Job | Risk | What it does |
-|---|---|---|
-| `release-check` | read | Runs `asc validate`, returns blockers and ordered remediation steps |
-| `ship-testflight` | write | Uploads an `.ipa`/`.pkg` (waits for processing), extracts the build id, adds it to a TestFlight group (optional beta review) |
-| `stage-release` | write | Validates, then prepares the version (metadata + build) without submitting |
-| `triage-feedback` | read | Aggregates TestFlight feedback, crashes and reviews |
-
-Write jobs need `mode: write`, `confirm: true` and host approval; pass `dryRun: true` first.
-
-## Tools
-
-| Tool | Actions | Mutates ASC |
-|---|---|---|
-| `asc_job` | `release-check`, `ship-testflight`, `stage-release`, `triage-feedback` | write jobs only |
-| `asc_setup` | `version`, `auth-status`, `doctor`, `system-status`, `diagnose`, `provision`, `install-skills` | `provision` writes the plugin cache; `install-skills` writes local files |
-| `asc_search` | — | no |
-| `asc_run` | any `asc` argv | classified per command |
-| `asc_apps` | `list`, `view` | no |
-| `asc_builds` | `list`, `next-number`, `upload`, `add-groups` | `upload`, `add-groups` |
-| `asc_testflight` | `feedback`, `crashes`, `groups` | no |
-| `asc_metadata` | `init`, `validate`, `plan`, `apply` | `apply` (use `dryRun` first) |
-| `asc_release` | `status`, `validate`, `stage`, `publish` | `stage`, `publish` |
-
-Each result is a compact JSON value:
-
-```jsonc
-{
-  "ok": true,
-  "exitCode": 0,
-  "command": "asc --read-only apps list --limit 20 --output json",
-  "durationMs": 812,
-  "summary": "3 item(s)\n- id=123 name=Focus bundleId=com.example.focus",
-  "data": { /* parsed JSON, omitted above maxDataBytes */ },
-  "truncated": false
-}
-```
-
-Failures add `errorClass` (`auth`, `state-conflict`, `rate-limit`, `usage`, `missing-binary`, `network`, `timeout`, `cancelled`, `parse`, `unknown`) and an actionable `hint`. Payloads larger than `maxDataBytes` (default 8 KB) set `dataOmitted`/`dataBytes` instead of flooding the context; oversized stdout is capped and spilled to a file (`spillPath`).
-
-`validate` results are projected to `blocking/errors/warnings` plus ordered remediation steps, `status` to `health/nextAction/blockers/nextCommands`, and `metadata` to its counters.
-
-## Safety model
-
-- **Read-only mode (default).** Every call gets `--read-only` and `ASC_READ_ONLY=1`. Mutating actions are refused *before a child process starts*.
-- **Write mode.** Mutations require `confirm: true` **and** (by default) a host approval prompt showing the tool action. The plugin never adds `--confirm` on its own.
-- **Unknown commands are never silent.** A command the classifier cannot prove read-only is escalated to a human (`ask`, the default) or refused (`unknownCommands: deny`). Write mode additionally requires `confirm: true`; a model-authored `confirm` alone never bypasses the approval prompt.
-- **Local writes need confirmation and approval.** `metadata init`, `metadata plan` (it writes a review artifact), `docs init`, `doctor --fix`, `builds dsyms` and `install-skills` require `confirm: true` and, by default, a host approval prompt.
-- **No value expansion by default.** `asc` expands `@env:NAME` / `@file:PATH` in flag values, which would let a model argument read any local file into the result. The plugin escapes a leading `@` (`@` → `@@`) unless `allowValueExpansion: true`.
-- **Credentials stay outside the model.** The plugin forwards `ASC_KEY_ID` / `ASC_ISSUER_ID` / `ASC_PRIVATE_KEY_PATH` / `ASC_PRIVATE_KEY` to the child because the harness scrubs credential-shaped variables, but it never reads, stores, or prints key material. Authenticate with `asc auth login` in your own terminal.
-- **Always refused:** `auth login` / `auth logout`, web-session commands, interactive prompts, and anything that would carry private key material.
-- **No shell.** argv is passed as an array.
-- **Secret hygiene.** Diagnostics are redacted (`PRIVATE KEY`, JWTs, `password=`), telemetry is disabled by default, and the plugin never reads or stores credentials.
-- **Cancellation and deadlines** are forwarded to the child process; long actions use `longTimeoutMs`.
-
-## Configuration
 
 | Field | Default | Meaning |
 |---|---|---|
+| `mode` | `"read-only"` | `read-only` or `write` |
+| `requireApproval` | `true` | Ask the host approval service before writes |
 | `ascPath` | `"asc"` | `asc` executable (PATH name or absolute path) |
 | `profile` | — | `asc --profile` |
-| `mode` | `"read-only"` | `read-only` or `write` |
-| `requireApproval` | `true` | Ask the host approval service before mutations |
-| `timeoutMs` | `60000` | Ordinary command timeout |
-| `longTimeoutMs` | `1800000` | Uploads, release waits |
-| `maxOutputBytes` | `262144` | Model-facing cap before spill |
-| `workdir` | — | Override the session working directory |
-| `bypassKeychain` | `false` | Set `ASC_BYPASS_KEYCHAIN=1` |
-| `telemetryDisabled` | `true` | Set `ASC_TELEMETRY_DISABLED=1` |
-| `allowValueExpansion` | `false` | Allow `asc`'s `@env:` / `@file:` value expansion |
-| `unknownCommands` | `"ask"` | `ask` or `deny` for commands the classifier cannot prove read-only |
-| `allowProvision` | `false` | Allow `asc_setup` action `provision` to download the pinned engine |
-| `cacheDir` | — | Override the provisioned-binary cache (`$DSH_HOME/cache/asc-cli`) |
-| `maxDataBytes` | `8000` | Omit `data` above this JSON size (`dataOmitted` + `dataBytes`) |
-| `env` | `{}` | Extra environment for `asc` |
 | `defaultAppId` | — | Fallback when a tool call omits `app` |
+| `timeoutMs` | `60000` | Ordinary command timeout |
+| `longTimeoutMs` | `1800000` | Uploads and release waits |
+| `maxOutputBytes` | `262144` | stdout cap before spill |
+| `maxDataBytes` | `8000` | Omit `data` above this JSON size (`dataOmitted`) |
+| `workdir` | — | Override the session working directory |
+| `allowValueExpansion` | `false` | Allow `asc`'s `@env:` / `@file:` expansion |
+| `unknownCommands` | `"ask"` | `ask` or `deny` for commands that cannot be proven read-only |
+| `allowProvision` | `false` | Allow `asc_setup` action `provision` |
+| `cacheDir` | — | Override the provisioned-binary cache |
+| `bypassKeychain` | `false` | Set `ASC_BYPASS_KEYCHAIN=1` (CI / headless) |
+| `telemetryDisabled` | `true` | Set `ASC_TELEMETRY_DISABLED=1` |
+| `auditLog` | — | Append one JSONL audit line per executed invocation |
+| `approvedActions` | `[]` | Glob labels that skip the approval prompt in write mode |
+| `checkUpdates` | `true` | Show the latest release in `/asc-doctor` |
+| `env` | `{}` | Extra environment for `asc` |
 
-## Bundled skills
+---
 
-The package ships five skills (`skills/`), registered through the host skill registry at the bundled rank (600), so a fresh install is enough — no `git`, no global skill directory, no manual `asc install-skills`:
+## Skills
 
-| Skill | Covers |
-|---|---|
-| `dsh-asc-quickstart` | First run, choosing between jobs / typed tools / `asc_run`, reading results and errors |
-| `dsh-asc-auth` | Authentication, profiles, exit 3 / 401 / 403, CI and keychain, key hygiene |
-| `dsh-asc-release-readiness` | Release-check report, remediation ordering, plan/apply, stage vs submit |
-| `dsh-asc-testflight-ship` | Build numbers, upload, processing states, internal vs external groups, recovery |
-| `dsh-asc-feedback-triage` | Feedback/crash grouping, review reply drafts, rate limits, privacy |
+The package ships six skills at the bundled rank (600). Priority is: project `.dsh/skills` (100) → project `.agents/skills` (200) → custom (300) → `~/.dsh/skills` (400) → `~/.agents/skills` (500) → bundled (600). A skill you install yourself therefore wins a same-named bundled one — built-in fallback, user override.
 
-Because bundled rank is the lowest priority, a user-installed upstream pack wins same-named skills. To add the official 25-skill pack anyway:
+Want the official 25-skill ASC pack as well?
 
 ```bash
-asc install-skills   # writes ~/.agents/skills, which DSH reads
+asc install-skills   # writes ~/.agents/skills, which DeepSeek Harness reads
 ```
 
-DeepSeek Harness discovers skills from `<project>/.dsh/skills`, `<project>/.agents/skills`, `customSkillDirs`, `~/.dsh/skills`, `~/.agents/skills`, and `$DSH_BUNDLED_SKILL_DIR` (priority 100 → 600). **`~/.claude/skills` is not scanned.**
+DeepSeek Harness scans `<project>/.dsh/skills`, `<project>/.agents/skills`, `customSkillDirs`, `~/.dsh/skills`, `~/.agents/skills` and `$DSH_BUNDLED_SKILL_DIR`. **`~/.claude/skills` is not scanned.**
 
-## Engine management
+---
 
-`asc` stays an external engine; the plugin owns the experience:
+## Upgrading from 0.1.3
 
-| Step | How |
+0.1.4 consolidated the tool surface. Old tools are gone; use this mapping:
+
+| 0.1.3 | 0.1.4 |
 |---|---|
-| Locate | `ascPath` → `ASC_CLI_PATH` → plugin cache → `PATH` |
-| Diagnose | `/asc-doctor` or `asc_setup` with action `diagnose` |
-| Install | `brew install asc`, or enable `allowProvision` and run `asc_setup` action `provision` |
-| Provision | Downloads the pinned `asc 5.16.0` release asset for your platform, verifies it against the published checksums, and caches it under `$DSH_HOME/cache/asc-cli/<version>/<platform>-<arch>/` |
-| Verify | Version is compared with `>=5.16.0 <6.0.0`; drift is reported, never auto-fixed |
+| `asc_search` | `asc` action `discover` |
+| `asc_run` | `asc` action `run` |
+| `asc_apps` `list`/`view` | `asc` `apps-list`/`apps-view` |
+| `asc_builds` `list`/`next-number` | `asc` `builds-list`/`builds-next-number` |
+| `asc_builds` `upload`/`add-groups` | `asc_apply` `upload`/`groups` |
+| `asc_testflight` `feedback`/`crashes`/`groups` | `asc` `testflight-feedback`/`-crashes`/`-groups` |
+| `asc_metadata` `validate` | `asc` `metadata-validate` |
+| `asc_metadata` `init`/`plan`/`apply` | `asc_apply` `metadata-init`; `asc_plan` `metadata-plan`; `asc_apply` `metadata-apply` |
+| `asc_release` `status`/`validate`/`stage`/`publish` | `asc_plan` `status`/`validate`; `asc_apply` `stage`/`publish` |
 
-Provisioning never runs implicitly: it needs `allowProvision: true`, an explicit `confirm` and host approval.
+`asc_job` and `asc_setup` keep their names; jobs gained `compliance-sweep`.
 
-## Compatibility and upstream updates
+---
 
-`asc` ships frequently (5.16.0 was published 2026-10-19; the plugin pins that release and tests `>=5.16.0 <6.0.0`). The plugin keeps upgrades cheap:
+## Troubleshooting
 
-- All command shapes live in one registry (`src/registry.ts`).
-- Every command is passed through `asc --help` in a contract test (`scripts/contract.mjs`), so a renamed command or flag fails CI instead of failing at runtime. The test validates command and flag *names*; flag values and combinations are covered by unit tests.
-- The generic `asc_search` / `asc_run` tools keep new upstream commands usable without a plugin release. Commands that reject `--output` are retried once without it, and unrecognized commands are escalated to a human instead of being refused silently.
-- `engines.dsh` and peer dependency ranges pin the DSH contract.
-- `/asc-doctor` compares the installed engine with the tested range and suggests either `brew upgrade asc` or a pinned `provision`; it never upgrades silently.
+| Symptom | Fix |
+|---|---|
+| `/asc` says the binary is missing | `brew install asc`, or set `ascPath`, or enable `allowProvision` and run `asc_setup` `provision` |
+| Auth error / exit 3 | `asc auth status --validate` in a terminal; check the key's role in App Store Connect |
+| Keychain prompt hangs | authenticate in a terminal first, or set `bypassKeychain: true` |
+| Write operation refused | still read-only: switch the `asc-tools` row to `mode: write`, then retry with `confirm: true` |
+| Version drift warning | `/asc-doctor` shows installed vs tested vs latest; upgrade with `brew upgrade asc` |
+| Large result | `dataOmitted` means the payload was too big: narrow the query or read `spillPath` |
+| Unknown command asks for approval | expected; set `unknownCommands: deny` to refuse instead |
+| pnpm peer warnings on install | expected: the harness provides `@deepseek-ai/*` peers at runtime |
 
-Tested matrix is documented per release; raise an issue with `asc version` and `asc capabilities --output json` output when something drifts.
+---
 
 ## Development
 
@@ -249,29 +261,17 @@ npm run build        # tsc -> lib/
 npm run typecheck
 npm test             # vitest
 
-# contract test against a real binary
-node scripts/contract.mjs ./vendor/asc
+node scripts/contract.mjs ./vendor/asc   # contract test against a real asc binary
+node scripts/smoke.mjs                   # compiled runtime smoke test
 
-# smoke test the compiled runtime against a real binary
-node scripts/smoke.mjs
+# install a local build into a profile
+npm pack && dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-*.tgz
 
-# boot a separate dev instance with this checkout mounted
+# separate dev instance with this checkout mounted
 dsh web --patch ./dev/cordis.patch.yml --no-open --port 3199
 ```
 
-`dev/cordis.patch.yml` inserts `lib/index.js` by absolute path; rebuild and restart to pick up changes.
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `asc` not found | `brew install asc`, or set `ascPath` |
-| `auth` error / exit 3 | `asc auth status --validate`; check the API key role in App Store Connect |
-| Keychain prompt hangs | Authenticate in a terminal first, or use `bypassKeychain: true` |
-| Mutation refused | The plugin is read-only: switch the `asc-tools` row to `mode: write` and retry with `confirm: true` |
-| Approval prompt missing in CI | `requireApproval: true` needs an approval answerer; set it to `false` only in a trusted CI profile |
-| Huge JSON results | Results are capped + spilled; narrow the command (filters/limit) |
-| pnpm peer warnings on install | Expected: DSH provides the `@deepseek-ai/*` peers at runtime; the plugin resolves them from the host |
+`vendor/asc` is git-ignored; put a real binary there for the contract and smoke tests. CI runs the contract test against the latest upstream release nightly.
 
 ## License
 

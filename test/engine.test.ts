@@ -169,3 +169,43 @@ describe('provisioning', () => {
     expect(result.error).toMatch(/checksum mismatch/)
   })
 })
+
+describe('update check', () => {
+  it('fetches the latest release and caches it for 24 hours', async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'asc-update-'))
+    const engine = createEngine(makeConfig({ ascPath: '/opt/asc', cacheDir, checkUpdates: true }), scriptedSpawn(['']).spawn)
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ tag_name: 'v5.20.0' }), { status: 200 })) as unknown as typeof fetch
+    const first = await engine.latestVersion({ fetch: fetchImpl, now: () => Date.parse('2026-10-24T00:00:00Z') })
+    expect(first?.latest).toBe('5.20.0')
+    expect(first?.cached).toBe(false)
+
+    const second = await engine.latestVersion({
+      fetch: (async () => {
+        throw new Error('offline')
+      }) as unknown as typeof fetch,
+      now: () => Date.parse('2026-10-24T01:00:00Z'),
+    })
+    expect(second?.cached).toBe(true)
+    expect(second?.latest).toBe('5.20.0')
+  })
+
+  it('reports an available upgrade from the cached result', async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'asc-update-'))
+    mkdirSync(cacheDir, { recursive: true })
+    writeFileSync(
+      join(cacheDir, 'update-check.json'),
+      JSON.stringify({ latest: '5.20.0', checkedAt: new Date().toISOString() }),
+    )
+    const version = '5.16.0 (commit: abc)'
+    const auth = JSON.stringify({ credentials: [{}], storageBackend: 'System Keychain', environmentCredentialsProvided: false })
+    const engine = createEngine(
+      makeConfig({ ascPath: '/opt/asc', defaultAppId: '111', cacheDir, checkUpdates: true }),
+      scriptedSpawn([version, auth]).spawn,
+    )
+    const report = await engine.diagnose()
+    expect(report.latestVersion).toBe('5.20.0')
+    expect(report.updateAvailable).toBe(true)
+    expect(report.next?.title).toMatch(/Upgrade asc/)
+  })
+})

@@ -19,6 +19,9 @@ export const RELEASE_BASE = 'https://github.com/rorkai/App-Store-Connect-CLI/rel
 /** Upstream project, shown in install guidance. */
 export const UPSTREAM_REPO = 'rorkai/App-Store-Connect-CLI'
 
+/** GitHub API endpoint used by the optional update check. */
+export const UPSTREAM_LATEST_URL = `https://api.github.com/repos/${UPSTREAM_REPO}/releases/latest`
+
 /** Release assets verified against their published checksums. */
 const ASSET_PLATFORMS: Record<string, string> = {
   'darwin-arm64': 'macOS_arm64',
@@ -94,7 +97,7 @@ export function compatMessage(status: CompatStatus, version?: string): string {
     case 'older':
       return `${found} is older than the tested range (${SUPPORTED_ASC_RANGE}); some flags or commands may be missing. Upgrade with \`brew upgrade asc\`, or enable \`allowProvision\` and run \`asc_setup\` with action \`provision\`.`
     case 'newer':
-      return `${found} is newer than the tested range (${SUPPORTED_ASC_RANGE}); the plugin should still work, but new flags may need \`asc_run\`. Run \`/asc-doctor\` after an upstream change.`
+      return `${found} is newer than the tested range (${SUPPORTED_ASC_RANGE}); the plugin should still work, but new flags may need \`asc.run\`. Run \`/asc-doctor\` after an upstream change.`
     default:
       return 'Could not determine the asc version. Run `asc version` in a terminal, or run `/asc-doctor`.'
   }

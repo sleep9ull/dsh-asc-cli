@@ -89,6 +89,7 @@ describe('registration', () => {
     const catalog = loadSkillCatalog(bundledRoot)
     expect(catalog.map((entry) => entry.name).sort()).toEqual([
       'dsh-asc-auth',
+      'dsh-asc-compliance-sweep',
       'dsh-asc-feedback-triage',
       'dsh-asc-quickstart',
       'dsh-asc-release-readiness',

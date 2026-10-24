@@ -21,6 +21,7 @@ Jobs:
 - ship-testflight (write): upload an .ipa/.pkg (waits for processing) and add the build to a TestFlight group; pass dryRun first.
 - stage-release (write): validate, then prepare the version (metadata + build) without submitting; pass dryRun first.
 - triage-feedback (read-only): aggregate TestFlight feedback, crashes and optional reviews.
+- compliance-sweep (read-only): probe age rating, encryption declarations, accessibility and current pricing; a failed probe is reported, not fatal.
 
 Write jobs need mode "write", an explicit confirm: true and host approval. Always show the user the dry-run result before a real run.`
 
