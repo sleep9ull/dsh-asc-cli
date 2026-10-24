@@ -1,106 +1,224 @@
-# dsh-asc-cli
+# ASC · DeepSeek Harness 的 App Store Connect 操作台
 
-> npm 包名：[`@sleep9ull/dsh-asc-cli`](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)。由 `dsh-asc-cli@0.1.0` 更名而来，旧包已标记 deprecated。
+**用对话完成 TestFlight 发布、发版体检、反馈分诊与合规巡检。**
 
-**DeepSeek Harness 的 App Store Connect 操作台，底层是 [`asc` CLI](https://github.com/rorkai/App-Store-Connect-CLI)。**
+[English](README.md) | 中文
 
-`@sleep9ull/dsh-asc-cli` 是一个 DSH **bundle 插件**：不重写 App Store Connect API，`asc`（Go 二进制）仍是执行引擎；插件负责让 AI 安全、准确、省 token 地使用它。
+[![npm](https://img.shields.io/npm/v/@sleep9ull/dsh-asc-cli?label=npm&color=cb3837)](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.2-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
-- **默认只读**：任何写操作都需要显式 `confirm` + 宿主审批。
-- **按意图组织的工具面**：`asc`（读）/ `asc_plan`（计划）/ `asc_apply`（变更）/ `asc_setup`（环境），长尾用 `asc.run` 逃生。
-- **结果可读**：列表变摘要，完整 JSON 落盘，不把上下文塞爆。
-- **技能直接可用**：`asc install-skills` 装的 25 个官方 ASC 技能，DSH 原生识别。
+App Store Connect 是 iOS 发布流程的核心，也是团队最耗时间的地方：命令行参数、大段 JSON、状态机、审批与合规检查。这个插件把它搬进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：安装一次，用自然语言提出需求，Agent 会选对流程、先给出计划，并在真正改动线上之前停下来等你审批。
 
-> 这不是 asc 的替代品：仍需先安装并登录一次 `asc`。
+底层执行引擎仍是 [`asc` CLI](https://github.com/rorkai/App-Store-Connect-CLI)（MIT，Go）。本插件是它上层的产品层：5 个任务型**作业**、按意图组织的**读 / 计划 / 变更**工具面、随包发布的**内置技能**，以及负责体检、安装与版本对齐的**引擎管理器**。
+
+```bash
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
+```
+
+> 安装后运行 `/asc`：它会告诉你引擎、认证、默认 app 以及**下一步该做什么**（不经过模型）。
+
+---
+
+## 你可以做什么
+
+| 在对话里说 | 插件会做什么 |
+|---|---|
+| "1.2.3 能提交了吗？把阻塞项和修复顺序列出来" | `release-check` — 跑 `asc validate`，给出阻塞统计与有序修复步骤 |
+| "把这个包发到内部测试组" | `ship-testflight` — 上传、等待处理、把 build 加入 TestFlight 组 |
+| "把 1.2.3 和元数据准备好，先别提交" | `stage-release` — 校验、挂 build、应用元数据，停在提交之前 |
+| "测试员在抱怨什么？" | `triage-feedback` — TestFlight 反馈 + 崩溃 + 评论，聚合归类 |
+| "合规有问题吗？年龄分级、加密、可访问性、定价" | `compliance-sweep` — 四项只读探测，单项失败不阻断 |
+| "其他操作：证书、用户、分析、广告、原始 API" | `asc` 读取、`discover` 找命令、`run` 兜底长尾 |
+
+所有写操作都遵循同一形态：**先出计划 → `confirm: true` → 宿主审批 → 执行 → 可审计结果**。
+
+---
+
+## 快速开始
+
+### 1 · 安装插件
+
+```bash
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
+```
+
+重启或重新加载 profile。插件会向 `cordis.patch.yml` 插入一行配置（默认 `mode: read-only`）。
+
+### 2 · 准备引擎
+
+```bash
+brew install asc          # 或：curl -fsSL https://asccli.sh/install | bash
+asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /path/to/AuthKey.p8
+```
+
+然后运行 `/asc`，或让 Agent 执行 `asc_setup` 的 `diagnose`。如果还有缺失，它会给出**恰好一个**下一步。不要把私钥贴进对话；认证始终在你自己的终端完成。
+
+也可以让插件代下载引擎：开启 `allowProvision`，执行 `asc_setup` 的 `provision`。它会下载固定版本的 `asc`、校验官方 SHA-256，并缓存到 `$DSH_HOME/cache/asc-cli/`。
+
+### 3 · 直接提需求
+
+```text
+列出我的 app，选 bundle id 为 com.example.focus 的那个，设为默认。
+```
+
+```text
+1.2.3 能提交了吗？按优先级给我阻塞项。
+```
+
+```text
+把 ./build/Focus.ipa 作为 1.2.3 build 42 传到内部测试组。
+```
+
+第三条会走 `ship-testflight` 作业；想先看计划就加 `dryRun: true`，不会触碰 App Store Connect。
+
+---
+
+## 插件里有什么
+
+### 5 个作业
+
+`asc_job` 是首选入口：一次调用、计划形状的结果、每步摘要，必要时支持 dry-run。
+
+| 作业 | 风险 | 作用 |
+|---|---|---|
+| `release-check` | 只读 | 跑 `asc validate`，返回阻塞数与有序修复项 |
+| `ship-testflight` | 写 | 上传 `.ipa`/`.pkg`（等待处理）→ 取 buildId → 加入 TestFlight 组；可选 beta review |
+| `stage-release` | 写 | 先校验，再准备版本（元数据 + build），不提交 |
+| `triage-feedback` | 只读 | 聚合 TestFlight 反馈、崩溃与评论 |
+| `compliance-sweep` | 只读 | 巡检年龄分级、加密声明、可访问性、当前定价 |
+
+写作业（write）需要 `mode: write`、`confirm: true` 和宿主审批。
+
+### 5 个工具
+
+| 工具 | 定位 | 用途 |
+|---|---|---|
+| `asc_job` | 任务 | 上面 5 个完整工作流 |
+| `asc` | 读 | apps、builds、TestFlight、reviews、离线元数据校验，以及 `discover` / `run` |
+| `asc_plan` | 计划 | `validate`、`status`、`metadata-plan`，不改动 App Store Connect |
+| `asc_apply` | 变更 | `upload`、`groups`、`metadata-init`、`metadata-apply`、`stage`、`publish` |
+| `asc_setup` | 环境 | 版本、认证状态、doctor、系统状态、diagnose、provision、安装技能 |
+
+### 2 个命令
+
+| 命令 | 作用 |
+|---|---|
+| `/asc` | 能力卡：引擎状态、认证、默认 app、5 个作业、下一步 |
+| `/asc-doctor` | 完整诊断：二进制与来源、版本与测试范围、认证、默认 app、provision、远端更新 |
+
+命令直接对宿主执行，不产生模型消息。
+
+### 6 个内置技能
+
+随 npm 包发布，装完即可用——不需要 git、不需要全局技能目录：
+
+`dsh-asc-quickstart` · `dsh-asc-auth` · `dsh-asc-release-readiness` · `dsh-asc-testflight-ship` · `dsh-asc-feedback-triage` · `dsh-asc-compliance-sweep`
+
+覆盖首次使用选择、认证与 CI、发版体检、TestFlight 发布、反馈分诊、合规巡检——全部以本插件的工具语义书写。
+
+### 引擎管理器
+
+| 环节 | 行为 |
+|---|---|
+| 定位 | `ascPath` → `ASC_CLI_PATH` → 插件缓存 → `PATH` |
+| 诊断 | 版本、测试范围、认证、默认 app、provision 状态，给一个下一步 |
+| Provision | 可选：固定 `asc 5.16.0`、SHA-256 校验、按平台缓存 |
+| 更新 | `/asc-doctor` 对比 GitHub 最新 release（24h 缓存），提示 `brew upgrade asc`，从不自动升级 |
+
+---
+
+## 为什么要做成插件，而不是让 Agent 直接跑 bash？
+
+- **审批而非自证**：默认只读；写操作需要显式 `confirm` 和真人审批，模型无法自己放行。
+- **先计划后执行**：`validate`、`status`、`--dry-run` 是一等公民，改动前先给你看。
+- **结果适合对话**：摘要、修复顺序、计数替代大段 JSON；超大结果省略并给出读取路径。
+- **作业而非命令堆叠**：上传 → 等待 → 分组是一条确定性调用，不是五个可能被模型重排的命令。
+- **Agent 自带工作流知识**：内置技能讲清作业、策略与失败恢复。
+- **可审计**：可选的 JSONL 审计记录每次调用；审批结论保留在 DSH 会话日志。
+
+---
+
+## 安全模型
+
+- **默认只读**：每次调用带 `--read-only` + `ASC_READ_ONLY=1`，写操作在启动子进程前就被拒绝。
+- **写作模式**：需要 `confirm: true` 且默认弹出宿主审批；插件从不自动加 `--confirm`。
+- **未知命令不静默**：无法确认只读的命令转人工审批（`ask`），或按配置直接拒绝（`unknownCommands: deny`）；写模式还额外要求 `confirm`。
+- **本地写需确认 + 审批**：`metadata init/plan`、`docs init`、`doctor --fix`、`builds dsyms`、`install-skills`。
+- **默认关闭值展开**：`asc` 会展开 flag 值里的 `@env:` / `@file:`；插件默认把行首 `@` 转义，除非显式开启 `allowValueExpansion`。
+- **凭据不进模型**：宿主会清洗 `*KEY*` 变量，插件因此显式转发 `ASC_KEY_ID`、`ASC_ISSUER_ID`、`ASC_PRIVATE_KEY_PATH`、`ASC_PRIVATE_KEY`，但从不读取、保存或打印密钥内容。
+- **永久拒绝**：`auth login/logout`、web-session 命令、交互式命令。
+- **无 shell**：argv 数组直传；诊断信息脱敏；默认关闭 telemetry。
+- **可选治理**：`auditLog` 记录执行内容；`approvedActions` 仅在写模式对已知动作跳过提示。
+
+---
 
 ## 环境要求
 
 | 依赖 | 版本 |
 |---|---|
-| DeepSeek Harness | `0.2.1-rc.2` 线 |
+| DeepSeek Harness | `0.2.1-rc.2` 线（`engines.dsh: >=0.2.1-rc.2 <0.3.0`） |
 | Node.js | ≥ 22.19（推荐 24） |
-| `asc` | 契约测试针对 `5.16.0`，面向 `5.11+` |
-| App Store Connect API Key | 在**终端**里完成登录，插件不接触私钥 |
+| `asc` | 固定 `5.16.0`；测试范围 `>=5.16.0 <6.0.0`（`/asc-doctor` 会提示漂移） |
+| App Store Connect API Key | 团队或个人 key，在 Agent 之外完成认证 |
 
-```bash
-brew install asc
-asc auth login --name "MyApp" --key-id "ABC123" --issuer-id "DEF456" --private-key /path/to/AuthKey.p8
-asc auth status --validate
-```
+---
 
-无 Keychain 的 CI / 无头环境：登录时加 `--bypass-keychain`，并在插件配置里设 `bypassKeychain: true`。
+## 配置
 
-## 安装
-
-```bash
-# npm（发布后）
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
-
-# 本地 checkout / tarball
-npm run build && npm pack
-dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
-```
-
-重启或重新加载 profile。从内置模板创建的 profile 在**首次启动**时可能会生成模板自带的用户 patch 文件，因此请在首次启动之后再编辑 `cordis.patch.yml`（或直接用 `--patch` overlay）。默认插入一行配置：
-
-```yaml
-- insert:
-    - id: asc-tools
-      name: '@sleep9ull/dsh-asc-cli'
-      config:
-        mode: read-only
-```
-
-在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 里按 `id: asc-tools` 覆盖（patch 是整块替换，需重述所有键）：
+在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 中覆盖 `asc-tools` 行。patch 是整块替换，需要重述所有用到的键：
 
 ```yaml
 - id: asc-tools
   name: '@sleep9ull/dsh-asc-cli'
   config:
-    mode: write
+    mode: write            # 上传 / 提交 / 元数据 apply 需要
     requireApproval: true
-    profile: MyApp
+    profile: MyApp         # 传给 asc --profile
     defaultAppId: "123456789"
+    allowProvision: true   # 可选：允许插件下载固定版本引擎
 ```
 
-## 命令
-
-| 命令 | 作用 |
-|---|---|
-| `/asc` | 能力卡：引擎状态、五个作业、底层工具、下一步 |
-| `/asc-doctor` | 完整诊断：二进制与来源、版本与测试范围、认证、默认 app、provision 状态 |
-
-命令直接对宿主执行，不产生模型消息，只做只读探测。
-
-## 作业
-
-`asc_job` 是交付类任务的首选入口：一次调用、返回计划形状的结果、每步都有摘要。
-
-| 作业 | 风险 | 作用 |
+| 字段 | 默认 | 含义 |
 |---|---|---|
-| `release-check` | 只读 | 跑 `asc validate`，返回阻塞项与有序修复步骤 |
-| `ship-testflight` | 写 | 上传 `.ipa`/`.pkg`（等待处理）→ 提取 buildId → 加入 TestFlight 组（可选 beta review） |
-| `stage-release` | 写 | 先 validate，再准备版本（元数据 + build），不提交 |
-| `triage-feedback` | 只读 | 聚合 TestFlight 反馈、崩溃与评论 |
-| `compliance-sweep` | 只读 | 巡检年龄分级、加密声明、可访问性与当前定价；单项失败只标注不阻断 |
+| `mode` | `"read-only"` | `read-only` 或 `write` |
+| `requireApproval` | `true` | 写操作是否询问宿主审批 |
+| `ascPath` | `"asc"` | 可执行文件（PATH 名或绝对路径） |
+| `profile` | — | `asc --profile` |
+| `defaultAppId` | — | 省略 `app` 时的默认 App |
+| `timeoutMs` | `60000` | 普通命令超时 |
+| `longTimeoutMs` | `1800000` | 上传与等待发布 |
+| `maxOutputBytes` | `262144` | stdout 超限写入 spill |
+| `maxDataBytes` | `8000` | 超过该 JSON 大小就不回传 `data`（`dataOmitted`） |
+| `workdir` | — | 覆盖会话工作目录 |
+| `allowValueExpansion` | `false` | 允许 `asc` 的 `@env:` / `@file:` 展开 |
+| `unknownCommands` | `"ask"` | 无法确认只读时：`ask` 或 `deny` |
+| `allowProvision` | `false` | 允许 `asc_setup` 的 `provision` |
+| `cacheDir` | — | 覆盖 provision 缓存目录 |
+| `bypassKeychain` | `false` | 设置 `ASC_BYPASS_KEYCHAIN=1`（CI / 无头环境） |
+| `telemetryDisabled` | `true` | 设置 `ASC_TELEMETRY_DISABLED=1` |
+| `auditLog` | — | 每次调用追加一行 JSONL 审计 |
+| `approvedActions` | `[]` | 写模式下跳过审批的 glob 标签 |
+| `checkUpdates` | `true` | 在 `/asc-doctor` 显示最新版本 |
+| `env` | `{}` | 传给 `asc` 的额外环境变量 |
 
-写作需要 `mode: write`、`confirm: true` 和宿主审批；建议先 `dryRun: true`。
+---
 
-## 工具
+## 技能
 
-工具面按意图组织：**读 / 计划 / 变更 / 作业 / 环境**。
+包内自带 6 个技能，注册在 bundled rank（600）。优先级为：项目 `.dsh/skills`（100）→ 项目 `.agents/skills`（200）→ 自定义（300）→ `~/.dsh/skills`（400）→ `~/.agents/skills`（500）→ bundled（600）。因此你自己安装的同名技能会覆盖内置版本——内置兜底、用户可覆盖。
 
-| 工具 | actions | 会改 ASC |
-|---|---|---|
-| `asc_job` | `release-check` / `ship-testflight` / `stage-release` / `triage-feedback` / `compliance-sweep` | 仅写作 |
-| `asc` | `apps-list`/`apps-view`、`builds-list`/`builds-next-number`、`testflight-feedback`/`-crashes`/`-groups`、`reviews-list`、`metadata-validate`、`discover`、`run` | 仅 `run`（按命令分类） |
-| `asc_plan` | `validate` / `status` / `metadata-plan` | `metadata-plan` 写本地 review artifact |
-| `asc_apply` | `upload` / `groups` / `metadata-init` / `metadata-apply` / `stage` / `publish` | 是 |
-| `asc_setup` | `version` / `auth-status` / `doctor` / `system-status` / `diagnose` / `provision` / `install-skills` | `provision` 写插件缓存；`install-skills` 写本地文件 |
+想额外安装官方 25 个 ASC 技能：
 
-结果统一为紧凑 JSON：`ok`、`exitCode`、`command`、`durationMs`、`summary`、`data`、`errorClass`、`hint`、`spillPath` 等。`data` 超过 `maxDataBytes`（默认 8 KB）时不回传，改为 `dataOmitted` + `dataBytes`；stdout 超限写入 spill 文件。`validate` 会投影成 `blocking/errors/warnings` + 有序修复步骤，`status` 投影成 `health/nextAction/blockers/nextCommands`。
+```bash
+asc install-skills   # 写入 ~/.agents/skills，DSH 会读取
+```
 
-### 从 0.1.3 迁移
+DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`、`customSkillDirs`、`~/.dsh/skills`、`~/.agents/skills` 和 `$DSH_BUNDLED_SKILL_DIR`；**不扫描 `~/.claude/skills`**。
+
+---
+
+## 从 0.1.3 升级
 
 0.1.4 收敛了工具面，旧工具已移除：
 
@@ -116,116 +234,41 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
 | `asc_metadata` `init`/`plan`/`apply` | `asc_apply` `metadata-init`；`asc_plan` `metadata-plan`；`asc_apply` `metadata-apply` |
 | `asc_release` `status`/`validate`/`stage`/`publish` | `asc_plan` `status`/`validate`；`asc_apply` `stage`/`publish` |
 
-`asc_job` 与 `asc_setup` 名称不变（作业新增 `compliance-sweep`）。
+`asc_job` 与 `asc_setup` 名称不变；作业新增 `compliance-sweep`。
 
-## 安全模型
-
-- **只读模式（默认）**：每次调用带 `--read-only` + `ASC_READ_ONLY=1`；写操作在**启动子进程之前**被拒绝。
-- **写模式**：写操作需要 `confirm: true`，默认还会弹出宿主审批；插件从不自动加 `--confirm`。
-- **审批豁免是显式的**：`approvedActions` 接受 glob 标签（如 `asc_apply.upload`、`asc_apply.*`），仅在 write 模式跳过提示；不会放宽只读模式、`confirm` 或拒绝列表。
-- **审计可选**：设置 `auditLog` 后每次调用追加一行脱敏 JSONL（工具/动作/argv/模式/confirm/退出码/耗时/错误类）；审批结论仍在 DSH 会话日志。
-- **未知命令不会被静默放行**：分类器无法确认只读的命令，默认升级为人工审批（`ask`），或按配置直接拒绝（`unknownCommands: deny`）；写模式下还额外要求 `confirm`，模型自己填的 `confirm` 不能替代宿主审批。
-- **本地写需要确认 + 审批**：`metadata init`、`metadata plan`（写 review artifact）、`docs init`、`doctor --fix`、`builds dsyms`、`install-skills` 均需 `confirm: true`，默认还会弹出宿主审批。
-- **默认关闭值展开**：`asc` 会把 flag 值里的 `@env:NAME` / `@file:PATH` 展开成环境变量/文件内容，可能导致任意本地文件被读进结果。插件默认把行首 `@` 转义为 `@@`，只有显式开启 `allowValueExpansion` 才放行。
-- **凭据不进入模型**：为避免宿主清洗 `*KEY*` 变量导致环境认证失效，插件会显式转发 `ASC_KEY_ID` / `ASC_ISSUER_ID` / `ASC_PRIVATE_KEY_PATH` / `ASC_PRIVATE_KEY`，但从不读取、保存或打印密钥内容；登录请在终端执行 `asc auth login`。
-- **永久拒绝**：`auth login/logout`、web session 命令、交互式命令、携带私钥内容的参数。
-- **无 shell**：argv 数组直传；stderr 做私钥/JWT/密码脱敏；默认关闭 telemetry。
-
-## 配置
-
-| 字段 | 默认 | 含义 |
-|---|---|---|
-| `ascPath` | `"asc"` | 可执行文件（PATH 名或绝对路径） |
-| `profile` | — | `asc --profile` |
-| `mode` | `"read-only"` | `read-only` / `write` |
-| `requireApproval` | `true` | 写操作是否询问宿主审批 |
-| `timeoutMs` | `60000` | 普通命令超时 |
-| `longTimeoutMs` | `1800000` | 上传/等待审核超时 |
-| `maxOutputBytes` | `262144` | 模型可见输出上限，超出 spill |
-| `workdir` | — | 覆盖会话工作目录 |
-| `bypassKeychain` | `false` | 设置 `ASC_BYPASS_KEYCHAIN=1` |
-| `telemetryDisabled` | `true` | 设置 `ASC_TELEMETRY_DISABLED=1` |
-| `allowValueExpansion` | `false` | 允许 `asc` 的 `@env:` / `@file:` 值展开 |
-| `unknownCommands` | `"ask"` | 无法确认只读时：`ask` 或 `deny` |
-| `allowProvision` | `false` | 允许 `asc_setup` 的 `provision` 下载固定版本引擎 |
-| `cacheDir` | — | 覆盖 provision 缓存目录（默认 `$DSH_HOME/cache/asc-cli`） |
-| `maxDataBytes` | `8000` | 超过该 JSON 大小就不回传 `data` |
-| `auditLog` | — | 每次调用追加一行 JSONL 审计 |
-| `approvedActions` | `[]` | write 模式下跳过审批的 glob 标签 |
-| `checkUpdates` | `true` | `/asc-doctor` 显示远端最新版本（24h 缓存，绝不自动升级） |
-| `env` | `{}` | 传给 `asc` 的额外环境变量 |
-| `defaultAppId` | — | 省略 `app` 参数时的默认 App |
-
-## 内置技能包
-
-包内自带 6 个 skill（`skills/`），通过宿主 skill 注册表以 bundled rank（600）注册：装完插件即可用，不需要 git、不需要全局技能目录、不需要手工 `asc install-skills`。
-
-| Skill | 覆盖内容 |
-|---|---|
-| `dsh-asc-quickstart` | 首次使用、作业/`asc`/`asc_plan`/`asc_apply`/`asc.run` 的选择、结果与错误怎么读 |
-| `dsh-asc-auth` | 认证、profile、exit 3 / 401 / 403、CI 与 keychain、私钥卫生 |
-| `dsh-asc-release-readiness` | 发版体检报告、修复顺序、plan/apply、stage 与 submit |
-| `dsh-asc-testflight-ship` | build number、上传、处理状态、内外部组、失败恢复 |
-| `dsh-asc-feedback-triage` | 反馈/崩溃归类、评论回复草稿、限流、隐私 |
-| `dsh-asc-compliance-sweep` | 年龄分级、加密、可访问性、定价；哪些项只能人工/网页处理 |
-
-bundled 是最低优先级，用户自己装的同名上游 skill 会胜出。想额外装官方 25 个：
-
-```bash
-asc install-skills   # 写入 ~/.agents/skills，DSH 会读取
-```
-
-DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`、`customSkillDirs`、`~/.dsh/skills`、`~/.agents/skills` 和 `$DSH_BUNDLED_SKILL_DIR`（优先级 100 → 600），**不扫描 `~/.claude/skills`**。
-
-## 引擎管理
-
-`asc` 仍是外部引擎，但"安装与对齐"由插件负责：
-
-| 环节 | 做法 |
-|---|---|
-| 定位 | `ascPath` → `ASC_CLI_PATH` → 插件缓存 → `PATH` |
-| 诊断 | `/asc-doctor` 或 `asc_setup` 的 `diagnose` |
-| 安装 | `brew install asc`，或开启 `allowProvision` 后跑 `asc_setup` 的 `provision` |
-| Provision | 下载固定 `asc 5.16.0` 平台资产、校验官方 checksums、缓存到 `$DSH_HOME/cache/asc-cli/<version>/<platform>-<arch>/` |
-| 校验 | 版本与 `>=5.16.0 <6.0.0` 比对，漂移只提示、不自动升级 |
-
-provision 永不隐式执行：需要 `allowProvision: true`、显式 `confirm` 和宿主审批。
-
-## 上游更新怎么跟
-
-- 所有命令形状集中在 `src/registry.ts`，升级只改一张表 + fixture。
-- `scripts/contract.mjs` 用真实 `asc` 对每个命令跑 `--help`，命令/flag 改名会 CI 失败（只校验名称；值与组合由单元测试覆盖）。
-- `asc` 的 `discover` / `run` 保证上游新命令无需插件发版即可使用：不支持 `--output` 的命令会自动重试一次，无法确认只读的命令会转人工审批而不是静默拒绝。
-- `/asc-doctor` 会对比远端最新版本（24h 缓存）并提示升级；插件从不自动升级。
-- 每日 upstream-watch 工作流巡检最新 release，漂移时开 issue。
-
-## 开发
-
-```bash
-npm install
-npm run build
-npm run typecheck
-npm test
-
-node scripts/contract.mjs ./vendor/asc   # 真实 asc 契约测试
-node scripts/smoke.mjs                   # 编译产物冒烟
-
-# 独立端口起一个开发实例（不影响当前桌面实例）
-dsh web --patch ./dev/cordis.patch.yml --no-open --port 3199
-```
+---
 
 ## 常见问题
 
 | 现象 | 处理 |
 |---|---|
-| 找不到 `asc` | 跑 `/asc-doctor` 看下一步；`brew install asc`，或配置 `ascPath` / 开启 `allowProvision` |
-| 版本过旧/过新 | `/asc-doctor` 会显示与 `>=5.16.0 <6.0.0` 的偏差；按提示升级或继续使用 |
-| `dataOmitted` | 结果太大被省略：缩小查询（filter/limit）或读 `spillPath` |
-| 鉴权失败 / exit 3 | `asc auth status --validate`，检查 API Key 角色 |
-| Keychain 卡住 | 先在终端登录，或用 `bypassKeychain: true` |
-| 写操作被拒 | 插件处于只读模式：把 `asc-tools` 行改成 `mode: write`，再带 `confirm: true` 重试 |
-| JSON 太大 | 结果会自动截断 + spill；缩小查询范围 |
-| 安装时 pnpm 报 peer 警告 | 正常：DSH 运行时提供 `@deepseek-ai/*` peer，插件从宿主解析 |
+| `/asc` 说找不到引擎 | `brew install asc`，或配置 `ascPath`，或开启 `allowProvision` 后执行 `asc_setup` `provision` |
+| 鉴权失败 / exit 3 | 终端执行 `asc auth status --validate`；检查 key 在 App Store Connect 的角色 |
+| Keychain 卡住 | 先在终端登录一次；或设置 `bypassKeychain: true` |
+| 写操作被拒 | 仍是只读模式：把 `asc-tools` 行改成 `mode: write`，再带 `confirm: true` 重试 |
+| 版本漂移提示 | `/asc-doctor` 会显示已装 / 测试范围 / 最新版本；按提示 `brew upgrade asc` |
+| 结果太大 | `dataOmitted` 表示数据超过上限：缩小查询或读取 `spillPath` |
+| 未知命令要求审批 | 预期行为；可设 `unknownCommands: deny` 改为直接拒绝 |
+| 安装时 pnpm 报 peer 警告 | 正常：DSH 运行时提供 `@deepseek-ai/*` peer |
+
+---
+
+## 开发
+
+```bash
+npm install
+npm run build        # tsc -> lib/
+npm run typecheck
+npm test             # vitest
+
+node scripts/contract.mjs ./vendor/asc   # 对真实 asc 跑契约测试
+node scripts/smoke.mjs                   # 编译产物冒烟
+
+# 用本仓库起一个独立开发实例
+dsh web --patch ./dev/cordis.patch.yml --no-open --port 3199
+```
+
+`vendor/asc` 已被 gitignore；契约与冒烟测试需要把真实二进制放在这里。CI 每晚会对上游最新 release 跑一次契约测试。
 
 ## License
 
