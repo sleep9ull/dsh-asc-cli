@@ -63,11 +63,34 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
     defaultAppId: "123456789"
 ```
 
+## 命令
+
+| 命令 | 作用 |
+|---|---|
+| `/asc` | 能力卡：引擎状态、四个作业、底层工具、下一步 |
+| `/asc-doctor` | 完整诊断：二进制与来源、版本与测试范围、认证、默认 app、provision 状态 |
+
+命令直接对宿主执行，不产生模型消息，只做只读探测。
+
+## 作业
+
+`asc_job` 是交付类任务的首选入口：一次调用、返回计划形状的结果、每步都有摘要。
+
+| 作业 | 风险 | 作用 |
+|---|---|---|
+| `release-check` | 只读 | 跑 `asc validate`，返回阻塞项与有序修复步骤 |
+| `ship-testflight` | 写 | 上传 `.ipa`/`.pkg`（等待处理）→ 提取 buildId → 加入 TestFlight 组（可选 beta review） |
+| `stage-release` | 写 | 先 validate，再准备版本（元数据 + build），不提交 |
+| `triage-feedback` | 只读 | 聚合 TestFlight 反馈、崩溃与评论 |
+
+写作需要 `mode: write`、`confirm: true` 和宿主审批；建议先 `dryRun: true`。
+
 ## 工具
 
 | 工具 | actions | 会改 ASC |
 |---|---|---|
-| `asc_setup` | `version` / `auth-status` / `doctor` / `system-status` / `install-skills` | 否 |
+| `asc_job` | `release-check` / `ship-testflight` / `stage-release` / `triage-feedback` | 仅写作 |
+| `asc_setup` | `version` / `auth-status` / `doctor` / `system-status` / `diagnose` / `provision` / `install-skills` | `provision` 写插件缓存；`install-skills` 写本地文件 |
 | `asc_search` | — | 否 |
 | `asc_run` | 任意 `asc` argv | 按命令分类 |
 | `asc_apps` | `list` / `view` | 否 |
@@ -76,7 +99,7 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
 | `asc_metadata` | `init` / `validate` / `plan` / `apply` | `apply`（先 `dryRun`）；`init`/`plan` 需 `confirm`（写本地文件） |
 | `asc_release` | `status` / `validate` / `stage` / `publish` | `stage` / `publish` |
 
-结果统一为紧凑 JSON：`ok`、`exitCode`、`command`、`durationMs`、`summary`、`data`、`errorClass`、`hint`、`spillPath` 等。错误会翻译成下一步动作；超限输出写入 spill 文件。
+结果统一为紧凑 JSON：`ok`、`exitCode`、`command`、`durationMs`、`summary`、`data`、`errorClass`、`hint`、`spillPath` 等。`data` 超过 `maxDataBytes`（默认 8 KB）时不回传，改为 `dataOmitted` + `dataBytes`；stdout 超限写入 spill 文件。`validate` 会投影成 `blocking/errors/warnings` + 有序修复步骤，`status` 投影成 `health/nextAction/blockers/nextCommands`。
 
 ## 安全模型
 
@@ -105,12 +128,45 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
 | `telemetryDisabled` | `true` | 设置 `ASC_TELEMETRY_DISABLED=1` |
 | `allowValueExpansion` | `false` | 允许 `asc` 的 `@env:` / `@file:` 值展开 |
 | `unknownCommands` | `"ask"` | 无法确认只读时：`ask` 或 `deny` |
+| `allowProvision` | `false` | 允许 `asc_setup` 的 `provision` 下载固定版本引擎 |
+| `cacheDir` | — | 覆盖 provision 缓存目录（默认 `$DSH_HOME/cache/asc-cli`） |
+| `maxDataBytes` | `8000` | 超过该 JSON 大小就不回传 `data` |
 | `env` | `{}` | 传给 `asc` 的额外环境变量 |
 | `defaultAppId` | — | 省略 `app` 参数时的默认 App |
 
-## 技能包
+## 内置技能包
 
-在会话里让模型调用 `asc_setup` 的 `install-skills`，或自己运行 `asc install-skills`。DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`、`customSkillDirs`、`~/.dsh/skills`、`~/.agents/skills` 和 `$DSH_BUNDLED_SKILL_DIR`（优先级 100 → 600），**不扫描 `~/.claude/skills`**；`asc install-skills` 写入 `~/.agents/skills`，DSH 可直接读取，安装后新建会话即可看到 ASC 技能。
+包内自带 5 个 skill（`skills/`），通过宿主 skill 注册表以 bundled rank（600）注册：装完插件即可用，不需要 git、不需要全局技能目录、不需要手工 `asc install-skills`。
+
+| Skill | 覆盖内容 |
+|---|---|
+| `dsh-asc-quickstart` | 首次使用、作业/类型化工具/`asc_run` 的选择、结果与错误怎么读 |
+| `dsh-asc-auth` | 认证、profile、exit 3 / 401 / 403、CI 与 keychain、私钥卫生 |
+| `dsh-asc-release-readiness` | 发版体检报告、修复顺序、plan/apply、stage 与 submit |
+| `dsh-asc-testflight-ship` | build number、上传、处理状态、内外部组、失败恢复 |
+| `dsh-asc-feedback-triage` | 反馈/崩溃归类、评论回复草稿、限流、隐私 |
+
+bundled 是最低优先级，用户自己装的同名上游 skill 会胜出。想额外装官方 25 个：
+
+```bash
+asc install-skills   # 写入 ~/.agents/skills，DSH 会读取
+```
+
+DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`、`customSkillDirs`、`~/.dsh/skills`、`~/.agents/skills` 和 `$DSH_BUNDLED_SKILL_DIR`（优先级 100 → 600），**不扫描 `~/.claude/skills`**。
+
+## 引擎管理
+
+`asc` 仍是外部引擎，但"安装与对齐"由插件负责：
+
+| 环节 | 做法 |
+|---|---|
+| 定位 | `ascPath` → `ASC_CLI_PATH` → 插件缓存 → `PATH` |
+| 诊断 | `/asc-doctor` 或 `asc_setup` 的 `diagnose` |
+| 安装 | `brew install asc`，或开启 `allowProvision` 后跑 `asc_setup` 的 `provision` |
+| Provision | 下载固定 `asc 5.16.0` 平台资产、校验官方 checksums、缓存到 `$DSH_HOME/cache/asc-cli/<version>/<platform>-<arch>/` |
+| 校验 | 版本与 `>=5.16.0 <6.0.0` 比对，漂移只提示、不自动升级 |
+
+provision 永不隐式执行：需要 `allowProvision: true`、显式 `confirm` 和宿主审批。
 
 ## 上游更新怎么跟
 
@@ -138,7 +194,9 @@ dsh web --patch ./dev/cordis.patch.yml --no-open --port 3199
 
 | 现象 | 处理 |
 |---|---|
-| 找不到 `asc` | `brew install asc`，或配置 `ascPath` |
+| 找不到 `asc` | 跑 `/asc-doctor` 看下一步；`brew install asc`，或配置 `ascPath` / 开启 `allowProvision` |
+| 版本过旧/过新 | `/asc-doctor` 会显示与 `>=5.16.0 <6.0.0` 的偏差；按提示升级或继续使用 |
+| `dataOmitted` | 结果太大被省略：缩小查询（filter/limit）或读 `spillPath` |
 | 鉴权失败 / exit 3 | `asc auth status --validate`，检查 API Key 角色 |
 | Keychain 卡住 | 先在终端登录，或用 `bypassKeychain: true` |
 | 写操作被拒 | 插件处于只读模式：把 `asc-tools` 行改成 `mode: write`，再带 `confirm: true` 重试 |

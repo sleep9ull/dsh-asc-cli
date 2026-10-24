@@ -19,7 +19,7 @@
 |---|---|
 | DeepSeek Harness | `0.2.1-rc.2` line (`engines.dsh: >=0.2.1-rc.2 <0.3.0`) |
 | Node.js | ≥ 22.19 (24 recommended) |
-| `asc` | contract-tested against `5.16.0`; designed for `5.11+` |
+| `asc` | pinned `5.16.0`; tested range `>=5.16.0 <6.0.0` (`/asc-doctor` reports drift) |
 | App Store Connect API key | team or individual key, authenticated **outside** the agent |
 
 Install `asc`:
@@ -84,7 +84,13 @@ Override it in `~/.dsh/profiles/<profile>/cordis.patch.yml`. A patch **replaces 
 
 ## Quick start
 
-Once authenticated:
+After installing, run `/asc` (or `/asc-doctor`): it reports the engine, authentication, default app and the one next step, without involving the model.
+
+```text
+/asc
+```
+
+Then, once authenticated:
 
 ```text
 List my App Store Connect apps and pick the one with bundle id com.example.app.
@@ -98,13 +104,36 @@ Is version 1.2.3 ready to submit? Show me the blockers and what to fix first.
 Upload ./build/MyApp.ipa as 1.2.3 build 42 to the Internal Testers group.
 ```
 
-The last one will stop for approval before touching App Store Connect.
+The last one runs the `ship-testflight` job and stops for approval before touching App Store Connect.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `/asc` | Capability card: engine state, the four jobs, low-level tools, next step |
+| `/asc-doctor` | Full diagnosis: binary and source, version vs tested range, auth, default app, provisioning |
+
+Commands run directly against the host without creating a model message, and only probe read-only state.
+
+## Jobs
+
+`asc_job` is the preferred entry point for delivery work: one call, a plan-shaped result, per-step summaries.
+
+| Job | Risk | What it does |
+|---|---|---|
+| `release-check` | read | Runs `asc validate`, returns blockers and ordered remediation steps |
+| `ship-testflight` | write | Uploads an `.ipa`/`.pkg` (waits for processing), extracts the build id, adds it to a TestFlight group (optional beta review) |
+| `stage-release` | write | Validates, then prepares the version (metadata + build) without submitting |
+| `triage-feedback` | read | Aggregates TestFlight feedback, crashes and reviews |
+
+Write jobs need `mode: write`, `confirm: true` and host approval; pass `dryRun: true` first.
 
 ## Tools
 
 | Tool | Actions | Mutates ASC |
 |---|---|---|
-| `asc_setup` | `version`, `auth-status`, `doctor`, `system-status`, `install-skills` | no (skills installs local files) |
+| `asc_job` | `release-check`, `ship-testflight`, `stage-release`, `triage-feedback` | write jobs only |
+| `asc_setup` | `version`, `auth-status`, `doctor`, `system-status`, `diagnose`, `provision`, `install-skills` | `provision` writes the plugin cache; `install-skills` writes local files |
 | `asc_search` | — | no |
 | `asc_run` | any `asc` argv | classified per command |
 | `asc_apps` | `list`, `view` | no |
@@ -122,12 +151,14 @@ Each result is a compact JSON value:
   "command": "asc --read-only apps list --limit 20 --output json",
   "durationMs": 812,
   "summary": "3 item(s)\n- id=123 name=Focus bundleId=com.example.focus",
-  "data": { /* full parsed JSON, when small enough */ },
+  "data": { /* parsed JSON, omitted above maxDataBytes */ },
   "truncated": false
 }
 ```
 
-Failures add `errorClass` (`auth`, `state-conflict`, `rate-limit`, `usage`, `missing-binary`, `network`, `timeout`, `cancelled`, `parse`, `unknown`) and an actionable `hint`. Oversized output is capped and spilled to a file (`spillPath`).
+Failures add `errorClass` (`auth`, `state-conflict`, `rate-limit`, `usage`, `missing-binary`, `network`, `timeout`, `cancelled`, `parse`, `unknown`) and an actionable `hint`. Payloads larger than `maxDataBytes` (default 8 KB) set `dataOmitted`/`dataBytes` instead of flooding the context; oversized stdout is capped and spilled to a file (`spillPath`).
+
+`validate` results are projected to `blocking/errors/warnings` plus ordered remediation steps, `status` to `health/nextAction/blockers/nextCommands`, and `metadata` to its counters.
 
 ## Safety model
 
@@ -158,29 +189,55 @@ Failures add `errorClass` (`auth`, `state-conflict`, `rate-limit`, `usage`, `mis
 | `telemetryDisabled` | `true` | Set `ASC_TELEMETRY_DISABLED=1` |
 | `allowValueExpansion` | `false` | Allow `asc`'s `@env:` / `@file:` value expansion |
 | `unknownCommands` | `"ask"` | `ask` or `deny` for commands the classifier cannot prove read-only |
+| `allowProvision` | `false` | Allow `asc_setup` action `provision` to download the pinned engine |
+| `cacheDir` | — | Override the provisioned-binary cache (`$DSH_HOME/cache/asc-cli`) |
+| `maxDataBytes` | `8000` | Omit `data` above this JSON size (`dataOmitted` + `dataBytes`) |
 | `env` | `{}` | Extra environment for `asc` |
 | `defaultAppId` | — | Fallback when a tool call omits `app` |
 
-## Skills
+## Bundled skills
 
-Install the official ASC agent skills once:
+The package ships five skills (`skills/`), registered through the host skill registry at the bundled rank (600), so a fresh install is enough — no `git`, no global skill directory, no manual `asc install-skills`:
 
-```text
-Use asc_setup with action install-skills.
+| Skill | Covers |
+|---|---|
+| `dsh-asc-quickstart` | First run, choosing between jobs / typed tools / `asc_run`, reading results and errors |
+| `dsh-asc-auth` | Authentication, profiles, exit 3 / 401 / 403, CI and keychain, key hygiene |
+| `dsh-asc-release-readiness` | Release-check report, remediation ordering, plan/apply, stage vs submit |
+| `dsh-asc-testflight-ship` | Build numbers, upload, processing states, internal vs external groups, recovery |
+| `dsh-asc-feedback-triage` | Feedback/crash grouping, review reply drafts, rate limits, privacy |
+
+Because bundled rank is the lowest priority, a user-installed upstream pack wins same-named skills. To add the official 25-skill pack anyway:
+
+```bash
+asc install-skills   # writes ~/.agents/skills, which DSH reads
 ```
 
-or run `asc install-skills` yourself.
+DeepSeek Harness discovers skills from `<project>/.dsh/skills`, `<project>/.agents/skills`, `customSkillDirs`, `~/.dsh/skills`, `~/.agents/skills`, and `$DSH_BUNDLED_SKILL_DIR` (priority 100 → 600). **`~/.claude/skills` is not scanned.**
 
-DeepSeek Harness discovers skills from `<project>/.dsh/skills`, `<project>/.agents/skills`, `customSkillDirs`, `~/.dsh/skills`, `~/.agents/skills`, and `$DSH_BUNDLED_SKILL_DIR` (priority 100 → 600). **`~/.claude/skills` is not scanned.** `asc install-skills` writes to `~/.agents/skills`, which DSH does read; the 25 upstream ASC skills then appear in the session skill catalog (start a new session after installing).
+## Engine management
+
+`asc` stays an external engine; the plugin owns the experience:
+
+| Step | How |
+|---|---|
+| Locate | `ascPath` → `ASC_CLI_PATH` → plugin cache → `PATH` |
+| Diagnose | `/asc-doctor` or `asc_setup` with action `diagnose` |
+| Install | `brew install asc`, or enable `allowProvision` and run `asc_setup` action `provision` |
+| Provision | Downloads the pinned `asc 5.16.0` release asset for your platform, verifies it against the published checksums, and caches it under `$DSH_HOME/cache/asc-cli/<version>/<platform>-<arch>/` |
+| Verify | Version is compared with `>=5.16.0 <6.0.0`; drift is reported, never auto-fixed |
+
+Provisioning never runs implicitly: it needs `allowProvision: true`, an explicit `confirm` and host approval.
 
 ## Compatibility and upstream updates
 
-`asc` ships frequently (5.16.0 was published 2026-10-19). The plugin keeps upgrades cheap:
+`asc` ships frequently (5.16.0 was published 2026-10-19; the plugin pins that release and tests `>=5.16.0 <6.0.0`). The plugin keeps upgrades cheap:
 
 - All command shapes live in one registry (`src/registry.ts`).
 - Every command is passed through `asc --help` in a contract test (`scripts/contract.mjs`), so a renamed command or flag fails CI instead of failing at runtime. The test validates command and flag *names*; flag values and combinations are covered by unit tests.
 - The generic `asc_search` / `asc_run` tools keep new upstream commands usable without a plugin release. Commands that reject `--output` are retried once without it, and unrecognized commands are escalated to a human instead of being refused silently.
 - `engines.dsh` and peer dependency ranges pin the DSH contract.
+- `/asc-doctor` compares the installed engine with the tested range and suggests either `brew upgrade asc` or a pinned `provision`; it never upgrades silently.
 
 Tested matrix is documented per release; raise an issue with `asc version` and `asc capabilities --output json` output when something drifts.
 

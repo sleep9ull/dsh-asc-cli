@@ -102,3 +102,69 @@ describe('result formatting', () => {
     expect(result.spillPath).toBe('/tmp/spill.txt')
   })
 })
+
+describe('structured projectors', () => {
+  it('projects validate readiness into ordered remediation steps', () => {
+    const summary = summarize({
+      summary: { errors: 2, warnings: 1, blocking: 2 },
+      remediation: {
+        totalActionable: 2,
+        steps: [
+          { severity: 'error', message: 'Add a privacy policy URL' },
+          { severity: 'warning', message: 'Provide a demo account' },
+        ],
+      },
+      checks: [{}, {}],
+    })
+    expect(summary).toContain('blocking=2')
+    expect(summary).toContain('errors=2')
+    expect(summary).toContain('1. [error] Add a privacy policy URL')
+    expect(summary).toContain('2. [warning] Provide a demo account')
+  })
+
+  it('projects the status dashboard headline and next commands', () => {
+    const summary = summarize({
+      summary: {
+        health: 'WAITING_FOR_REVIEW',
+        nextAction: 'wait for review',
+        blockers: [{ message: 'Missing privacy URL' }],
+        nextCommands: ['asc status --app 1 --until review-done'],
+      },
+    })
+    expect(summary).toContain('health=WAITING_FOR_REVIEW')
+    expect(summary).toContain('next=wait for review')
+    expect(summary).toContain('blocker: Missing privacy URL')
+    expect(summary).toContain('asc status --app 1 --until review-done')
+  })
+
+  it('projects metadata counters', () => {
+    const summary = summarize({ applied: 2, total: 3, succeeded: 2, failed: 1, adds: ['a'], updates: ['b'] })
+    expect(summary).toContain('total=3')
+    expect(summary).toContain('succeeded=2')
+    expect(summary).toContain('failed=1')
+    expect(summary).toContain('adds=1')
+  })
+
+  it('keeps small next-build-number payloads compact', () => {
+    expect(summarize({ nextBuildNumber: '43', latestUploadBuildNumber: '42' })).toContain('nextBuildNumber=43')
+  })
+})
+
+describe('payload size guard', () => {
+  it('omits data above maxDataBytes and says how to recover', () => {
+    const large = { data: Array.from({ length: 200 }, (_, index) => ({ id: String(index), attributes: { name: `app-${index}` } })) }
+    const result = formatResult(outcome({ data: large }), 'asc apps list', { maxDataBytes: 512 })
+    expect(result.ok).toBe(true)
+    expect(result.data).toBeUndefined()
+    expect(result.dataOmitted).toBe(true)
+    expect(result.dataBytes).toBeGreaterThan(512)
+    const text = renderResult(result)[0]
+    if (text?.type === 'text') expect(text.text).toContain('payload omitted')
+  })
+
+  it('keeps data below the threshold', () => {
+    const result = formatResult(outcome({ data: { data: [{ id: '1' }] } }), 'asc apps list', { maxDataBytes: 4_096 })
+    expect(result.dataOmitted).toBeUndefined()
+    expect(result.data).toEqual({ data: [{ id: '1' }] })
+  })
+})

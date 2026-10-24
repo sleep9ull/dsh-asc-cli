@@ -116,7 +116,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn): As
         spawnFn,
       )
     }
-    return formatResult(outcome, describeCommand(config, argv, withOutput))
+    return formatResult(outcome, describeCommand(config, argv, withOutput), { maxDataBytes: config.maxDataBytes })
   }
 
   async function runAction(
@@ -144,7 +144,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn): As
       },
       spawnFn,
     )
-    return formatResult(outcome, describeCommand(config, argv, spec.output !== false))
+    return formatResult(outcome, describeCommand(config, argv, spec.output !== false), { maxDataBytes: config.maxDataBytes })
   }
 
   return { ctx, config, spawn: spawnFn, cwdFor, runAction, runArgv }

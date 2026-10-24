@@ -120,3 +120,26 @@ describe('approval policy', () => {
     expect(decideCall(makeConfig(), 'asc_apps', { action: 'delete-everything' })?.kind).toBe('deny')
   })
 })
+
+describe('job and engine policy', () => {
+  it('allows read jobs and gates write jobs by mode and approval', () => {
+    const readOnly = makeConfig()
+    expect(decideCall(readOnly, 'asc_job', { action: 'release-check' })).toBeUndefined()
+    const blocked = decideCall(readOnly, 'asc_job', { action: 'ship-testflight', file: 'a.ipa', confirm: true })
+    expect(blocked?.kind).toBe('deny')
+    if (blocked?.kind === 'deny') expect(blocked.info.code).toBe('ASC_READ_ONLY')
+
+    const write = makeConfig({ mode: 'write' })
+    expect(decideCall(write, 'asc_job', { action: 'ship-testflight', file: 'a.ipa' })?.kind).toBe('deny')
+    expect(decideCall(write, 'asc_job', { action: 'ship-testflight', file: 'a.ipa', confirm: true })?.kind).toBe('ask')
+    expect(decideCall(write, 'asc_job', { action: 'triage-feedback' })).toBeUndefined()
+    expect(decideCall(write, 'asc_job', { action: 'nope' })?.kind).toBe('deny')
+  })
+
+  it('gates engine actions', () => {
+    expect(decideCall(makeConfig(), 'asc_setup', { action: 'diagnose' })).toBeUndefined()
+    expect(decideCall(makeConfig(), 'asc_setup', { action: 'provision' })?.kind).toBe('deny')
+    const decided = decideCall(makeConfig(), 'asc_setup', { action: 'provision', confirm: true })
+    expect(decided?.kind).toBe('ask')
+  })
+})

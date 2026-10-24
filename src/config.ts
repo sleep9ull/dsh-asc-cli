@@ -46,6 +46,12 @@ export interface Config {
    * Write mode always requires `confirm` and approval for these commands.
    */
   unknownCommands: 'ask' | 'deny'
+  /** Allow `asc_setup` action `provision` to download a pinned `asc` binary. */
+  allowProvision: boolean
+  /** Override the directory provisioned binaries are cached in. */
+  cacheDir?: string
+  /** Omit `data` from a result when its JSON exceeds this many bytes. */
+  maxDataBytes: number
   /** Extra environment entries layered onto the scrubbed parent environment. */
   env: Record<string, string>
   /** Default App Store Connect app id when a tool call omits `app`. */
@@ -65,6 +71,9 @@ export const Config: Schema<Config> = Schema.object({
   telemetryDisabled: Schema.boolean().default(true),
   allowValueExpansion: Schema.boolean().default(false),
   unknownCommands: Schema.union(['ask', 'deny']).default('ask'),
+  allowProvision: Schema.boolean().default(false),
+  cacheDir: Schema.string(),
+  maxDataBytes: Schema.number().default(8_000),
   env: Schema.dict(Schema.string()).default({}),
   defaultAppId: Schema.string(),
 })

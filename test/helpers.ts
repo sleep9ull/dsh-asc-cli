@@ -13,6 +13,8 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     telemetryDisabled: true,
     allowValueExpansion: false,
     unknownCommands: 'ask',
+    allowProvision: false,
+    maxDataBytes: 8_000,
     env: {},
     ...overrides,
   }

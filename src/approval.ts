@@ -23,6 +23,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { classifyArgv, kindLabel } from './classify.js'
 import type { Config } from './config.js'
+import { jobSpecFor } from './jobs.js'
 import { specFor, type ActionKind } from './registry.js'
 
 /** Structured refusal identity, routable by the host and by retry logic. */
@@ -82,6 +83,28 @@ export function inspectCall(name: string, args: unknown): CallFacts | undefined 
   }
   if (name === 'asc_search') {
     return { kind: 'read', needsConfirm: false, label: 'asc_search' }
+  }
+  if (name === 'asc_job') {
+    const action = actionOf(args)
+    const spec = jobSpecFor(action)
+    if (spec === undefined) {
+      return { kind: 'forbidden', needsConfirm: false, label: action === undefined ? name : `${name}.${action}` }
+    }
+    return {
+      kind: spec.risk === 'write' ? 'write' : 'read',
+      needsConfirm: spec.needsConfirm,
+      label: `asc_job.${spec.id}`,
+    }
+  }
+  if (name === 'asc_setup') {
+    const action = actionOf(args)
+    // Engine-managed actions do not have a command registry entry.
+    if (action === 'provision') {
+      return { kind: 'local-write', needsConfirm: true, label: 'asc_setup.provision' }
+    }
+    if (action === 'diagnose') {
+      return { kind: 'read', needsConfirm: false, label: 'asc_setup.diagnose' }
+    }
   }
   const action = actionOf(args)
   const spec = specFor(name, action)
