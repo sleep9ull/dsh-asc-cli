@@ -16,7 +16,9 @@ import { RESULT_SCHEMA } from './common.js'
 
 const DESCRIPTION = `Run any \`asc\` command as an argument array (no shell). This is the escape hatch for commands the typed tools do not cover.
 
-Safety: the plugin classifies the command. Read-only commands run directly. Commands that may mutate App Store Connect require \`confirm: true\` and (in write mode) a host approval; in read-only mode they are refused. Authentication commands (auth login/logout, web auth) and web-session commands are always refused.
+Safety: the plugin classifies the command. Read-only commands run directly. Commands that mutate App Store Connect require \`confirm: true\` and a host approval; in read-only mode they are refused. Commands the classifier cannot prove read-only ask for approval (or are refused when \`unknownCommands: deny\`). Local file writes need \`confirm: true\`. Authentication commands (auth login/logout, web auth) and web-session commands are always refused.
+
+Values are passed literally: a leading \`@\` is escaped so asc's \`@env:\`/\`@file:\` expansion cannot read local files unless \`allowValueExpansion\` is enabled.
 
 Use asc_search first to find the right command. Pass flags exactly as asc documents them, including \`--confirm\` where asc itself requires it for the mutation.`
 
@@ -48,18 +50,25 @@ export function registerRunTool(ctx: Context, runtime: AscRuntime): void {
     output: {
       schema: RESULT_SCHEMA,
       render: (_args, value) => renderResult(value as unknown as AscToolResult),
+      presentationMeta: (_args, value) => {
+        const result = value as unknown as AscToolResult
+        return { ok: result.ok, exitCode: result.exitCode }
+      },
     },
     presentCall: (args) => ({
       card: 'terminal',
-      title: `asc ${args.args.join(' ')}`,
+      title: Array.isArray(args.args) ? `asc ${args.args.join(' ')}` : 'asc',
       description: 'App Store Connect CLI',
     }),
     presentResult: (_args, result) => {
+      const meta = (result.meta ?? {}) as { ok?: unknown; exitCode?: unknown }
+      const ok = typeof meta.ok === 'boolean' ? meta.ok : !result.isError
+      const exitCode = ok ? 0 : typeof meta.exitCode === 'number' ? meta.exitCode : 1
       const output = result.content
         .map((block) => (block.type === 'text' ? block.text : ''))
         .filter(Boolean)
         .join('\n')
-      return { card: 'terminal', title: 'asc_run', output, exitCode: result.isError ? 1 : 0 }
+      return { card: 'terminal', title: 'asc_run', output, exitCode }
     },
     async execute(args, exec: ToolRunContext) {
       const argv = args.args.filter((item) => typeof item === 'string' && item.length > 0)

@@ -51,12 +51,29 @@ export function globalFlags(config: Config): string[] {
   return flags
 }
 
+/**
+ * `asc` authentication variables that the harness's subprocess seam would
+ * otherwise scrub (it drops names matching `KEY|PASSWORD|SECRET|TOKEN`).
+ * Forwarding them is an explicit opt-in: the user set them for `asc`.
+ */
+export const FORWARDED_AUTH_ENV = [
+  'ASC_KEY_ID',
+  'ASC_ISSUER_ID',
+  'ASC_PRIVATE_KEY_PATH',
+  'ASC_PRIVATE_KEY',
+] as const
+
 /** Environment entries layered onto the scrubbed parent environment. */
 export function childEnv(config: Config): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...config.env }
+  for (const name of FORWARDED_AUTH_ENV) {
+    const value = process.env[name]
+    if (value !== undefined && env[name] === undefined) env[name] = value
+  }
   if (config.telemetryDisabled) env.ASC_TELEMETRY_DISABLED = '1'
   if (config.bypassKeychain) env.ASC_BYPASS_KEYCHAIN = '1'
-  if (config.mode === 'read-only') env.ASC_READ_ONLY = '1'
+  // `undefined` is a tombstone: it removes an ambient value instead of passing one.
+  env.ASC_READ_ONLY = config.mode === 'read-only' ? '1' : undefined
   return env
 }
 
@@ -70,10 +87,41 @@ export function redact(text: string): string {
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647
 
+/**
+ * Neutralize `asc`'s `@env:NAME` / `@file:PATH` value expansion.
+ *
+ * `asc` expands these anywhere a flag takes a value, which would let a
+ * model-supplied argument read an arbitrary local file into the result. The
+ * harness does not sandbox `ctx.subprocess`, so the plugin escapes a leading
+ * `@` (as documented by `asc`: a literal `@` is written `@@`) unless the user
+ * opted into expansion.
+ */
+export function literalizeArgv(argv: readonly string[], allowExpansion: boolean): string[] {
+  if (allowExpansion) return [...argv]
+  return argv.map((token) => {
+    if (token.startsWith('@@')) return token
+    if (token.startsWith('@')) return `@${token}`
+    // Support `--flag=@file:...` as well as `--flag @file:...`.
+    const separator = token.startsWith('-') ? token.indexOf('=') : -1
+    if (separator > 0) {
+      const value = token.slice(separator + 1)
+      if (value.startsWith('@') && !value.startsWith('@@')) {
+        return `${token.slice(0, separator + 1)}@${value}`
+      }
+    }
+    return token
+  })
+}
+
 /** Build the fully explicit spawn spec for the subprocess seam. */
 export function buildSpawnSpec(config: Config, request: AscExecRequest, signal: AbortSignal): SubprocessSpawnSpec {
   const output = request.appendOutput === false ? [] : ['--output', 'json']
-  const argv = [config.ascPath, ...globalFlags(config), ...request.argv, ...output]
+  const argv = [
+    config.ascPath,
+    ...globalFlags(config),
+    ...literalizeArgv(request.argv, config.allowValueExpansion),
+    ...output,
+  ]
   return {
     argv,
     cwd: request.cwd,

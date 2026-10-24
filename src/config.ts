@@ -32,6 +32,20 @@ export interface Config {
   bypassKeychain: boolean
   /** Set `ASC_TELEMETRY_DISABLED=1` (recommended for agent use). */
   telemetryDisabled: boolean
+  /**
+   * Allow `asc`'s `@env:NAME` / `@file:PATH` value expansion for model-provided
+   * arguments. Disabled by default: expansion reads local files (outside the
+   * sandbox the harness applies to its own file tools), so it is a deliberate
+   * opt-in.
+   */
+  allowValueExpansion: boolean
+  /**
+   * How to treat `asc` commands the classifier cannot prove read-only.
+   * - `ask`: request host approval, and fail closed without an approval channel.
+   * - `deny`: refuse them outright.
+   * Write mode always requires `confirm` and approval for these commands.
+   */
+  unknownCommands: 'ask' | 'deny'
   /** Extra environment entries layered onto the scrubbed parent environment. */
   env: Record<string, string>
   /** Default App Store Connect app id when a tool call omits `app`. */
@@ -49,6 +63,8 @@ export const Config: Schema<Config> = Schema.object({
   workdir: Schema.string(),
   bypassKeychain: Schema.boolean().default(false),
   telemetryDisabled: Schema.boolean().default(true),
+  allowValueExpansion: Schema.boolean().default(false),
+  unknownCommands: Schema.union(['ask', 'deny']).default('ask'),
   env: Schema.dict(Schema.string()).default({}),
   defaultAppId: Schema.string(),
 })

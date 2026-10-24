@@ -56,7 +56,7 @@ From a checkout or tarball:
 
 ```bash
 npm run build && npm pack
-dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.1.tgz
+dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
 ```
 
 Restart or reload the profile. The first boot of a profile created from a shipped template may materialize that template's user patch file, so edit `cordis.patch.yml` **after** the first boot (or pass an overlay with `--patch`). The bundle inserts one row:
@@ -133,6 +133,10 @@ Failures add `errorClass` (`auth`, `state-conflict`, `rate-limit`, `usage`, `mis
 
 - **Read-only mode (default).** Every call gets `--read-only` and `ASC_READ_ONLY=1`. Mutating actions are refused *before a child process starts*.
 - **Write mode.** Mutations require `confirm: true` **and** (by default) a host approval prompt showing the tool action. The plugin never adds `--confirm` on its own.
+- **Unknown commands are never silent.** A command the classifier cannot prove read-only is escalated to a human (`ask`, the default) or refused (`unknownCommands: deny`). Write mode additionally requires `confirm: true`; a model-authored `confirm` alone never bypasses the approval prompt.
+- **Local writes need confirmation and approval.** `metadata init`, `metadata plan` (it writes a review artifact), `docs init`, `doctor --fix`, `builds dsyms` and `install-skills` require `confirm: true` and, by default, a host approval prompt.
+- **No value expansion by default.** `asc` expands `@env:NAME` / `@file:PATH` in flag values, which would let a model argument read any local file into the result. The plugin escapes a leading `@` (`@` → `@@`) unless `allowValueExpansion: true`.
+- **Credentials stay outside the model.** The plugin forwards `ASC_KEY_ID` / `ASC_ISSUER_ID` / `ASC_PRIVATE_KEY_PATH` / `ASC_PRIVATE_KEY` to the child because the harness scrubs credential-shaped variables, but it never reads, stores, or prints key material. Authenticate with `asc auth login` in your own terminal.
 - **Always refused:** `auth login` / `auth logout`, web-session commands, interactive prompts, and anything that would carry private key material.
 - **No shell.** argv is passed as an array.
 - **Secret hygiene.** Diagnostics are redacted (`PRIVATE KEY`, JWTs, `password=`), telemetry is disabled by default, and the plugin never reads or stores credentials.
@@ -152,6 +156,8 @@ Failures add `errorClass` (`auth`, `state-conflict`, `rate-limit`, `usage`, `mis
 | `workdir` | — | Override the session working directory |
 | `bypassKeychain` | `false` | Set `ASC_BYPASS_KEYCHAIN=1` |
 | `telemetryDisabled` | `true` | Set `ASC_TELEMETRY_DISABLED=1` |
+| `allowValueExpansion` | `false` | Allow `asc`'s `@env:` / `@file:` value expansion |
+| `unknownCommands` | `"ask"` | `ask` or `deny` for commands the classifier cannot prove read-only |
 | `env` | `{}` | Extra environment for `asc` |
 | `defaultAppId` | — | Fallback when a tool call omits `app` |
 
@@ -163,15 +169,17 @@ Install the official ASC agent skills once:
 Use asc_setup with action install-skills.
 ```
 
-or run `asc install-skills` yourself. DeepSeek Harness reads `SKILL.md` skill packs from `~/.claude/skills`, `~/.agents/skills`, `~/.dsh/skills`, and project `.dsh/skills`; the 25 upstream ASC skills then appear in the session skill catalog (start a new session after installing).
+or run `asc install-skills` yourself.
+
+DeepSeek Harness discovers skills from `<project>/.dsh/skills`, `<project>/.agents/skills`, `customSkillDirs`, `~/.dsh/skills`, `~/.agents/skills`, and `$DSH_BUNDLED_SKILL_DIR` (priority 100 → 600). **`~/.claude/skills` is not scanned.** `asc install-skills` writes to `~/.agents/skills`, which DSH does read; the 25 upstream ASC skills then appear in the session skill catalog (start a new session after installing).
 
 ## Compatibility and upstream updates
 
 `asc` ships frequently (5.16.0 was published 2026-10-19). The plugin keeps upgrades cheap:
 
 - All command shapes live in one registry (`src/registry.ts`).
-- Every command is passed through `asc --help` in a contract test (`scripts/contract.mjs`), so a renamed command or flag fails CI instead of failing at runtime.
-- The generic `asc_search` / `asc_run` tools keep new upstream commands usable without a plugin release.
+- Every command is passed through `asc --help` in a contract test (`scripts/contract.mjs`), so a renamed command or flag fails CI instead of failing at runtime. The test validates command and flag *names*; flag values and combinations are covered by unit tests.
+- The generic `asc_search` / `asc_run` tools keep new upstream commands usable without a plugin release. Commands that reject `--output` are retried once without it, and unrecognized commands are escalated to a human instead of being refused silently.
 - `engines.dsh` and peer dependency ranges pin the DSH contract.
 
 Tested matrix is documented per release; raise an issue with `asc version` and `asc capabilities --output json` output when something drifts.
