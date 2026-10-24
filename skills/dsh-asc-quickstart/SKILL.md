@@ -16,19 +16,19 @@ This plugin wraps `asc` for App Store Connect; it does not build or sign apps. A
 4. Resolve the app id with `asc action:"apps-list"`, then set `defaultAppId`.
 5. Prefer a job; raw commands last.
 
-`/asc-doctor` (with `checkUpdates`, default true) shows the latest release and an upgrade hint; it never upgrades. Tested `>=5.16.0 <6.0.0`.
+`/asc-doctor` (`checkUpdates`, default true) shows the latest release and upgrade hint; never auto-upgrades. Tested `>=5.16.0 <6.0.0`.
 
 ## Choose the surface
 
 | Need | Use |
 |---|---|
 | Known workflow | `asc_job`: `release-check`, `ship-testflight`, `stage-release`, `triage-feedback`, `compliance-sweep` |
-| Read a fact | `asc`: apps-list/apps-view, builds-list/builds-next-number, testflight-feedback/crashes/groups, reviews-list, metadata-validate |
+| Read a fact | `asc`: apps-list/apps-view, builds-list/builds-next-number, testflight-feedback/testflight-crashes/testflight-groups, reviews-list, metadata-validate |
 | Plan / preflight | `asc_plan`: `validate`, `status`, `metadata-plan` |
 | Mutate | `asc_apply`: `upload`, `groups`, `metadata-init`, `metadata-apply`, `stage`, `publish` |
 | New command | `asc action:"discover"` → `asc action:"run"` |
 
-`release-check`, `triage-feedback` and `compliance-sweep` are read-only; `ship-testflight` and `stage-release` write. Read-only actions need no confirm. All `asc_apply` actions and the local writes `asc_plan.metadata-plan` and `asc_apply.metadata-init` need confirm + approval.
+`release-check`, `triage-feedback` and `compliance-sweep` are read-only; `ship-testflight` and `stage-release` write. Reads need no confirm. All `asc_apply` actions and the local writes `asc_plan.metadata-plan` and `asc_apply.metadata-init` need confirm + approval.
 
 ## Read a result
 
@@ -42,9 +42,9 @@ Most tools return `{ok, exitCode, command, durationMs, summary, data?, errorClas
 
 Read-only is the default; writes need `mode: write`, `confirm` and approval, dry runs included. `approvedActions` globs (e.g. `asc_apply.upload`) waive only the prompt in write mode; confirm stays, read-only is never bypassed.
 
-`auditLog` writes one JSONL line per call (tool, action, argv, exit, duration, errorClass, app); no approval outcome.
+`auditLog` writes one JSONL line per asc invocation (tool, action, argv, exit, duration, errorClass, app); no approval outcome.
 
-Read-only classification covers common read subcommands of age-rating, encryption, accessibility, pricing, users, devices, actors, account, analytics, finance, performance, insights, ads, game-center, xcode-cloud, product-pages, asset-library, categories, eula and app-tags; write verbs still win. Unprovable `run` commands go to human approval, or are refused with `unknownCommands: "deny"`. A leading `@` is escaped; `@env:`/`@file:` expansion is off. `asc --read-only` blocks App Store Connect writes, not local files.
+Read-only classification covers recognized read subcommands under age-rating, encryption, accessibility, pricing, users, devices, actors, account, analytics, finance, performance, insights, ads, game-center, xcode-cloud, product-pages, asset-library, categories, eula and app-tags; write verbs still win. Unprovable `run` commands go to human approval, or are refused with `unknownCommands: "deny"`. A leading `@` is escaped; `@env:`/`@file:` expansion is off. `asc --read-only` blocks App Store Connect writes, not local files.
 
 ## Stop and ask
 

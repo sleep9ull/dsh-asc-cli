@@ -110,7 +110,7 @@ The last one runs the `ship-testflight` job and stops for approval before touchi
 
 | Command | What it does |
 |---|---|
-| `/asc` | Capability card: engine state, the four jobs, low-level tools, next step |
+| `/asc` | Capability card: engine state, the five jobs, low-level tools, next step |
 | `/asc-doctor` | Full diagnosis: binary and source, version vs tested range, auth, default app, provisioning |
 
 Commands run directly against the host without creating a model message, and only probe read-only state.

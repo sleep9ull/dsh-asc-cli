@@ -30,7 +30,7 @@ If validate fails: `auth` → auth skill; `state-conflict` → `asc_plan action:
 
 ## Fix in dependency order
 
-1. **Metadata**: lengths, required fields, placeholder copy, URLs. Edit canonical files; `asc action:"metadata-validate"` (offline), `asc_plan action:"metadata-plan"`, `asc_apply action:"metadata-apply"`. Refresh with `asc action:"run"` `["metadata","pull",...]`; never edit remote metadata and assume the directory matches.
+1. **Metadata**: lengths, required fields, placeholder copy, URLs. Edit canonical files; `asc action:"metadata-validate"` (offline), `asc_plan action:"metadata-plan"`, `asc_apply action:"metadata-apply"`. Refresh with `asc action:"run"` `["metadata","pull",...]` (`confirm` needed); never assume the directory matches remote.
 2. **Build**: processed `VALID` build attached, encryption declaration, content rights. Read with `asc action:"builds-list"`; see `dsh-asc-testflight-ship`.
 3. **Compliance/commerce**: run `asc_job action:"compliance-sweep"` for age rating, encryption, accessibility and pricing; agreements, tax and Resolution Center are web/manual (no public API). See `dsh-asc-compliance-sweep`.
 4. **Submission state**: check for an in-flight submission (`asc_plan action:"status"`) before staging again. That is `state-conflict`, not a new validation problem.
@@ -45,7 +45,7 @@ Re-run `release-check` after each material fix. An earlier pass does not certify
 
 - `asc_apply action:"stage"` needs `app`, `version` and `buildId`; `metadataDir` and `copyMetadataFrom` are optional. It prepares the version, attaches the build, and stops before submission. The `stage-release` job validates first, stops on blocking items, and needs `version` + `buildId`. Both take `confirm` even for `dryRun`.
 - Submitting is `asc_apply action:"publish"` with `submit: true` (underlying `asc publish appstore --submit --confirm`). It creates the App Review submission; needs write mode, `confirm` and approval. `approvedActions` can waive the prompt, never `confirm`.
-- `asc submit status`/`cancel` manage a submission; `asc submit` alone is not shipping; read via `asc action:"run"`.
+- `asc submit status`/`cancel` manage a submission; `asc submit` alone is not shipping; use `asc action:"run"` for them.
 
 Stage prepares; submit is irreversible. Quote version, build, audience; get agreement.
 

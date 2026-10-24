@@ -28,11 +28,11 @@ Read-only; no confirm. It probes in order:
 3. `asc accessibility list --app <id>`
 4. `asc pricing current --app <id>`
 
-A failed probe does not fail the job: the summary reports each area's status/count, and a failed step carries its own `errorClass`/`hint`.
+A failed probe does not fail the job: the summary reports each as `ok`/`n/a` plus the unavailable count, and the failed step carries `errorClass`/`hint`.
 
 ## Read the result
 
-The job returns `{ok, job, title, summary, dryRun, steps[], data?, errorClass?, hint?}`. A successful `ok` does **not** mean all four probes passed: inspect each step's `ok`/`summary`, and the failed ones' `errorClass`/`hint`. `data` may be dropped for size; per-step summaries and counts are the contract.
+The job returns `{ok, job, title, summary, dryRun, steps[], data?, errorClass?, hint?}`. `ok` does **not** mean all four probes passed: inspect every step. `data` may be dropped for size; per-step summaries are the contract. Steps are named `age-rating`, `encryption`, `accessibility`, `pricing`; `data` keys are `ageRating`, `encryption`, `accessibility`, `pricing`.
 
 Interpretation:
 
@@ -48,7 +48,7 @@ Do not quote field names from memory; read the result.
 No public API, so the sweep cannot verify and must not claim these clean:
 
 - Agreements, tax and banking (Agreements, Tax, and Banking).
-- Resolution Center messages and review responses.
+- Resolution Center messages (rejection/appeal threads).
 - App Privacy publication (web-only unless a cached web session already exists; the plugin never starts a login).
 
 List them as "not checked" and ask the user to confirm in App Store Connect.

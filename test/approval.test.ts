@@ -171,5 +171,11 @@ describe('approval exemptions', () => {
     expect(decideCall(config, 'asc_apply', { action: 'upload', file: 'a.ipa' })?.kind).toBe('deny')
     const readOnly = makeConfig({ approvedActions: ['asc_apply.upload'] })
     expect(decideCall(readOnly, 'asc_apply', { action: 'upload', file: 'a.ipa', confirm: true })?.kind).toBe('deny')
+    // Exemptions never apply to local writes (they are allowed in read-only mode
+    // only behind approval, so an exemption there would be a silent write).
+    const localWrite = makeConfig({ approvedActions: ['asc_apply.metadata-init'] })
+    expect(
+      decideCall(localWrite, 'asc_apply', { action: 'metadata-init', dir: './metadata', confirm: true })?.kind,
+    ).toBe('ask')
   })
 })

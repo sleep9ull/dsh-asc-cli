@@ -55,6 +55,7 @@ const WRITE_VERBS = new Set([
 const READ_VERBS = new Set([
   'capabilities',
   'count',
+  'current',
   'diff',
   'docs',
   'doctor',

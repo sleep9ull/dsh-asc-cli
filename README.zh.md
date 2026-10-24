@@ -67,7 +67,7 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
 
 | 命令 | 作用 |
 |---|---|
-| `/asc` | 能力卡：引擎状态、四个作业、底层工具、下一步 |
+| `/asc` | 能力卡：引擎状态、五个作业、底层工具、下一步 |
 | `/asc-doctor` | 完整诊断：二进制与来源、版本与测试范围、认证、默认 app、provision 状态 |
 
 命令直接对宿主执行，不产生模型消息，只做只读探测。

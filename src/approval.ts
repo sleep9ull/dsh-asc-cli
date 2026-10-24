@@ -123,8 +123,10 @@ export function inspectCall(name: string, args: unknown): CallFacts | undefined 
 
 /**
  * Match a configured approval exemption. Patterns are literal labels with `*`
- * wildcards (for example `asc_apply.upload` or `asc_apply.*`). Exemptions only
- * skip the prompt; they never relax read-only mode, confirm requirements or the
+ * wildcards (for example `asc_apply.upload` or `asc_apply.*`).
+ *
+ * Exemptions apply to write/unknown actions in write mode only: they never
+ * relax read-only mode, local-write approvals, confirm requirements or the
  * forbidden list.
  */
 export function matchesApprovedAction(patterns: readonly string[], label: string): boolean {
@@ -171,7 +173,7 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
         reason: `${facts.label} writes local files and needs an explicit \`confirm: true\` argument. Explain the intended paths to the user and retry only after they agree.`,
       }
     }
-    if (config.requireApproval && !approved(config, facts)) {
+    if (config.requireApproval) {
       return askAbout(facts, 'writes local files', {
         en: `Allow ${facts.label} to write local files?`,
         zh: `允许 ${facts.label} 写入本地文件吗？`,

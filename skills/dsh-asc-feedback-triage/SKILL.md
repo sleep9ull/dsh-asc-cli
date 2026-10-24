@@ -46,7 +46,7 @@ Match build number and version before attributing a crash to a release. Quote on
 
 ## Review replies: draft only
 
-Fetch unreplied reviews, then draft in chat; do not submit. `asc reviews respond` via `asc action:"run"` publishes immediately; `asc reviews respond-batch` supports `--dry-run` but needs `--confirm`. Both are public and irreversible; run one only on explicit request, after quoting the review id and text and getting agreement.
+Fetch unreplied reviews, then draft in chat; do not submit. `asc reviews respond` via `asc action:"run"` publishes immediately; `asc reviews respond-batch` supports `--dry-run` but needs upstream `--confirm`. Both are public and irreversible; run one only on explicit request, with `confirm`, after agreeing on review id and text.
 
 Draft: acknowledge the issue, avoid promises, exclude personal data, route bugs to triage instead of debating publicly. For a batch, present a table of review id, rating, draft, and ask for approval; silence is not consent.
 
