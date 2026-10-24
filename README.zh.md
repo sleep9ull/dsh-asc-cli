@@ -128,6 +128,18 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 ---
 
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [契约](docs/CONTRACT.md) | 承诺与禁区、policy 矩阵、十条不变式 |
+| [命令面](docs/COMMANDS.md) | 工具 / action / job / skill / 命令 / 配置 / 结果 |
+| [架构](docs/ARCHITECTURE.md) | 分层、模块、数据流、扩展点 |
+| [测试](docs/TESTING.md) | 测试模式、夹具、已知缺口 |
+| [贡献](CONTRIBUTING.md) | 环境、Git 流程、质量门、发布 |
+| [Spec](docs/SPECS.md) | spec-first 流程与索引 |
+| [路线](docs/ROADMAP.md) | 版本计划与验收指标 |
+
 ## 为什么要做成插件，而不是让 Agent 直接跑 bash？
 
 - **审批而非自证**：默认只读；写操作需要显式 `confirm` 和真人审批，模型无法自己放行。

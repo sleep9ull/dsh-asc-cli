@@ -2,7 +2,7 @@
 
 All notable changes to this plugin are documented here.
 
-## Unreleased
+## 0.1.5 — 2026-10-24 (contract & docs release)
 
 ### Fixed
 
@@ -13,15 +13,29 @@ All notable changes to this plugin are documented here.
 
 ### Documentation
 
+- Reorganized the contract docs after the upstream `App-Store-Connect-CLI`
+  pattern: `AGENTS.md` is now a lean entry (docs map, authority, invariants,
+  workflow, validation gates) and `docs/` is split into `CONTRACT.md` (scope,
+  policy matrix, I1–I10), `COMMANDS.md` (tools/actions/jobs/skills/commands/
+  config/results), `ARCHITECTURE.md`, `TESTING.md`, `CONTRIBUTING.md`,
+  `ROADMAP.md`, `SPECS.md`, and `docs/README.md` (map + precedence).
+- Removed `docs/PRINCIPLES.md` and `docs/SPEC.md`; their content moved into the
+  new files. Added root `CONTRIBUTING.md` and `CLAUDE.md` (`@AGENTS.md`).
+- README (en/zh) now has a Documentation section pointing at the new files.
 - README (en/zh) safety notes now match the implementation: the plugin adds
   `--confirm` only when the model passes `confirm: true` (it never invents
   confirmation), and the refused set is `auth login/logout` plus `asc web`
   — commands the classifier cannot prove read-only go to `unknownCommands`.
-- `dsh-asc-quickstart` no longer suggests `asc run` bypasses confirmation.
 - README troubleshooting no longer conflates `dataOmitted` (payload dropped from
   the result) with `spillPath` (truncated raw output saved to disk).
-- Added the spec-first workflow (`docs/SPEC.md`, `docs/specs/000-template.md`)
-  and spec `001` for this alignment.
+- `dsh-asc-quickstart` no longer suggests `asc run` bypasses confirmation.
+
+### Specs
+
+- `docs/specs/001-contract-alignment.md` (implemented) — `--exclude-expired`
+  passthrough and README/skill corrections.
+- `docs/specs/002-docs-contract-0.1.5.md` (implemented) — this documentation
+  restructure and release.
 
 ## 0.1.4 — 2026-10-24 (consolidation release)
 
