@@ -264,6 +264,9 @@ npm test             # vitest
 node scripts/contract.mjs ./vendor/asc   # contract test against a real asc binary
 node scripts/smoke.mjs                   # compiled runtime smoke test
 
+# install a local build into a profile
+npm pack && dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-*.tgz
+
 # separate dev instance with this checkout mounted
 dsh web --patch ./dev/cordis.patch.yml --no-open --port 3199
 ```

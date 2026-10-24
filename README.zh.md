@@ -264,6 +264,9 @@ npm test             # vitest
 node scripts/contract.mjs ./vendor/asc   # 对真实 asc 跑契约测试
 node scripts/smoke.mjs                   # 编译产物冒烟
 
+# 把本地构建装进 profile
+npm pack && dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-*.tgz
+
 # 用本仓库起一个独立开发实例
 dsh web --patch ./dev/cordis.patch.yml --no-open --port 3199
 ```
