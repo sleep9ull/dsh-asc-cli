@@ -56,7 +56,7 @@ Read-only classification covers recognized read subcommands under age-rating, en
 ## Do not
 
 - Run `asc auth login`/`logout` or `web` commands; never handle `.p8` material.
-- Use `asc action:"run"` to bypass a job, refusal, or confirmation.
+- Use `asc action:"run"` to bypass a job or a refusal — `run` is still classified, so write and unknown calls keep needing `confirm` and approval.
 - Retry a mutation after a timeout before checking state.
 - Paste raw `data`; summarize and link `spillPath`.
 - Invent commands or flags; `discover` first.

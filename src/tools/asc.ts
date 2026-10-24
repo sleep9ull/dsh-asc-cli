@@ -68,7 +68,7 @@ export function registerAscTool(ctx: Context, runtime: AscRuntime): void {
         enum: ['IOS', 'MAC_OS', 'TV_OS', 'VISION_OS'],
         description: 'Platform filter.',
       },
-      excludeExpired: { type: 'boolean', description: 'For builds-list: exclude expired builds.' },
+      excludeExpired: { type: 'boolean', description: 'For builds-list / builds-next-number: exclude expired builds.' },
       paginate: { type: 'boolean', description: 'Fetch every page (can be large; prefer filters).' },
       internal: { type: 'boolean', description: 'For testflight-groups: internal groups only.' },
       external: { type: 'boolean', description: 'For testflight-groups: external groups only.' },

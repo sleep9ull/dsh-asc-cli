@@ -179,6 +179,7 @@ define({
     const argv = ['builds', 'next-build-number', '--app', app(args, context)]
     pushValue(argv, '--version', str(args, 'version'))
     pushValue(argv, '--platform', str(args, 'platform'))
+    if (flag(args, 'excludeExpired')) argv.push('--exclude-expired')
     return argv
   },
 })
