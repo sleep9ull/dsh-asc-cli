@@ -2,6 +2,27 @@
 
 All notable changes to this plugin are documented here.
 
+## Unreleased
+
+### Fixed
+
+- `asc` action `builds-next-number` now passes `--exclude-expired` through; the
+  flag was silently dropped even though `asc 5.16.0` supports it. The schema
+  description for `excludeExpired` now names both `builds-list` and
+  `builds-next-number`.
+
+### Documentation
+
+- README (en/zh) safety notes now match the implementation: the plugin adds
+  `--confirm` only when the model passes `confirm: true` (it never invents
+  confirmation), and the refused set is `auth login/logout` plus `asc web`
+  — commands the classifier cannot prove read-only go to `unknownCommands`.
+- `dsh-asc-quickstart` no longer suggests `asc run` bypasses confirmation.
+- README troubleshooting no longer conflates `dataOmitted` (payload dropped from
+  the result) with `spillPath` (truncated raw output saved to disk).
+- Added the spec-first workflow (`docs/SPEC.md`, `docs/specs/000-template.md`)
+  and spec `001` for this alignment.
+
 ## 0.1.4 — 2026-10-24 (consolidation release)
 
 The 0.2.0 scope, shipped under 0.1.x to avoid a major version jump. This is a

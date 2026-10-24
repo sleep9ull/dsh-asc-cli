@@ -5,12 +5,13 @@
 ## 先读哪一份
 
 - 改工具面、action、job、审批、schema、配置 → [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md)（§2 能力契约、§3 安全契约、§4 做与不做）。
+- 开始任何功能或行为变更 → [`docs/SPEC.md`](docs/SPEC.md)（spec 规范）与 [`docs/specs/000-template.md`](docs/specs/000-template.md)；**先写 spec、对齐后再改代码**（见下「开发流程」）。
 - 需要"为什么现在这样"、历史决策、当前缺口 → `docs/ASSESSMENT.md`（本地评估文档，存在则读）；逐条审计状态 → `docs/assessment/03-plugin-audit.md`（同上）。
 - 上游命令/flag 的真实行为 → `./vendor/asc <cmd> --help`；机器可读契约 → `scripts/contract.mjs`。
 
 ## 不可变原则
 
-1. **只读默认**：每次调用注入 `--read-only` 与 `ASC_READ_ONLY=1`；ASC 写只在 `mode: write` 放行。本地写（`metadata init/plan`、`docs init`、`doctor --fix`、`install-skills`）在两种模式下都要 `confirm`，默认还需宿主审批（`requireApproval: true`）。
+1. **只读默认**：read-only 模式下每次调用注入 `--read-only` 与 `ASC_READ_ONLY=1`（write 模式移除两者，tombstone 父进程值）；ASC 写只在 `mode: write` 放行。本地写（`metadata init/plan`、`docs init`、`doctor --fix`、`install-skills`）在两种模式下都要 `confirm`，默认还需宿主审批（`requireApproval: true`）。
 2. **写路径三件套**：`mode: write` + `confirm: true` + 宿主审批。模型的自证不算批准；`approvedActions` 只对写模式的 write/unknown 生效。
 3. **unknown 不静默**：`unknownCommands` 默认 `ask`、可设 `deny`；read-only 下也走审批。
 4. **值字面化**：模型给的参数前导 `@` 转义为 `@@`（含 `--flag=@…`）；`allowValueExpansion` 默认 false。
@@ -24,12 +25,19 @@
 ## 质量门
 
 ```bash
-npm run typecheck && npm test              # 基线 144 tests / 11 文件
+npm run typecheck && npm test              # 全绿（0.1.4 基线 144 tests，只增不减）
 node scripts/contract.mjs ./vendor/asc     # 23 个注册命令；无 vendor/asc 时说明原因
 npm run build
 ```
 
 测试不触网、不执行任何写 ASC 的操作；CI 另跑 node 22/24 与每日 upstream-watch 契约漂移。
+
+## 开发流程（spec-first）
+
+1. **先对齐 spec**：功能或行为变更，读 `docs/PRINCIPLES.md` §2–§4 → 从 `docs/specs/000-template.md` 复制到 `docs/specs/NNN-<slug>.md`，写清范围、非目标、契约变更、验收标准 → 与用户确认后再改代码。
+2. **按 spec 实现**：实现中发现 spec 有问题，先改 spec 并说明，再改代码；代码与 spec 冲突时以 spec 为准。
+3. **收口同步**：spec 标 `implemented`；契约变化同步 README / README.zh / CHANGELOG / `skills/` / `PRINCIPLES.md`；PR 描述链接 spec。
+4. **可跳过**：typo、格式化、纯文档、无行为变更的测试；PR 里写"无需 spec"及原因。
 
 ## 变更纪律
 

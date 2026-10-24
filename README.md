@@ -142,12 +142,12 @@ They cover first-run choices, authentication and CI, release readiness, TestFlig
 ## Safety model
 
 - **Read-only mode (default).** Every call gets `--read-only` and `ASC_READ_ONLY=1`; mutations are refused before a child process starts.
-- **Write mode.** Mutations require `confirm: true` **and** (by default) a host approval prompt. The plugin never adds `--confirm` on its own.
+- **Write mode.** Mutations require `confirm: true` **and** (by default) a host approval prompt. The plugin adds `--confirm` to the underlying command only when the model passes `confirm: true`; it never invents confirmation.
 - **Unknown commands are never silent.** Commands that cannot be proven read-only are escalated to a human (`ask`) or refused (`unknownCommands: deny`); write mode additionally requires `confirm`.
 - **Local writes need confirmation and approval.** `metadata init/plan`, `docs init`, `doctor --fix`, `builds dsyms`, `install-skills`.
 - **No value expansion by default.** `asc` expands `@env:` / `@file:` in flag values; the plugin escapes a leading `@` unless `allowValueExpansion: true`.
 - **Credentials stay outside the model.** The plugin forwards `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY_PATH`, `ASC_PRIVATE_KEY` because the harness scrubs credential-shaped variables, but never reads, stores or prints key material.
-- **Always refused:** `auth login/logout`, web-session commands, interactive prompts.
+- **Always refused:** `auth login/logout` and `asc web`; commands the classifier cannot prove read-only are escalated to a human (`unknownCommands: ask`) or refused (`deny`).
 - **No shell.** argv is passed as an array; diagnostics are redacted; telemetry is off by default.
 - **Opt-in governance.** `auditLog` records what ran; `approvedActions` can skip the prompt for known actions in write mode only.
 
@@ -247,7 +247,7 @@ DeepSeek Harness scans `<project>/.dsh/skills`, `<project>/.agents/skills`, `cus
 | Keychain prompt hangs | authenticate in a terminal first, or set `bypassKeychain: true` |
 | Write operation refused | still read-only: switch the `asc-tools` row to `mode: write`, then retry with `confirm: true` |
 | Version drift warning | `/asc-doctor` shows installed vs tested vs latest; upgrade with `brew upgrade asc` |
-| Large result | `dataOmitted` means the payload was too big: narrow the query or read `spillPath` |
+| Large result | `dataOmitted`: the payload was dropped from the result — narrow the query. `spillPath` appears only when raw output was truncated and saved. |
 | Unknown command asks for approval | expected; set `unknownCommands: deny` to refuse instead |
 | pnpm peer warnings on install | expected: the harness provides `@deepseek-ai/*` peers at runtime |
 

@@ -68,6 +68,19 @@ describe('command registry', () => {
     ])
   })
 
+  it('passes --exclude-expired to builds list and next-number', () => {
+    expect(build('asc', 'builds-list', { excludeExpired: true })).toContain('--exclude-expired')
+    expect(build('asc', 'builds-next-number', { version: '1.2.3', excludeExpired: true })).toEqual([
+      'builds',
+      'next-build-number',
+      '--app',
+      '111',
+      '--version',
+      '1.2.3',
+      '--exclude-expired',
+    ])
+  })
+
   it('builds upload commands from the file extension', () => {
     expect(build('asc_apply', 'upload', { file: '/tmp/App.ipa', version: '1.2.3' })).toEqual([
       'builds',

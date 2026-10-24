@@ -142,12 +142,12 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 ## 安全模型
 
 - **默认只读**：每次调用带 `--read-only` + `ASC_READ_ONLY=1`，写操作在启动子进程前就被拒绝。
-- **写作模式**：需要 `confirm: true` 且默认弹出宿主审批；插件从不自动加 `--confirm`。
+- **写模式**：需要 `confirm: true` 且默认弹出宿主审批；插件只在模型传入 `confirm: true` 时给底层命令加 `--confirm`，不会自行确认。
 - **未知命令不静默**：无法确认只读的命令转人工审批（`ask`），或按配置直接拒绝（`unknownCommands: deny`）；写模式还额外要求 `confirm`。
 - **本地写需确认 + 审批**：`metadata init/plan`、`docs init`、`doctor --fix`、`builds dsyms`、`install-skills`。
 - **默认关闭值展开**：`asc` 会展开 flag 值里的 `@env:` / `@file:`；插件默认把行首 `@` 转义，除非显式开启 `allowValueExpansion`。
 - **凭据不进模型**：宿主会清洗 `*KEY*` 变量，插件因此显式转发 `ASC_KEY_ID`、`ASC_ISSUER_ID`、`ASC_PRIVATE_KEY_PATH`、`ASC_PRIVATE_KEY`，但从不读取、保存或打印密钥内容。
-- **永久拒绝**：`auth login/logout`、web-session 命令、交互式命令。
+- **永久拒绝**：`auth login/logout` 与 `asc web`；分类器无法确认只读的命令转人工审批（`unknownCommands: ask`）或直接拒绝（`deny`）。
 - **无 shell**：argv 数组直传；诊断信息脱敏；默认关闭 telemetry。
 - **可选治理**：`auditLog` 记录执行内容；`approvedActions` 仅在写模式对已知动作跳过提示。
 
@@ -247,7 +247,7 @@ DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`�
 | Keychain 卡住 | 先在终端登录一次；或设置 `bypassKeychain: true` |
 | 写操作被拒 | 仍是只读模式：把 `asc-tools` 行改成 `mode: write`，再带 `confirm: true` 重试 |
 | 版本漂移提示 | `/asc-doctor` 会显示已装 / 测试范围 / 最新版本；按提示 `brew upgrade asc` |
-| 结果太大 | `dataOmitted` 表示数据超过上限：缩小查询或读取 `spillPath` |
+| 结果太大 | `dataOmitted`：payload 在进入结果前被省略，缩小查询即可；只有原始输出被截断并落盘时才会出现 `spillPath`。 |
 | 未知命令要求审批 | 预期行为；可设 `unknownCommands: deny` 改为直接拒绝 |
 | 安装时 pnpm 报 peer 警告 | 正常：DSH 运行时提供 `@deepseek-ai/*` peer |
 
