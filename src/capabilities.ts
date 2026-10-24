@@ -56,19 +56,29 @@ export const JOBS: readonly CapabilityJob[] = [
     ascCommands: ['asc testflight feedback list', 'asc testflight crashes list', 'asc reviews list'],
     skill: 'dsh-asc-feedback-triage',
   },
+  {
+    id: 'compliance-sweep',
+    title: '合规巡检',
+    intent: ['哪些 app 会因为新规发不出去', '年龄分级/加密/可访问性/定价状态', '上架前合规检查'],
+    risk: 'read',
+    needsConfirm: false,
+    ascCommands: [
+      'asc age-rating view --app',
+      'asc encryption declarations list --app',
+      'asc accessibility list --app',
+      'asc pricing current --app',
+    ],
+    skill: 'dsh-asc-compliance-sweep',
+  },
 ]
 
 /** Low-level tools the jobs build on, for the capability card. */
 export const TOOLS: readonly { readonly name: string; readonly purpose: string }[] = [
-  { name: 'asc_job', purpose: 'Run one of the four jobs above (preferred entry point)' },
-  { name: 'asc_setup', purpose: 'version/auth/doctor/system-status/install-skills/diagnose/provision' },
-  { name: 'asc_search', purpose: 'Find an asc command or flag (local, no network)' },
-  { name: 'asc_run', purpose: 'Escape hatch: any asc argv, policy-checked' },
-  { name: 'asc_apps', purpose: 'List apps / view one app' },
-  { name: 'asc_builds', purpose: 'Builds, upload, TestFlight groups' },
-  { name: 'asc_testflight', purpose: 'TestFlight feedback, crashes, groups' },
-  { name: 'asc_metadata', purpose: 'Metadata init/validate/plan/apply' },
-  { name: 'asc_release', purpose: 'Release status, validate, stage, publish' },
+  { name: 'asc_job', purpose: 'Run one of the five jobs above (preferred entry point)' },
+  { name: 'asc', purpose: 'Reads: apps/builds/TestFlight/reviews/metadata-validate, plus discover and run' },
+  { name: 'asc_plan', purpose: 'validate, status, metadata-plan' },
+  { name: 'asc_apply', purpose: 'upload, groups, metadata init/apply, stage, publish' },
+  { name: 'asc_setup', purpose: 'version/auth/doctor/system-status/diagnose/provision/install-skills' },
 ]
 
 /** Skills shipped inside the package (bundle rank). */
@@ -78,6 +88,7 @@ export const BUNDLED_SKILLS: readonly string[] = [
   'dsh-asc-release-readiness',
   'dsh-asc-testflight-ship',
   'dsh-asc-feedback-triage',
+  'dsh-asc-compliance-sweep',
 ]
 
 /** Look one job up by id. */

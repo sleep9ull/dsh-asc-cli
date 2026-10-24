@@ -2,6 +2,67 @@
 
 All notable changes to this plugin are documented here.
 
+## 0.1.4 — 2026-10-24 (consolidation release)
+
+The 0.2.0 scope, shipped under 0.1.x to avoid a major version jump. This is a
+**breaking** release: the tool surface is consolidated, and three old tools are
+replaced by intent-shaped ones.
+
+### Breaking: tool surface
+
+| 0.1.3 | 0.1.4 |
+|---|---|
+| `asc_search` | `asc` action `discover` |
+| `asc_run` | `asc` action `run` |
+| `asc_apps` / `asc_builds` / `asc_testflight` / `asc_metadata` / `asc_release` | `asc` (reads), `asc_plan` (plans), `asc_apply` (mutations) |
+
+`asc_job` and `asc_setup` keep their names. The surface is now five tools:
+`asc_job`, `asc`, `asc_plan`, `asc_apply`, `asc_setup`. See the README migration
+table for the action-level mapping.
+
+### Added
+
+- **`compliance-sweep` job** (read-only): probes age rating, encryption
+  declarations, accessibility and current pricing; a failed probe is reported,
+  not fatal. Jobs run nested commands through a helper that refuses anything the
+  classifier does not prove read-only, so a job can never smuggle a mutation past
+  the human gate that only sees the outer call.
+- **Audit trail** (`auditLog`): one redacted JSONL line per executed invocation
+  (tool, action, argv, mode, confirm, exit code, duration, error class). Values
+  after credential-shaped flags are replaced structurally before writing.
+- **Approval exemptions** (`approvedActions`): glob labels such as
+  `asc_apply.upload` or `asc_apply.*` skip the prompt in write mode only. They
+  never relax read-only mode, `confirm`, or the forbidden list.
+- **Upstream update check** (`checkUpdates`, default true): `/asc-doctor` shows
+  the latest `asc` release (GitHub API, 24h cache, silent on failure) and
+  suggests `brew upgrade asc`; the plugin never upgrades by itself.
+- **More read-only roots**: `age-rating`, `encryption`, `accessibility`,
+  `agreements`, `pricing`, `users`, `devices`, `actors`, `account`, `analytics`,
+  `finance`, `performance`, `insights`, `ads`, `game-center`, `xcode-cloud`,
+  `product-pages`, `asset-library`, `categories`, `eula`, `app-tags`,
+  `background-assets`, `build-bundles`, `routing-coverage` now classify their
+  common read subcommands as read (write verbs still win), so they run without
+  an approval prompt.
+- **Sixth bundled skill**: `dsh-asc-compliance-sweep`. All five existing skills
+  were rewritten for the new surface.
+
+### Changed
+
+- `asc_plan` gains `--deep` for `validate`.
+- `triage-feedback` now reads reviews through `asc.reviews-list` instead of a
+  raw argv.
+- Capability card lists five jobs and the new tool surface.
+- README (both languages) documents the migration, the audit trail, exemptions
+  and the update check.
+
+### Tests
+
+- 140 tests across 11 files (from 132/10): new audit, exemption, update-check
+  and compliance-sweep coverage; registry/approval/job tests moved to the new
+  surface.
+- Smoke covers `asc.discover`, `asc.apps-list`, `asc_plan.validate` (auth-gated
+  failure expected), engine diagnosis and the `/asc` card.
+
 ## 0.1.3 — 2026-10-24 (capabilities release)
 
 The plugin becomes a self-contained product surface: jobs, a bundled skill pack,

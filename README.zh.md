@@ -7,7 +7,7 @@
 `@sleep9ull/dsh-asc-cli` 是一个 DSH **bundle 插件**：不重写 App Store Connect API，`asc`（Go 二进制）仍是执行引擎；插件负责让 AI 安全、准确、省 token 地使用它。
 
 - **默认只读**：任何写操作都需要显式 `confirm` + 宿主审批。
-- **意图级工具**：应用、构建、TestFlight、元数据、发布五条主流程；长尾用 `asc_search` + `asc_run`。
+- **按意图组织的工具面**：`asc`（读）/ `asc_plan`（计划）/ `asc_apply`（变更）/ `asc_setup`（环境），长尾用 `asc.run` 逃生。
 - **结果可读**：列表变摘要，完整 JSON 落盘，不把上下文塞爆。
 - **技能直接可用**：`asc install-skills` 装的 25 个官方 ASC 技能，DSH 原生识别。
 
@@ -82,29 +82,48 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
 | `ship-testflight` | 写 | 上传 `.ipa`/`.pkg`（等待处理）→ 提取 buildId → 加入 TestFlight 组（可选 beta review） |
 | `stage-release` | 写 | 先 validate，再准备版本（元数据 + build），不提交 |
 | `triage-feedback` | 只读 | 聚合 TestFlight 反馈、崩溃与评论 |
+| `compliance-sweep` | 只读 | 巡检年龄分级、加密声明、可访问性与当前定价；单项失败只标注不阻断 |
 
 写作需要 `mode: write`、`confirm: true` 和宿主审批；建议先 `dryRun: true`。
 
 ## 工具
 
+工具面按意图组织：**读 / 计划 / 变更 / 作业 / 环境**。
+
 | 工具 | actions | 会改 ASC |
 |---|---|---|
-| `asc_job` | `release-check` / `ship-testflight` / `stage-release` / `triage-feedback` | 仅写作 |
+| `asc_job` | `release-check` / `ship-testflight` / `stage-release` / `triage-feedback` / `compliance-sweep` | 仅写作 |
+| `asc` | `apps-list`/`apps-view`、`builds-list`/`builds-next-number`、`testflight-feedback`/`-crashes`/`-groups`、`reviews-list`、`metadata-validate`、`discover`、`run` | 仅 `run`（按命令分类） |
+| `asc_plan` | `validate` / `status` / `metadata-plan` | `metadata-plan` 写本地 review artifact |
+| `asc_apply` | `upload` / `groups` / `metadata-init` / `metadata-apply` / `stage` / `publish` | 是 |
 | `asc_setup` | `version` / `auth-status` / `doctor` / `system-status` / `diagnose` / `provision` / `install-skills` | `provision` 写插件缓存；`install-skills` 写本地文件 |
-| `asc_search` | — | 否 |
-| `asc_run` | 任意 `asc` argv | 按命令分类 |
-| `asc_apps` | `list` / `view` | 否 |
-| `asc_builds` | `list` / `next-number` / `upload` / `add-groups` | `upload` / `add-groups` |
-| `asc_testflight` | `feedback` / `crashes` / `groups` | 否 |
-| `asc_metadata` | `init` / `validate` / `plan` / `apply` | `apply`（先 `dryRun`）；`init`/`plan` 需 `confirm`（写本地文件） |
-| `asc_release` | `status` / `validate` / `stage` / `publish` | `stage` / `publish` |
 
 结果统一为紧凑 JSON：`ok`、`exitCode`、`command`、`durationMs`、`summary`、`data`、`errorClass`、`hint`、`spillPath` 等。`data` 超过 `maxDataBytes`（默认 8 KB）时不回传，改为 `dataOmitted` + `dataBytes`；stdout 超限写入 spill 文件。`validate` 会投影成 `blocking/errors/warnings` + 有序修复步骤，`status` 投影成 `health/nextAction/blockers/nextCommands`。
+
+### 从 0.1.3 迁移
+
+0.1.4 收敛了工具面，旧工具已移除：
+
+| 0.1.3 | 0.1.4 |
+|---|---|
+| `asc_search` | `asc` 的 `discover` |
+| `asc_run` | `asc` 的 `run` |
+| `asc_apps` `list`/`view` | `asc` 的 `apps-list`/`apps-view` |
+| `asc_builds` `list`/`next-number` | `asc` 的 `builds-list`/`builds-next-number` |
+| `asc_builds` `upload`/`add-groups` | `asc_apply` 的 `upload`/`groups` |
+| `asc_testflight` `feedback`/`crashes`/`groups` | `asc` 的 `testflight-feedback`/`-crashes`/`-groups` |
+| `asc_metadata` `validate` | `asc` 的 `metadata-validate` |
+| `asc_metadata` `init`/`plan`/`apply` | `asc_apply` `metadata-init`；`asc_plan` `metadata-plan`；`asc_apply` `metadata-apply` |
+| `asc_release` `status`/`validate`/`stage`/`publish` | `asc_plan` `status`/`validate`；`asc_apply` `stage`/`publish` |
+
+`asc_job` 与 `asc_setup` 名称不变（作业新增 `compliance-sweep`）。
 
 ## 安全模型
 
 - **只读模式（默认）**：每次调用带 `--read-only` + `ASC_READ_ONLY=1`；写操作在**启动子进程之前**被拒绝。
 - **写模式**：写操作需要 `confirm: true`，默认还会弹出宿主审批；插件从不自动加 `--confirm`。
+- **审批豁免是显式的**：`approvedActions` 接受 glob 标签（如 `asc_apply.upload`、`asc_apply.*`），仅在 write 模式跳过提示；不会放宽只读模式、`confirm` 或拒绝列表。
+- **审计可选**：设置 `auditLog` 后每次调用追加一行脱敏 JSONL（工具/动作/argv/模式/confirm/退出码/耗时/错误类）；审批结论仍在 DSH 会话日志。
 - **未知命令不会被静默放行**：分类器无法确认只读的命令，默认升级为人工审批（`ask`），或按配置直接拒绝（`unknownCommands: deny`）；写模式下还额外要求 `confirm`，模型自己填的 `confirm` 不能替代宿主审批。
 - **本地写需要确认 + 审批**：`metadata init`、`metadata plan`（写 review artifact）、`docs init`、`doctor --fix`、`builds dsyms`、`install-skills` 均需 `confirm: true`，默认还会弹出宿主审批。
 - **默认关闭值展开**：`asc` 会把 flag 值里的 `@env:NAME` / `@file:PATH` 展开成环境变量/文件内容，可能导致任意本地文件被读进结果。插件默认把行首 `@` 转义为 `@@`，只有显式开启 `allowValueExpansion` 才放行。
@@ -131,20 +150,24 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
 | `allowProvision` | `false` | 允许 `asc_setup` 的 `provision` 下载固定版本引擎 |
 | `cacheDir` | — | 覆盖 provision 缓存目录（默认 `$DSH_HOME/cache/asc-cli`） |
 | `maxDataBytes` | `8000` | 超过该 JSON 大小就不回传 `data` |
+| `auditLog` | — | 每次调用追加一行 JSONL 审计 |
+| `approvedActions` | `[]` | write 模式下跳过审批的 glob 标签 |
+| `checkUpdates` | `true` | `/asc-doctor` 显示远端最新版本（24h 缓存，绝不自动升级） |
 | `env` | `{}` | 传给 `asc` 的额外环境变量 |
 | `defaultAppId` | — | 省略 `app` 参数时的默认 App |
 
 ## 内置技能包
 
-包内自带 5 个 skill（`skills/`），通过宿主 skill 注册表以 bundled rank（600）注册：装完插件即可用，不需要 git、不需要全局技能目录、不需要手工 `asc install-skills`。
+包内自带 6 个 skill（`skills/`），通过宿主 skill 注册表以 bundled rank（600）注册：装完插件即可用，不需要 git、不需要全局技能目录、不需要手工 `asc install-skills`。
 
 | Skill | 覆盖内容 |
 |---|---|
-| `dsh-asc-quickstart` | 首次使用、作业/类型化工具/`asc_run` 的选择、结果与错误怎么读 |
+| `dsh-asc-quickstart` | 首次使用、作业/`asc`/`asc_plan`/`asc_apply`/`asc.run` 的选择、结果与错误怎么读 |
 | `dsh-asc-auth` | 认证、profile、exit 3 / 401 / 403、CI 与 keychain、私钥卫生 |
 | `dsh-asc-release-readiness` | 发版体检报告、修复顺序、plan/apply、stage 与 submit |
 | `dsh-asc-testflight-ship` | build number、上传、处理状态、内外部组、失败恢复 |
 | `dsh-asc-feedback-triage` | 反馈/崩溃归类、评论回复草稿、限流、隐私 |
+| `dsh-asc-compliance-sweep` | 年龄分级、加密、可访问性、定价；哪些项只能人工/网页处理 |
 
 bundled 是最低优先级，用户自己装的同名上游 skill 会胜出。想额外装官方 25 个：
 
@@ -172,7 +195,8 @@ provision 永不隐式执行：需要 `allowProvision: true`、显式 `confirm` 
 
 - 所有命令形状集中在 `src/registry.ts`，升级只改一张表 + fixture。
 - `scripts/contract.mjs` 用真实 `asc` 对每个命令跑 `--help`，命令/flag 改名会 CI 失败（只校验名称；值与组合由单元测试覆盖）。
-- `asc_search` / `asc_run` 保证上游新命令无需插件发版即可使用：不支持 `--output` 的命令会自动重试一次，无法确认只读的命令会转人工审批而不是静默拒绝。
+- `asc` 的 `discover` / `run` 保证上游新命令无需插件发版即可使用：不支持 `--output` 的命令会自动重试一次，无法确认只读的命令会转人工审批而不是静默拒绝。
+- `/asc-doctor` 会对比远端最新版本（24h 缓存）并提示升级；插件从不自动升级。
 - 每日 upstream-watch 工作流巡检最新 release，漂移时开 issue。
 
 ## 开发

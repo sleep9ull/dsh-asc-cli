@@ -71,18 +71,21 @@ function confirmOf(args: unknown): boolean {
 
 /** Inspect one tool call without trusting its argument shape. */
 export function inspectCall(name: string, args: unknown): CallFacts | undefined {
-  if (!name.startsWith('asc_')) return undefined
-  if (name === 'asc_run') {
-    const argv = argvOf(args)
-    const kind = classifyArgv(argv)
-    return {
-      kind,
-      needsConfirm: kind === 'write' || kind === 'unknown' || kind === 'local-write',
-      label: `asc_run: asc ${argv.join(' ')}`,
+  if (name !== 'asc' && !name.startsWith('asc_')) return undefined
+  if (name === 'asc') {
+    const action = actionOf(args)
+    if (action === 'run') {
+      const argv = argvOf(args)
+      const kind = classifyArgv(argv)
+      return {
+        kind,
+        needsConfirm: kind === 'write' || kind === 'unknown' || kind === 'local-write',
+        label: `asc.run: asc ${argv.join(' ')}`,
+      }
     }
-  }
-  if (name === 'asc_search') {
-    return { kind: 'read', needsConfirm: false, label: 'asc_search' }
+    if (action === 'discover') {
+      return { kind: 'read', needsConfirm: false, label: 'asc.discover' }
+    }
   }
   if (name === 'asc_job') {
     const action = actionOf(args)
@@ -118,6 +121,24 @@ export function inspectCall(name: string, args: unknown): CallFacts | undefined 
   }
 }
 
+/**
+ * Match a configured approval exemption. Patterns are literal labels with `*`
+ * wildcards (for example `asc_apply.upload` or `asc_apply.*`). Exemptions only
+ * skip the prompt; they never relax read-only mode, confirm requirements or the
+ * forbidden list.
+ */
+export function matchesApprovedAction(patterns: readonly string[], label: string): boolean {
+  return patterns.some((pattern) => {
+    if (pattern.trim().length === 0) return false
+    const escaped = pattern.trim().replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
+    return new RegExp(`^${escaped}$`).test(label)
+  })
+}
+
+function approved(config: Config, facts: CallFacts): boolean {
+  return matchesApprovedAction(config.approvedActions, facts.label)
+}
+
 function askAbout(facts: CallFacts, reason: string, question: { en: string; zh: string }): AscDecision {
   return {
     kind: 'ask',
@@ -150,7 +171,7 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
         reason: `${facts.label} writes local files and needs an explicit \`confirm: true\` argument. Explain the intended paths to the user and retry only after they agree.`,
       }
     }
-    if (config.requireApproval) {
+    if (config.requireApproval && !approved(config, facts)) {
       return askAbout(facts, 'writes local files', {
         en: `Allow ${facts.label} to write local files?`,
         zh: `允许 ${facts.label} 写入本地文件吗？`,
@@ -174,7 +195,7 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
         reason: `${facts.label} mutates state and needs an explicit \`confirm: true\` argument. Explain the intended change to the user and retry with \`confirm: true\` only after they agree.`,
       }
     }
-    if (config.requireApproval) {
+    if (config.requireApproval && !approved(config, facts)) {
       return askAbout(facts, 'mutates App Store Connect', {
         en: `Allow ${facts.label} to modify App Store Connect?`,
         zh: `允许 ${facts.label} 修改 App Store Connect 吗？`,
@@ -205,7 +226,7 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
       reason: `${facts.label} may mutate state and needs an explicit \`confirm: true\` argument. Confirm with the user first.`,
     }
   }
-  if (config.requireApproval) {
+  if (config.requireApproval && !approved(config, facts)) {
     return askAbout(facts, 'may mutate App Store Connect', {
       en: `Allow ${facts.label}? It is not recognized as read-only.`,
       zh: `允许 ${facts.label} 吗？该命令无法确认为只读。`,

@@ -1,10 +1,18 @@
 /**
- * Single source of truth for every `asc` invocation the plugin can build.
+ * Single source of truth for every typed `asc` invocation the plugin can build.
  *
- * Each entry maps one tool action to: its mutation class, the argv builder,
- * and whether the action needs an explicit `confirm` or a long timeout.
- * Keeping this in one table is what makes upstream `asc` upgrades cheap:
- * a changed command or flag is a one-line edit plus a fixture update.
+ * The surface is organised by intent, not by upstream command group:
+ *
+ * - `asc`        read-only queries (plus the `run` escape hatch and `discover`)
+ * - `asc_plan`   read-only plans (`validate`, `status`, `metadata-plan`)
+ * - `asc_apply`  mutations (`upload`, `groups`, metadata writes, `stage`, `publish`)
+ * - `asc_job`    product-level workflows composed from the actions above
+ * - `asc_setup`  environment and engine lifecycle
+ *
+ * Each entry maps one action to its mutation class, argv builder and timeout
+ * class. A changed upstream command is a one-line edit plus a fixture update;
+ * the contract test (`scripts/contract.mjs`) runs every entry through
+ * `asc --help` so a rename fails CI instead of production.
  */
 
 import type { Config } from './config.js'
@@ -23,9 +31,9 @@ export interface BuildContext {
 
 /** One row of the command registry. */
 export interface ActionSpec {
-  /** Tool name, e.g. `asc_builds`. */
+  /** Tool name, e.g. `asc_apply`. */
   readonly tool: string
-  /** Action name inside the tool, e.g. `upload`. Omitted for single-action tools. */
+  /** Action name inside the tool, e.g. `upload`. */
   readonly action?: string
   /** Mutation class; `write` is refused in read-only mode. */
   readonly kind: ActionKind
@@ -66,9 +74,21 @@ function pushValue(argv: string[], name: string, value: string | undefined): voi
   if (value !== undefined) argv.push(name, value)
 }
 
-function list(value: unknown): string[] {
+function list(args: ToolArgs, key: string): string[] {
+  const value = args[key]
   if (!Array.isArray(value)) return []
   return value.filter((item): item is string => typeof item === 'string' && item.length > 0)
+}
+
+/** Default page size for list actions. */
+function limit(args: ToolArgs, fallback = 20): string {
+  return String(num(args, 'limit') ?? fallback)
+}
+
+function required(args: ToolArgs, key: string): string {
+  const value = str(args, key)
+  if (!value) throw new Error(`asc: \`${key}\` is required`)
+  return value
 }
 
 const specs: ActionSpec[] = []
@@ -78,7 +98,7 @@ function define(spec: ActionSpec): void {
 }
 
 // ---------------------------------------------------------------------------
-// asc_setup — environment, auth and capability checks
+// asc_setup — environment, authentication and engine lifecycle
 // ---------------------------------------------------------------------------
 
 define({ tool: 'asc_setup', action: 'version', kind: 'read', output: false, build: () => ['version'] })
@@ -108,30 +128,19 @@ define({
   build: () => ['install-skills'],
 })
 
+// `asc_setup.diagnose` and `asc_setup.provision` are engine actions: they do
+// not map to an `asc` command and are handled by the tool body.
+
 // ---------------------------------------------------------------------------
-// asc_search — upstream command discovery (local, no network)
+// asc — read-only inventory and queries
 // ---------------------------------------------------------------------------
 
 define({
-  tool: 'asc_search',
+  tool: 'asc',
+  action: 'apps-list',
   kind: 'read',
   build: (args) => {
-    const query = str(args, 'query')
-    if (!query) throw new Error('asc: `query` is required for asc_search')
-    return ['search', '--limit', String(num(args, 'limit') ?? 10), query]
-  },
-})
-
-// ---------------------------------------------------------------------------
-// asc_apps
-// ---------------------------------------------------------------------------
-
-define({
-  tool: 'asc_apps',
-  action: 'list',
-  kind: 'read',
-  build: (args) => {
-    const argv = ['apps', 'list', '--limit', String(num(args, 'limit') ?? 20)]
+    const argv = ['apps', 'list', '--limit', limit(args)]
     pushValue(argv, '--name', str(args, 'name'))
     pushValue(argv, '--bundle-id', str(args, 'bundleId'))
     pushValue(argv, '--sort', str(args, 'sort'))
@@ -141,22 +150,18 @@ define({
 })
 
 define({
-  tool: 'asc_apps',
-  action: 'view',
+  tool: 'asc',
+  action: 'apps-view',
   kind: 'read',
   build: (args, context) => ['apps', 'view', '--id', app(args, context)],
 })
 
-// ---------------------------------------------------------------------------
-// asc_builds
-// ---------------------------------------------------------------------------
-
 define({
-  tool: 'asc_builds',
-  action: 'list',
+  tool: 'asc',
+  action: 'builds-list',
   kind: 'read',
   build: (args, context) => {
-    const argv = ['builds', 'list', '--app', app(args, context), '--limit', String(num(args, 'limit') ?? 20)]
+    const argv = ['builds', 'list', '--app', app(args, context), '--limit', limit(args)]
     pushValue(argv, '--version', str(args, 'version'))
     pushValue(argv, '--build-number', str(args, 'buildNumber'))
     pushValue(argv, '--platform', str(args, 'platform'))
@@ -167,7 +172,133 @@ define({
 })
 
 define({
-  tool: 'asc_builds',
+  tool: 'asc',
+  action: 'builds-next-number',
+  kind: 'read',
+  build: (args, context) => {
+    const argv = ['builds', 'next-build-number', '--app', app(args, context)]
+    pushValue(argv, '--version', str(args, 'version'))
+    pushValue(argv, '--platform', str(args, 'platform'))
+    return argv
+  },
+})
+
+define({
+  tool: 'asc',
+  action: 'testflight-feedback',
+  kind: 'read',
+  build: (args, context) => {
+    const argv = ['testflight', 'feedback', 'list', '--app', app(args, context), '--limit', limit(args)]
+    pushValue(argv, '--sort', str(args, 'sort'))
+    if (flag(args, 'paginate')) argv.push('--paginate')
+    return argv
+  },
+})
+
+define({
+  tool: 'asc',
+  action: 'testflight-crashes',
+  kind: 'read',
+  build: (args, context) => {
+    const argv = ['testflight', 'crashes', 'list', '--app', app(args, context), '--limit', limit(args)]
+    pushValue(argv, '--sort', str(args, 'sort'))
+    if (flag(args, 'paginate')) argv.push('--paginate')
+    return argv
+  },
+})
+
+define({
+  tool: 'asc',
+  action: 'testflight-groups',
+  kind: 'read',
+  build: (args, context) => {
+    const argv = ['testflight', 'groups', 'list', '--app', app(args, context)]
+    if (flag(args, 'internal')) argv.push('--internal')
+    if (flag(args, 'external')) argv.push('--external')
+    return argv
+  },
+})
+
+define({
+  tool: 'asc',
+  action: 'reviews-list',
+  kind: 'read',
+  build: (args, context) => {
+    const argv = ['reviews', 'list', '--app', app(args, context), '--limit', limit(args)]
+    pushValue(argv, '--sort', str(args, 'sort'))
+    if (flag(args, 'paginate')) argv.push('--paginate')
+    return argv
+  },
+})
+
+define({
+  tool: 'asc',
+  action: 'metadata-validate',
+  kind: 'read',
+  build: (args) => {
+    const dir = str(args, 'dir')
+    if (!dir) throw new Error('asc: `dir` is required for asc metadata-validate')
+    return ['metadata', 'validate', '--dir', dir]
+  },
+})
+
+// `asc.run` (arbitrary argv, classified) and `asc.discover` (`asc search`) are
+// handled by the tool body and the pre-execution policy, not by this table.
+
+// ---------------------------------------------------------------------------
+// asc_plan — read-only plans
+// ---------------------------------------------------------------------------
+
+define({
+  tool: 'asc_plan',
+  action: 'validate',
+  kind: 'read',
+  build: (args, context) => {
+    const argv = ['validate', '--app', app(args, context)]
+    pushValue(argv, '--version', str(args, 'version'))
+    pushValue(argv, '--platform', str(args, 'platform'))
+    if (flag(args, 'strict')) argv.push('--strict')
+    if (flag(args, 'deep')) argv.push('--deep')
+    return argv
+  },
+})
+
+define({
+  tool: 'asc_plan',
+  action: 'status',
+  kind: 'read',
+  long: true,
+  build: (args, context) => {
+    const argv = ['status', '--app', app(args, context)]
+    pushValue(argv, '--platform', str(args, 'platform'))
+    pushValue(argv, '--include', list(args, 'include').join(',') || undefined)
+    pushValue(argv, '--until', str(args, 'until'))
+    pushValue(argv, '--timeout', str(args, 'timeout'))
+    return argv
+  },
+})
+
+define({
+  tool: 'asc_plan',
+  action: 'metadata-plan',
+  kind: 'local-write',
+  needsConfirm: true,
+  build: (args, context) => {
+    const dir = str(args, 'dir')
+    if (!dir) throw new Error('asc: `dir` is required for asc metadata-plan')
+    const argv = ['metadata', 'plan', '--app', app(args, context), '--version', required(args, 'version'), '--dir', dir]
+    pushValue(argv, '--platform', str(args, 'platform'))
+    pushValue(argv, '--review-dir', str(args, 'reviewDir'))
+    return argv
+  },
+})
+
+// ---------------------------------------------------------------------------
+// asc_apply — mutations
+// ---------------------------------------------------------------------------
+
+define({
+  tool: 'asc_apply',
   action: 'upload',
   kind: 'write',
   needsConfirm: true,
@@ -186,8 +317,8 @@ define({
 })
 
 define({
-  tool: 'asc_builds',
-  action: 'add-groups',
+  tool: 'asc_apply',
+  action: 'groups',
   kind: 'write',
   needsConfirm: true,
   build: (args, context) => {
@@ -211,69 +342,13 @@ define({
 })
 
 define({
-  tool: 'asc_builds',
-  action: 'next-number',
-  kind: 'read',
-  build: (args, context) => {
-    const argv = ['builds', 'next-build-number', '--app', app(args, context)]
-    pushValue(argv, '--version', str(args, 'version'))
-    pushValue(argv, '--platform', str(args, 'platform'))
-    return argv
-  },
-})
-
-// ---------------------------------------------------------------------------
-// asc_testflight
-// ---------------------------------------------------------------------------
-
-define({
-  tool: 'asc_testflight',
-  action: 'feedback',
-  kind: 'read',
-  build: (args, context) => {
-    const argv = ['testflight', 'feedback', 'list', '--app', app(args, context), '--limit', String(num(args, 'limit') ?? 20)]
-    pushValue(argv, '--sort', str(args, 'sort'))
-    if (flag(args, 'paginate')) argv.push('--paginate')
-    return argv
-  },
-})
-
-define({
-  tool: 'asc_testflight',
-  action: 'crashes',
-  kind: 'read',
-  build: (args, context) => {
-    const argv = ['testflight', 'crashes', 'list', '--app', app(args, context), '--limit', String(num(args, 'limit') ?? 20)]
-    pushValue(argv, '--sort', str(args, 'sort'))
-    if (flag(args, 'paginate')) argv.push('--paginate')
-    return argv
-  },
-})
-
-define({
-  tool: 'asc_testflight',
-  action: 'groups',
-  kind: 'read',
-  build: (args, context) => {
-    const argv = ['testflight', 'groups', 'list', '--app', app(args, context)]
-    if (flag(args, 'internal')) argv.push('--internal')
-    if (flag(args, 'external')) argv.push('--external')
-    return argv
-  },
-})
-
-// ---------------------------------------------------------------------------
-// asc_metadata
-// ---------------------------------------------------------------------------
-
-define({
-  tool: 'asc_metadata',
-  action: 'init',
+  tool: 'asc_apply',
+  action: 'metadata-init',
   kind: 'local-write',
   needsConfirm: true,
   build: (args) => {
     const dir = str(args, 'dir')
-    if (!dir) throw new Error('asc: `dir` is required for asc_metadata init')
+    if (!dir) throw new Error('asc: `dir` is required for asc metadata-init')
     const argv = ['metadata', 'init', '--dir', dir]
     pushValue(argv, '--version', str(args, 'version'))
     pushValue(argv, '--locale', str(args, 'locale'))
@@ -283,28 +358,13 @@ define({
 })
 
 define({
-  tool: 'asc_metadata',
-  action: 'plan',
-  kind: 'local-write',
-  needsConfirm: true,
-  build: (args, context) => {
-    const dir = str(args, 'dir')
-    if (!dir) throw new Error('asc: `dir` is required for asc_metadata plan')
-    const argv = ['metadata', 'plan', '--app', app(args, context), '--version', required(args, 'version'), '--dir', dir]
-    pushValue(argv, '--platform', str(args, 'platform'))
-    pushValue(argv, '--review-dir', str(args, 'reviewDir'))
-    return argv
-  },
-})
-
-define({
-  tool: 'asc_metadata',
-  action: 'apply',
+  tool: 'asc_apply',
+  action: 'metadata-apply',
   kind: 'write',
   needsConfirm: true,
   build: (args, context) => {
     const dir = str(args, 'dir')
-    if (!dir) throw new Error('asc: `dir` is required for asc_metadata apply')
+    if (!dir) throw new Error('asc: `dir` is required for asc metadata-apply')
     const argv = ['metadata', 'apply', '--app', app(args, context), '--version', required(args, 'version'), '--dir', dir]
     pushValue(argv, '--platform', str(args, 'platform'))
     pushValue(argv, '--review-dir', str(args, 'reviewDir'))
@@ -315,50 +375,7 @@ define({
 })
 
 define({
-  tool: 'asc_metadata',
-  action: 'validate',
-  kind: 'read',
-  build: (args) => {
-    const dir = str(args, 'dir')
-    if (!dir) throw new Error('asc: `dir` is required for asc_metadata validate')
-    return ['metadata', 'validate', '--dir', dir]
-  },
-})
-
-// ---------------------------------------------------------------------------
-// asc_release
-// ---------------------------------------------------------------------------
-
-define({
-  tool: 'asc_release',
-  action: 'status',
-  kind: 'read',
-  long: true,
-  build: (args, context) => {
-    const argv = ['status', '--app', app(args, context)]
-    pushValue(argv, '--platform', str(args, 'platform'))
-    pushValue(argv, '--include', list(args.include).join(',') || undefined)
-    pushValue(argv, '--until', str(args, 'until'))
-    pushValue(argv, '--timeout', str(args, 'timeout'))
-    return argv
-  },
-})
-
-define({
-  tool: 'asc_release',
-  action: 'validate',
-  kind: 'read',
-  build: (args, context) => {
-    const argv = ['validate', '--app', app(args, context)]
-    pushValue(argv, '--version', str(args, 'version'))
-    pushValue(argv, '--platform', str(args, 'platform'))
-    if (flag(args, 'strict')) argv.push('--strict')
-    return argv
-  },
-})
-
-define({
-  tool: 'asc_release',
+  tool: 'asc_apply',
   action: 'stage',
   kind: 'write',
   needsConfirm: true,
@@ -384,7 +401,7 @@ define({
 })
 
 define({
-  tool: 'asc_release',
+  tool: 'asc_apply',
   action: 'publish',
   kind: 'write',
   needsConfirm: true,
@@ -404,12 +421,6 @@ define({
   },
 })
 
-function required(args: ToolArgs, key: string): string {
-  const value = str(args, key)
-  if (!value) throw new Error(`asc: \`${key}\` is required`)
-  return value
-}
-
 const byKey = new Map<string, ActionSpec>()
 for (const spec of specs) byKey.set(spec.action ? `${spec.tool}.${spec.action}` : spec.tool, spec)
 
@@ -427,3 +438,6 @@ export function actionKeys(): string[] {
 export function allSpecs(): readonly ActionSpec[] {
   return specs
 }
+
+/** Tools that expose a registry action. */
+export const ACTION_TOOLS = ['asc_setup', 'asc', 'asc_plan', 'asc_apply'] as const

@@ -84,11 +84,11 @@ describe('command registration', () => {
     const start = await registered[0]?.handler({})
     expect(start?.kind).toBe('success')
     if (start?.kind === 'success') expect(start.text).toContain('Jobs:')
-    expect(diagnose).toHaveBeenCalledWith({ validateAuth: false })
+    expect(diagnose).toHaveBeenCalledWith({ validateAuth: false, checkUpdates: false })
 
     const doctor = await registered[1]?.handler({})
     expect(doctor?.kind).toBe('success')
-    expect(diagnose).toHaveBeenCalledWith({ validateAuth: true })
+    expect(diagnose).toHaveBeenCalledWith({ validateAuth: true, checkUpdates: true })
   })
 
   it('registers nothing when the host has no command service', () => {

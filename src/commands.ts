@@ -73,7 +73,7 @@ export function renderStartCard(report: DiagnoseReport, options: { skills: numbe
     const risk = job.risk === 'write' ? 'write' : 'read'
     lines.push(`  ${String(index + 1).padStart(2)}. ${job.id.padEnd(16)} ${risk.padEnd(5)} ${job.title} — "${job.intent[0]}"`)
   }
-  lines.push('', 'Low-level: asc_setup · asc_search · asc_run · asc_apps · asc_builds · asc_testflight · asc_metadata · asc_release')
+  lines.push('', 'Low-level: asc · asc_plan · asc_apply · asc_setup · asc.run (escape hatch)')
   lines.push('Write jobs need mode: write, confirm: true and host approval. Read jobs run directly.')
   const next = nextLines(report)
   if (next.length > 0) lines.push('', ...next)
@@ -113,7 +113,7 @@ export function registerCommands(ctx: Context, engine: AscEngine): void {
         description: 'App Store Connect: status, capabilities and the next step',
         handler: async () => {
           try {
-            const report = await engine.diagnose({ validateAuth: false })
+            const report = await engine.diagnose({ validateAuth: false, checkUpdates: false })
             return { kind: 'success', text: renderStartCard(report, { skills: BUNDLED_SKILLS.length }) }
           } catch (error) {
             return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
@@ -127,7 +127,7 @@ export function registerCommands(ctx: Context, engine: AscEngine): void {
         description: 'Diagnose asc binary, version, authentication, default app and provisioning',
         handler: async () => {
           try {
-            const report = await engine.diagnose({ validateAuth: true })
+            const report = await engine.diagnose({ validateAuth: true, checkUpdates: true })
             return { kind: 'success', text: renderDoctorCard(report) }
           } catch (error) {
             return { kind: 'error', text: error instanceof Error ? error.message : String(error) }

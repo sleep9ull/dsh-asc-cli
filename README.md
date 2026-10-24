@@ -7,7 +7,7 @@
 `@sleep9ull/dsh-asc-cli` is a DeepSeek Harness **bundle plugin**. It does not reimplement the App Store Connect API — `asc` (a Go binary) remains the execution engine. The plugin turns `asc` into something an agent can use safely and productively:
 
 - **Read-only by default.** Mutations need an explicit `confirm` and a host approval.
-- **Typed, intent-level tools** for the release workflows that matter, with `asc_run` + `asc_search` for the long tail.
+- **An intent-shaped tool surface** (`asc` / `asc_plan` / `asc_apply` / `asc_setup`) plus an `asc.run` escape hatch for the long tail.
 - **Compact, structured results** instead of raw JSON floods.
 - **Works with the official ASC skill pack** (`asc install-skills`), which DeepSeek Harness reads natively.
 
@@ -125,22 +125,21 @@ Commands run directly against the host without creating a model message, and onl
 | `ship-testflight` | write | Uploads an `.ipa`/`.pkg` (waits for processing), extracts the build id, adds it to a TestFlight group (optional beta review) |
 | `stage-release` | write | Validates, then prepares the version (metadata + build) without submitting |
 | `triage-feedback` | read | Aggregates TestFlight feedback, crashes and reviews |
+| `compliance-sweep` | read | Probes age rating, encryption declarations, accessibility and current pricing; failed probes are reported, not fatal |
 
 Write jobs need `mode: write`, `confirm: true` and host approval; pass `dryRun: true` first.
 
 ## Tools
 
+The surface is organised by intent: **read**, **plan**, **apply**, **workflow**, **environment**.
+
 | Tool | Actions | Mutates ASC |
 |---|---|---|
-| `asc_job` | `release-check`, `ship-testflight`, `stage-release`, `triage-feedback` | write jobs only |
+| `asc_job` | `release-check`, `ship-testflight`, `stage-release`, `triage-feedback`, `compliance-sweep` | write jobs only |
+| `asc` | `apps-list`/`apps-view`, `builds-list`/`builds-next-number`, `testflight-feedback`/`-crashes`/`-groups`, `reviews-list`, `metadata-validate`, `discover`, `run` | `run` only, classified per command |
+| `asc_plan` | `validate`, `status`, `metadata-plan` | `metadata-plan` writes a local review artifact |
+| `asc_apply` | `upload`, `groups`, `metadata-init`, `metadata-apply`, `stage`, `publish` | yes (all except none) |
 | `asc_setup` | `version`, `auth-status`, `doctor`, `system-status`, `diagnose`, `provision`, `install-skills` | `provision` writes the plugin cache; `install-skills` writes local files |
-| `asc_search` | — | no |
-| `asc_run` | any `asc` argv | classified per command |
-| `asc_apps` | `list`, `view` | no |
-| `asc_builds` | `list`, `next-number`, `upload`, `add-groups` | `upload`, `add-groups` |
-| `asc_testflight` | `feedback`, `crashes`, `groups` | no |
-| `asc_metadata` | `init`, `validate`, `plan`, `apply` | `apply` (use `dryRun` first) |
-| `asc_release` | `status`, `validate`, `stage`, `publish` | `stage`, `publish` |
 
 Each result is a compact JSON value:
 
@@ -160,10 +159,30 @@ Failures add `errorClass` (`auth`, `state-conflict`, `rate-limit`, `usage`, `mis
 
 `validate` results are projected to `blocking/errors/warnings` plus ordered remediation steps, `status` to `health/nextAction/blockers/nextCommands`, and `metadata` to its counters.
 
+### Migrating from 0.1.3
+
+0.1.4 consolidates the tool surface. Old tools are gone; use the mapping below.
+
+| 0.1.3 | 0.1.4 |
+|---|---|
+| `asc_search` | `asc` action `discover` |
+| `asc_run` | `asc` action `run` |
+| `asc_apps` `list`/`view` | `asc` `apps-list`/`apps-view` |
+| `asc_builds` `list`/`next-number` | `asc` `builds-list`/`builds-next-number` |
+| `asc_builds` `upload`/`add-groups` | `asc_apply` `upload`/`groups` |
+| `asc_testflight` `feedback`/`crashes`/`groups` | `asc` `testflight-feedback`/`-crashes`/`-groups` |
+| `asc_metadata` `validate` | `asc` `metadata-validate` |
+| `asc_metadata` `init`/`plan`/`apply` | `asc_apply` `metadata-init`; `asc_plan` `metadata-plan`; `asc_apply` `metadata-apply` |
+| `asc_release` `status`/`validate`/`stage`/`publish` | `asc_plan` `status`/`validate`; `asc_apply` `stage`/`publish` |
+
+`asc_job` and `asc_setup` keep their names (jobs gain `compliance-sweep`).
+
 ## Safety model
 
 - **Read-only mode (default).** Every call gets `--read-only` and `ASC_READ_ONLY=1`. Mutating actions are refused *before a child process starts*.
 - **Write mode.** Mutations require `confirm: true` **and** (by default) a host approval prompt showing the tool action. The plugin never adds `--confirm` on its own.
+- **Approval exemptions are explicit.** `approvedActions` accepts glob labels (for example `asc_apply.upload` or `asc_apply.*`) to skip the prompt for known actions in write mode. Exemptions never relax read-only mode, `confirm`, or the forbidden list.
+- **Audit trail is opt-in.** Set `auditLog` to a file path and every executed invocation appends one redacted JSONL line (tool, action, argv, mode, confirm, exit code, duration, error class). Approval decisions stay in the DSH session log.
 - **Unknown commands are never silent.** A command the classifier cannot prove read-only is escalated to a human (`ask`, the default) or refused (`unknownCommands: deny`). Write mode additionally requires `confirm: true`; a model-authored `confirm` alone never bypasses the approval prompt.
 - **Local writes need confirmation and approval.** `metadata init`, `metadata plan` (it writes a review artifact), `docs init`, `doctor --fix`, `builds dsyms` and `install-skills` require `confirm: true` and, by default, a host approval prompt.
 - **No value expansion by default.** `asc` expands `@env:NAME` / `@file:PATH` in flag values, which would let a model argument read any local file into the result. The plugin escapes a leading `@` (`@` → `@@`) unless `allowValueExpansion: true`.
@@ -192,20 +211,24 @@ Failures add `errorClass` (`auth`, `state-conflict`, `rate-limit`, `usage`, `mis
 | `allowProvision` | `false` | Allow `asc_setup` action `provision` to download the pinned engine |
 | `cacheDir` | — | Override the provisioned-binary cache (`$DSH_HOME/cache/asc-cli`) |
 | `maxDataBytes` | `8000` | Omit `data` above this JSON size (`dataOmitted` + `dataBytes`) |
+| `auditLog` | — | Append a JSONL audit line per executed invocation |
+| `approvedActions` | `[]` | Glob labels that skip the approval prompt in write mode |
+| `checkUpdates` | `true` | Show the latest asc release in `/asc-doctor` (cached 24h, never auto-upgrades) |
 | `env` | `{}` | Extra environment for `asc` |
 | `defaultAppId` | — | Fallback when a tool call omits `app` |
 
 ## Bundled skills
 
-The package ships five skills (`skills/`), registered through the host skill registry at the bundled rank (600), so a fresh install is enough — no `git`, no global skill directory, no manual `asc install-skills`:
+The package ships six skills (`skills/`), registered through the host skill registry at the bundled rank (600), so a fresh install is enough — no `git`, no global skill directory, no manual `asc install-skills`:
 
 | Skill | Covers |
 |---|---|
-| `dsh-asc-quickstart` | First run, choosing between jobs / typed tools / `asc_run`, reading results and errors |
+| `dsh-asc-quickstart` | First run, choosing between jobs / `asc` / `asc_plan` / `asc_apply` / `asc.run`, reading results and errors |
 | `dsh-asc-auth` | Authentication, profiles, exit 3 / 401 / 403, CI and keychain, key hygiene |
 | `dsh-asc-release-readiness` | Release-check report, remediation ordering, plan/apply, stage vs submit |
 | `dsh-asc-testflight-ship` | Build numbers, upload, processing states, internal vs external groups, recovery |
 | `dsh-asc-feedback-triage` | Feedback/crash grouping, review reply drafts, rate limits, privacy |
+| `dsh-asc-compliance-sweep` | Age rating, encryption, accessibility, pricing; which findings are manual/web-only |
 
 Because bundled rank is the lowest priority, a user-installed upstream pack wins same-named skills. To add the official 25-skill pack anyway:
 
@@ -235,7 +258,8 @@ Provisioning never runs implicitly: it needs `allowProvision: true`, an explicit
 
 - All command shapes live in one registry (`src/registry.ts`).
 - Every command is passed through `asc --help` in a contract test (`scripts/contract.mjs`), so a renamed command or flag fails CI instead of failing at runtime. The test validates command and flag *names*; flag values and combinations are covered by unit tests.
-- The generic `asc_search` / `asc_run` tools keep new upstream commands usable without a plugin release. Commands that reject `--output` are retried once without it, and unrecognized commands are escalated to a human instead of being refused silently.
+- `asc` action `discover` (upstream `asc search`) and `run` (any argv) keep new upstream commands usable without a plugin release. Commands that reject `--output` are retried once without it, and unrecognized commands are escalated to a human instead of being refused silently.
+- `/asc-doctor` compares the installed engine with the latest upstream release (24h cache) and suggests an upgrade; the plugin never upgrades by itself.
 - `engines.dsh` and peer dependency ranges pin the DSH contract.
 - `/asc-doctor` compares the installed engine with the tested range and suggests either `brew upgrade asc` or a pinned `provision`; it never upgrades silently.
 

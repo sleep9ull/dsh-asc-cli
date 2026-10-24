@@ -52,6 +52,12 @@ export interface Config {
   cacheDir?: string
   /** Omit `data` from a result when its JSON exceeds this many bytes. */
   maxDataBytes: number
+  /** Append one JSONL audit line per executed asc invocation (off when unset). */
+  auditLog?: string
+  /** Approval-exemption patterns (glob labels such as `asc_apply.upload`). */
+  approvedActions: string[]
+  /** Check GitHub for a newer asc release in /asc-doctor (cached for 24h). */
+  checkUpdates: boolean
   /** Extra environment entries layered onto the scrubbed parent environment. */
   env: Record<string, string>
   /** Default App Store Connect app id when a tool call omits `app`. */
@@ -74,6 +80,9 @@ export const Config: Schema<Config> = Schema.object({
   allowProvision: Schema.boolean().default(false),
   cacheDir: Schema.string(),
   maxDataBytes: Schema.number().default(8_000),
+  auditLog: Schema.string(),
+  approvedActions: Schema.array(Schema.string()).default([]),
+  checkUpdates: Schema.boolean().default(true),
   env: Schema.dict(Schema.string()).default({}),
   defaultAppId: Schema.string(),
 })

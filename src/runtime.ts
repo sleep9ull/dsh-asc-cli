@@ -5,6 +5,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { AuditFn } from './audit.js'
 import type { Config } from './config.js'
 import { classifyArgv } from './classify.js'
 import { execAsc, globalFlags, type AscExecOutcome, type SpawnFn } from './exec.js'
@@ -37,8 +38,33 @@ function defaultSpawn(ctx: Context): SpawnFn {
 }
 
 /** Build the shared runtime once per plugin instance. */
-export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn): AscRuntime {
+export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, audit: AuditFn = () => undefined): AscRuntime {
   const spawnFn = spawn ?? defaultSpawn(ctx)
+
+  function record(
+    tool: string,
+    action: string | undefined,
+    kind: string,
+    argv: readonly string[],
+    cwd: string,
+    confirm: boolean,
+    result: AscToolResult,
+  ): void {
+    audit({
+      ts: new Date().toISOString(),
+      tool,
+      ...(action === undefined ? {} : { action }),
+      kind,
+      argv,
+      cwd,
+      mode: config.mode,
+      confirm,
+      ok: result.ok,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+      ...(result.errorClass === undefined ? {} : { errorClass: result.errorClass }),
+    })
+  }
 
   function cwdFor(exec: ToolRunContext): string {
     if (config.workdir) return config.workdir
@@ -63,26 +89,26 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn): As
   ): Promise<AscToolResult> {
     const kind = classifyArgv(argv)
     if (kind === 'forbidden') {
-      throw new Error(`asc_run refuses \`asc ${argv.join(' ')}\`: authentication and web-session commands are not exposed.`)
+      throw new Error(`asc.run refuses \`asc ${argv.join(' ')}\`: authentication and web-session commands are not exposed.`)
     }
     if (kind === 'write' && config.mode === 'read-only') {
       throw new Error(
-        `asc_run refuses \`asc ${argv.join(' ')}\`: it mutates App Store Connect and the plugin is in read-only mode.`,
+        `asc.run refuses \`asc ${argv.join(' ')}\`: it mutates App Store Connect and the plugin is in read-only mode.`,
       )
     }
     if (kind === 'unknown' && config.mode === 'read-only' && config.unknownCommands === 'deny') {
       throw new Error(
-        `asc_run refuses \`asc ${argv.join(' ')}\`: it cannot be proven read-only and \`unknownCommands\` is \`deny\`.`,
+        `asc.run refuses \`asc ${argv.join(' ')}\`: it cannot be proven read-only and \`unknownCommands\` is \`deny\`.`,
       )
     }
     if ((kind === 'write' || kind === 'unknown') && config.mode === 'write' && !options.confirm) {
       throw new Error(
-        `asc_run refuses \`asc ${argv.join(' ')}\`: it may mutate state and needs an explicit \`confirm: true\` after the user agrees.`,
+        `asc.run refuses \`asc ${argv.join(' ')}\`: it may mutate state and needs an explicit \`confirm: true\` after the user agrees.`,
       )
     }
     if (kind === 'local-write' && !options.confirm) {
       throw new Error(
-        `asc_run refuses \`asc ${argv.join(' ')}\`: it writes local files and needs an explicit \`confirm: true\` after the user agrees.`,
+        `asc.run refuses \`asc ${argv.join(' ')}\`: it writes local files and needs an explicit \`confirm: true\` after the user agrees.`,
       )
     }
     const timeoutMs = options.timeoutMs ?? (kind === 'read' ? config.timeoutMs : config.longTimeoutMs)
@@ -116,7 +142,24 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn): As
         spawnFn,
       )
     }
-    return formatResult(outcome, describeCommand(config, argv, withOutput), { maxDataBytes: config.maxDataBytes })
+    const formatted = formatResult(outcome, describeCommand(config, argv, withOutput), {
+      maxDataBytes: config.maxDataBytes,
+    })
+    audit({
+      ts: new Date().toISOString(),
+      tool: 'asc',
+      action: 'run',
+      kind,
+      argv,
+      cwd: options.cwd ?? cwdFor(exec),
+      mode: config.mode,
+      confirm: options.confirm,
+      ok: formatted.ok,
+      exitCode: formatted.exitCode,
+      durationMs: formatted.durationMs,
+      ...(formatted.errorClass === undefined ? {} : { errorClass: formatted.errorClass }),
+    })
+    return formatted
   }
 
   async function runAction(
@@ -144,7 +187,11 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn): As
       },
       spawnFn,
     )
-    return formatResult(outcome, describeCommand(config, argv, spec.output !== false), { maxDataBytes: config.maxDataBytes })
+    const formatted = formatResult(outcome, describeCommand(config, argv, spec.output !== false), {
+      maxDataBytes: config.maxDataBytes,
+    })
+    record(tool, action, spec.kind, argv, cwd, args.confirm === true, formatted)
+    return formatted
   }
 
   return { ctx, config, spawn: spawnFn, cwdFor, runAction, runArgv }

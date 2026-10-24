@@ -83,6 +83,10 @@ export function redact(text: string): string {
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[redacted private key]')
     .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '[redacted token]')
     .replace(/((?:password|secret|api[_-]?key|private[_-]?key)\s*[=:]\s*)\S+/gi, '$1[redacted]')
+    .replace(
+      /((?:--?|\b)(?:password|passwd|token|secret|api[_-]?key|private[_-]?key|authorization)\s+)(?!\[redacted\])\S+/gi,
+      '$1[redacted]',
+    )
 }
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647

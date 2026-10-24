@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decideCall, inspectCall } from '../src/approval.js'
+import { decideCall, inspectCall, matchesApprovedAction } from '../src/approval.js'
 import { makeConfig } from './helpers.js'
 
 describe('approval policy', () => {
@@ -8,12 +8,12 @@ describe('approval policy', () => {
   })
 
   it('allows read-only actions in read-only mode', () => {
-    expect(decideCall(makeConfig(), 'asc_apps', { action: 'list' })).toBeUndefined()
-    expect(decideCall(makeConfig(), 'asc_search', { query: 'builds' })).toBeUndefined()
+    expect(decideCall(makeConfig(), 'asc', { action: 'apps-list' })).toBeUndefined()
+    expect(decideCall(makeConfig(), 'asc', { action: 'discover', query: 'builds' })).toBeUndefined()
   })
 
   it('refuses mutations in read-only mode before any process starts', () => {
-    const decision = decideCall(makeConfig(), 'asc_builds', {
+    const decision = decideCall(makeConfig(), 'asc_apply', {
       action: 'upload',
       file: 'App.ipa',
       confirm: true,
@@ -27,7 +27,7 @@ describe('approval policy', () => {
 
   it('requires confirm for mutations in write mode', () => {
     const config = makeConfig({ mode: 'write' })
-    const decision = decideCall(config, 'asc_builds', { action: 'upload', file: 'App.ipa' })
+    const decision = decideCall(config, 'asc_apply', { action: 'upload', file: 'App.ipa' })
     expect(decision?.kind).toBe('deny')
     if (decision?.kind === 'deny') {
       expect(decision.reason).toMatch(/confirm: true/)
@@ -37,8 +37,8 @@ describe('approval policy', () => {
 
   it('asks for approval for confirmed mutations in write mode', () => {
     const config = makeConfig({ mode: 'write' })
-    const decision = decideCall(config, 'asc_metadata', {
-      action: 'apply',
+    const decision = decideCall(config, 'asc_apply', {
+      action: 'metadata-apply',
       version: '1.0.0',
       dir: './metadata',
       confirm: true,
@@ -52,57 +52,69 @@ describe('approval policy', () => {
 
   it('can skip the approval prompt when requireApproval is false', () => {
     const config = makeConfig({ mode: 'write', requireApproval: false })
-    expect(decideCall(config, 'asc_apps', { action: 'view', confirm: true })).toBeUndefined()
+    expect(decideCall(config, 'asc', { action: 'apps-view', confirm: true })).toBeUndefined()
     expect(
-      decideCall(config, 'asc_builds', { action: 'upload', file: 'App.ipa', confirm: true }),
+      decideCall(config, 'asc_apply', { action: 'upload', file: 'App.ipa', confirm: true }),
     ).toBeUndefined()
   })
 
   it('classifies asc_run dynamically', () => {
     const config = makeConfig()
-    expect(inspectCall('asc_run', { args: ['apps', 'list'] })?.kind).toBe('read')
-    expect(inspectCall('asc_run', { args: ['builds', 'upload'] })?.kind).toBe('write')
-    expect(inspectCall('asc_run', { args: ['auth', 'login'] })?.kind).toBe('forbidden')
-    expect(inspectCall('asc_run', { args: ['something', 'odd'] })?.kind).toBe('unknown')
+    const run = (args: string[]) => inspectCall('asc', { action: 'run', args })?.kind
+    expect(run(['apps', 'list'])).toBe('read')
+    expect(run(['builds', 'upload'])).toBe('write')
+    expect(run(['auth', 'login'])).toBe('forbidden')
+    expect(run(['something', 'odd'])).toBe('unknown')
 
-    const readOnly = decideCall(config, 'asc_run', { args: ['builds', 'upload'], confirm: true })
+    const readOnly = decideCall(config, 'asc', { action: 'run', args: ['builds', 'upload'], confirm: true })
     expect(readOnly?.kind).toBe('deny')
 
     const write = makeConfig({ mode: 'write' })
-    expect(decideCall(write, 'asc_run', { args: ['builds', 'upload'], confirm: true })?.kind).toBe('ask')
-    expect(decideCall(write, 'asc_run', { args: ['builds', 'upload'] })?.kind).toBe('deny')
-    expect(decideCall(write, 'asc_run', { args: ['apps', 'list'] })).toBeUndefined()
+    expect(decideCall(write, 'asc', { action: 'run', args: ['builds', 'upload'], confirm: true })?.kind).toBe('ask')
+    expect(decideCall(write, 'asc', { action: 'run', args: ['builds', 'upload'] })?.kind).toBe('deny')
+    expect(decideCall(write, 'asc', { action: 'run', args: ['apps', 'list'] })).toBeUndefined()
   })
 
   it('never lets an unrecognized write command run on the model confirm alone', () => {
     const write = makeConfig({ mode: 'write' })
     // The model says confirm: true; a human must still approve.
-    expect(decideCall(write, 'asc_run', { args: ['users', 'invite', '--email', 'x@y.z'], confirm: true })?.kind).toBe(
-      'ask',
-    )
-    expect(decideCall(write, 'asc_run', { args: ['users', 'invite'], confirm: false })?.kind).toBe('deny')
+    expect(
+      decideCall(write, 'asc', { action: 'run', args: ['users', 'invite', '--email', 'x@y.z'], confirm: true })?.kind,
+    ).toBe('ask')
+    expect(decideCall(write, 'asc', { action: 'run', args: ['users', 'invite'], confirm: false })?.kind).toBe('deny')
   })
 
   it('asks before running an unrecognized command in read-only mode', () => {
-    const decision = decideCall(makeConfig(), 'asc_run', { args: ['account', 'status'] })
+    const decision = decideCall(makeConfig(), 'asc', { action: 'run', args: ['frobnicate', 'now'] })
     expect(decision?.kind).toBe('ask')
     if (decision?.kind === 'ask') expect(decision.reason).toMatch(/cannot be proven read-only/)
   })
 
   it('can refuse unrecognized commands outright in read-only mode', () => {
-    const decision = decideCall(makeConfig({ unknownCommands: 'deny' }), 'asc_run', { args: ['account', 'status'] })
+    const decision = decideCall(makeConfig({ unknownCommands: 'deny' }), 'asc', {
+      action: 'run',
+      args: ['frobnicate', 'now'],
+    })
     expect(decision?.kind).toBe('deny')
     if (decision?.kind === 'deny') expect(decision.info.code).toBe('ASC_UNKNOWN_COMMAND')
   })
 
   it('requires confirm for local-only writes', () => {
-    const missing = decideCall(makeConfig(), 'asc_metadata', { action: 'init', dir: './metadata' })
+    const missing = decideCall(makeConfig(), 'asc_apply', { action: 'metadata-init', dir: './metadata' })
     expect(missing?.kind).toBe('deny')
     if (missing?.kind === 'deny') expect(missing.info.code).toBe('ASC_CONFIRM_REQUIRED')
-    const confirmed = decideCall(makeConfig(), 'asc_metadata', { action: 'init', dir: './metadata', confirm: true })
+    const confirmed = decideCall(makeConfig(), 'asc_apply', {
+      action: 'metadata-init',
+      dir: './metadata',
+      confirm: true,
+    })
     expect(confirmed?.kind).toBe('ask')
     expect(
-      decideCall(makeConfig({ requireApproval: false }), 'asc_metadata', { action: 'init', dir: './metadata', confirm: true }),
+      decideCall(makeConfig({ requireApproval: false }), 'asc_apply', {
+        action: 'metadata-init',
+        dir: './metadata',
+        confirm: true,
+      }),
     ).toBeUndefined()
   })
 
@@ -117,7 +129,7 @@ describe('approval policy', () => {
   })
 
   it('refuses unknown actions', () => {
-    expect(decideCall(makeConfig(), 'asc_apps', { action: 'delete-everything' })?.kind).toBe('deny')
+    expect(decideCall(makeConfig(), 'asc', { action: 'delete-everything' })?.kind).toBe('deny')
   })
 })
 
@@ -141,5 +153,23 @@ describe('job and engine policy', () => {
     expect(decideCall(makeConfig(), 'asc_setup', { action: 'provision' })?.kind).toBe('deny')
     const decided = decideCall(makeConfig(), 'asc_setup', { action: 'provision', confirm: true })
     expect(decided?.kind).toBe('ask')
+  })
+})
+
+describe('approval exemptions', () => {
+  it('matches labelled glob patterns only', () => {
+    expect(matchesApprovedAction(['asc_apply.upload'], 'asc_apply.upload')).toBe(true)
+    expect(matchesApprovedAction(['asc_apply.*'], 'asc_apply.stage')).toBe(true)
+    expect(matchesApprovedAction(['asc_apply.*'], 'asc.run: asc users invite')).toBe(false)
+    expect(matchesApprovedAction(['', '  '], 'asc_apply.upload')).toBe(false)
+    expect(matchesApprovedAction(['asc_apply.uploa'], 'asc_apply.upload')).toBe(false)
+  })
+
+  it('skips the prompt for an exempt write but still requires confirm and write mode', () => {
+    const config = makeConfig({ mode: 'write', approvedActions: ['asc_apply.upload'] })
+    expect(decideCall(config, 'asc_apply', { action: 'upload', file: 'a.ipa', confirm: true })).toBeUndefined()
+    expect(decideCall(config, 'asc_apply', { action: 'upload', file: 'a.ipa' })?.kind).toBe('deny')
+    const readOnly = makeConfig({ approvedActions: ['asc_apply.upload'] })
+    expect(decideCall(readOnly, 'asc_apply', { action: 'upload', file: 'a.ipa', confirm: true })?.kind).toBe('deny')
   })
 })
