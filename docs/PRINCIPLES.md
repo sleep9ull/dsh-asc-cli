@@ -9,6 +9,7 @@
 ## 0. 怎么用这份文件
 
 - **改代码前**：先读 §2（能力契约）与 §3（安全契约），确认改动落在既有边界内；超出边界先读 §4.3 的决策树。
+- **做新功能前**：读 [`SPEC.md`](./SPEC.md) 与模板 [`specs/000-template.md`](./specs/000-template.md)，按 spec-first 流程先写 spec、对齐后再改代码。
 - **改契约前**：读 §8。不可变原则不允许静默放宽。
 - **写文档/做叙事前**：读 §1 与 §4，避免承诺产品不打算做的东西。
 - 本文件是契约，随版本演进；§3 的 I1–I10 是**不可变**部分，§6 的路线是**可变**部分。
@@ -43,7 +44,7 @@
 
 | 工具 | 职责 | action | 形态 |
 |---|---|---|---|
-| `asc` | 读 + 逃生舱 | `apps-list` `apps-view` `builds-list` `builds-next-number` `testflight-feedback` `testflight-crashes` `testflight-groups` `reviews-list` `metadata-validate` `discover` `run` | 前 10 个是 read（`discover` 单列）；`run` 按分类器实时判定 |
+| `asc` | 读 + 逃生舱 | `apps-list` `apps-view` `builds-list` `builds-next-number` `testflight-feedback` `testflight-crashes` `testflight-groups` `reviews-list` `metadata-validate` `discover` `run` | 9 个 typed read + `discover`；`run` 按分类器实时判定 |
 | `asc_plan` | 只读计划 | `validate` `status` `metadata-plan` | 2 read + 1 local-write |
 | `asc_apply` | 全部变更 | `upload` `groups` `metadata-init` `metadata-apply` `stage` `publish` | 5 write + 1 local-write |
 | `asc_job` | 工作流 | 5 个 job（见 §2.3） | read / write 由 job 声明 |
@@ -213,7 +214,7 @@
 | 版本 | 主题 | 核心工作 | 退出条件 |
 |---|---|---|---|
 | **0.1.2–0.1.4** | Fix → Know → Consolidate | 2 个 P0、engine manager、5 jobs、6 skills、2 commands、审计、工具面收敛 | ✅ 已完成（144 tests / contract 23/23） |
-| **v0.2.0「Prove」** | 补证据 | 契约值/组合测试、P2-1..5 参数守卫、`--exclude-expired` 透传、工具端到端测试、smoke 断言、search/system-status projector、错误分类与脱敏补全、README 失真修正 | 新测试全绿；contract 覆盖 flag 值/组合；工具覆盖率门槛入 CI |
+| **v0.2.0「Prove」** | 补证据 | 契约值/组合测试、P2-1..5 参数守卫、工具端到端测试、smoke 断言、search/system-status projector、错误分类与脱敏补全 | 新测试全绿；contract 覆盖 flag 值/组合；工具覆盖率门槛入 CI |
 | **v0.3.0「Orchestrate」** | 让 job 可重放 | job 幂等与失败恢复、审计报告化 + 审批结果关联、能力快照、审批记忆 | 重跑不产生重复副作用；审计可按 app/时间聚合 |
 | **v0.4.0「Govern」** | 让团队敢用 | 多 app/profile 路由、policy as code、不可逆操作影响面、CI 模式（`--report junit`）、跨 app 看板 | 团队场景可审计、可策略化；CI 确定性退出码 |
 | **v1.0「Platform」** | 稳定契约 | 公开兼容矩阵、contract 覆盖 100%、文档站、与官方 skill pack 协作声明、上游 DSH 集成 | 契约可被第三方依赖 |
@@ -228,7 +229,7 @@
 
 ```bash
 npm run typecheck
-npm test                          # 基线 144 tests / 11 文件
+npm test                          # 全绿（0.1.4 基线：144 tests / 11 文件）
 node scripts/contract.mjs ./vendor/asc   # 23 个注册命令；需 vendor/asc
 npm run build
 ```
@@ -248,6 +249,7 @@ CI：node 22/24 的 typecheck + test + build；独立 contract job；每日 `ups
 3. **删除/改名**：契约段落可随版本重写，但不得让历史决策失去依据——历史原因留在 `docs/ASSESSMENT.md` 与 `03-plugin-audit.md`。
 4. **文档语言**：本文件与 `docs/` 设计文档用中文；对外 README/CHANGELOG 用英文（README.zh 同步）；代码注释用英文。
 5. **失真即缺陷**：README/信息面板承诺的能力必须能被代码或测试证实；发现不一致按 P2 缺陷处理（如当前 README 的 "never adds `--confirm`" 与实现不符）。
+6. **契约级变更先有 spec**：修改本文件或 §2/§3 的任何条目，必须先按 [`SPEC.md`](./SPEC.md) 写 spec 并评审；spec 与本节冲突时以本节为准。
 
 ### 8.1 修订记录
 
