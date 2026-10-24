@@ -38,6 +38,10 @@ export function defineActionTool<S extends ParameterSchemaSpec>(
     output: {
       schema: RESULT_SCHEMA,
       render: (_args, value) => renderResult(value as unknown as AscToolResult),
+      presentationMeta: (_args, value) => {
+        const result = value as unknown as AscToolResult
+        return { ok: result.ok, exitCode: result.exitCode }
+      },
     },
     presentCall: (args) => {
       const action = (args as { action?: unknown }).action
@@ -45,11 +49,14 @@ export function defineActionTool<S extends ParameterSchemaSpec>(
       return { card: 'terminal', title: `${name}${suffix}`, description: 'App Store Connect CLI' }
     },
     presentResult: (_args, result) => {
-      const value = result.content
+      const meta = (result.meta ?? {}) as { ok?: unknown; exitCode?: unknown }
+      const ok = typeof meta.ok === 'boolean' ? meta.ok : !result.isError
+      const exitCode = ok ? 0 : typeof meta.exitCode === 'number' ? meta.exitCode : 1
+      const output = result.content
         .map((block) => (block.type === 'text' ? block.text : ''))
         .filter(Boolean)
         .join('\n')
-      return { card: 'terminal', title: name, output: value, exitCode: result.isError ? 1 : 0 }
+      return { card: 'terminal', title: name, output, exitCode }
     },
     async execute(args, exec) {
       const action = (args as { action?: unknown }).action

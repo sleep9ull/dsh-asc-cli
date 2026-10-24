@@ -156,3 +156,69 @@ describe('exec protocol', () => {
     expect(result.stderr).toContain('ENOENT')
   })
 })
+
+describe('value expansion guard', () => {
+  it('escapes asc @env:/@file: expansion by default', () => {
+    const config = makeConfig()
+    const request = { argv: ['metadata', 'validate', '--dir', '@file:/etc/hosts'], cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096 }
+    const spec = buildSpawnSpec(config, request, new AbortController().signal)
+    expect(spec.argv).toContain('@@file:/etc/hosts')
+    expect(spec.argv).not.toContain('@file:/etc/hosts')
+  })
+
+  it('leaves literal values alone when expansion is enabled', () => {
+    const config = makeConfig({ allowValueExpansion: true })
+    const request = { argv: ['metadata', 'validate', '--dir', '@file:/etc/hosts'], cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096 }
+    const spec = buildSpawnSpec(config, request, new AbortController().signal)
+    expect(spec.argv).toContain('@file:/etc/hosts')
+  })
+
+  it('never rewrites flags or already escaped values', () => {
+    const config = makeConfig()
+    const request = { argv: ['apps', 'list', '--name', 'a@b.com', '--sort', '@@literal'], cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096 }
+    const spec = buildSpawnSpec(config, request, new AbortController().signal)
+    expect(spec.argv).toContain('a@b.com')
+    expect(spec.argv).toContain('@@literal')
+  })
+
+  it('escapes the value side of --flag=@file:... too', () => {
+    const config = makeConfig()
+    const request = { argv: ['metadata', 'validate', '--dir=@file:/etc/hosts'], cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096 }
+    const spec = buildSpawnSpec(config, request, new AbortController().signal)
+    expect(spec.argv).toContain('--dir=@@file:/etc/hosts')
+  })
+})
+
+describe('authentication environment', () => {
+  it('forwards asc credential variables the harness would scrub', () => {
+    vi.stubEnv('ASC_KEY_ID', 'KEY123')
+    vi.stubEnv('ASC_ISSUER_ID', 'ISS456')
+    try {
+      const env = childEnv(makeConfig())
+      expect(env.ASC_KEY_ID).toBe('KEY123')
+      expect(env.ASC_ISSUER_ID).toBe('ISS456')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('removes an ambient ASC_READ_ONLY in write mode', () => {
+    vi.stubEnv('ASC_READ_ONLY', '1')
+    try {
+      const env = childEnv(makeConfig({ mode: 'write' }))
+      expect(env.ASC_READ_ONLY).toBeUndefined()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('lets explicit config env win over the forwarded value', () => {
+    vi.stubEnv('ASC_KEY_ID', 'FROM_PARENT')
+    try {
+      const env = childEnv(makeConfig({ env: { ASC_KEY_ID: 'FROM_CONFIG' } }))
+      expect(env.ASC_KEY_ID).toBe('FROM_CONFIG')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})

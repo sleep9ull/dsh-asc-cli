@@ -136,3 +136,24 @@ describe('command registry', () => {
     expect(() => build('asc_metadata', 'apply', { version: '1.0.0' })).toThrow(/dir/)
   })
 })
+
+describe('v0.1.2 safety contract', () => {
+  it('requires confirm for every local-write action', () => {
+    expect(specFor('asc_metadata', 'init')?.kind).toBe('local-write')
+    expect(specFor('asc_metadata', 'init')?.needsConfirm).toBe(true)
+    expect(specFor('asc_metadata', 'plan')?.kind).toBe('local-write')
+    expect(specFor('asc_metadata', 'plan')?.needsConfirm).toBe(true)
+    expect(specFor('asc_setup', 'install-skills')?.needsConfirm).toBe(true)
+  })
+
+  it('passes --platform to release stage', () => {
+    const argv = build('asc_release', 'stage', {
+      version: '1.2.3',
+      buildId: 'b1',
+      platform: 'MAC_OS',
+      confirm: true,
+    })
+    expect(argv).toContain('--platform')
+    expect(argv[argv.indexOf('--platform') + 1]).toBe('MAC_OS')
+  })
+})

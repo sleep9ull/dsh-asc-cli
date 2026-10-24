@@ -38,7 +38,7 @@ dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
 
 # 本地 checkout / tarball
 npm run build && npm pack
-dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.1.tgz
+dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.2.tgz
 ```
 
 重启或重新加载 profile。从内置模板创建的 profile 在**首次启动**时可能会生成模板自带的用户 patch 文件，因此请在首次启动之后再编辑 `cordis.patch.yml`（或直接用 `--patch` overlay）。默认插入一行配置：
@@ -73,7 +73,7 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.1.tgz
 | `asc_apps` | `list` / `view` | 否 |
 | `asc_builds` | `list` / `next-number` / `upload` / `add-groups` | `upload` / `add-groups` |
 | `asc_testflight` | `feedback` / `crashes` / `groups` | 否 |
-| `asc_metadata` | `init` / `validate` / `plan` / `apply` | `apply`（先 `dryRun`） |
+| `asc_metadata` | `init` / `validate` / `plan` / `apply` | `apply`（先 `dryRun`）；`init`/`plan` 需 `confirm`（写本地文件） |
 | `asc_release` | `status` / `validate` / `stage` / `publish` | `stage` / `publish` |
 
 结果统一为紧凑 JSON：`ok`、`exitCode`、`command`、`durationMs`、`summary`、`data`、`errorClass`、`hint`、`spillPath` 等。错误会翻译成下一步动作；超限输出写入 spill 文件。
@@ -82,6 +82,10 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.1.tgz
 
 - **只读模式（默认）**：每次调用带 `--read-only` + `ASC_READ_ONLY=1`；写操作在**启动子进程之前**被拒绝。
 - **写模式**：写操作需要 `confirm: true`，默认还会弹出宿主审批；插件从不自动加 `--confirm`。
+- **未知命令不会被静默放行**：分类器无法确认只读的命令，默认升级为人工审批（`ask`），或按配置直接拒绝（`unknownCommands: deny`）；写模式下还额外要求 `confirm`，模型自己填的 `confirm` 不能替代宿主审批。
+- **本地写需要确认 + 审批**：`metadata init`、`metadata plan`（写 review artifact）、`docs init`、`doctor --fix`、`builds dsyms`、`install-skills` 均需 `confirm: true`，默认还会弹出宿主审批。
+- **默认关闭值展开**：`asc` 会把 flag 值里的 `@env:NAME` / `@file:PATH` 展开成环境变量/文件内容，可能导致任意本地文件被读进结果。插件默认把行首 `@` 转义为 `@@`，只有显式开启 `allowValueExpansion` 才放行。
+- **凭据不进入模型**：为避免宿主清洗 `*KEY*` 变量导致环境认证失效，插件会显式转发 `ASC_KEY_ID` / `ASC_ISSUER_ID` / `ASC_PRIVATE_KEY_PATH` / `ASC_PRIVATE_KEY`，但从不读取、保存或打印密钥内容；登录请在终端执行 `asc auth login`。
 - **永久拒绝**：`auth login/logout`、web session 命令、交互式命令、携带私钥内容的参数。
 - **无 shell**：argv 数组直传；stderr 做私钥/JWT/密码脱敏；默认关闭 telemetry。
 
@@ -99,18 +103,20 @@ dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-0.1.1.tgz
 | `workdir` | — | 覆盖会话工作目录 |
 | `bypassKeychain` | `false` | 设置 `ASC_BYPASS_KEYCHAIN=1` |
 | `telemetryDisabled` | `true` | 设置 `ASC_TELEMETRY_DISABLED=1` |
+| `allowValueExpansion` | `false` | 允许 `asc` 的 `@env:` / `@file:` 值展开 |
+| `unknownCommands` | `"ask"` | 无法确认只读时：`ask` 或 `deny` |
 | `env` | `{}` | 传给 `asc` 的额外环境变量 |
 | `defaultAppId` | — | 省略 `app` 参数时的默认 App |
 
 ## 技能包
 
-在会话里让模型调用 `asc_setup` 的 `install-skills`，或自己运行 `asc install-skills`。DSH 会从 `~/.claude/skills`、`~/.agents/skills`、`~/.dsh/skills` 和项目 `.dsh/skills` 读取 `SKILL.md`；安装后新建会话即可看到 ASC 技能。
+在会话里让模型调用 `asc_setup` 的 `install-skills`，或自己运行 `asc install-skills`。DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`、`customSkillDirs`、`~/.dsh/skills`、`~/.agents/skills` 和 `$DSH_BUNDLED_SKILL_DIR`（优先级 100 → 600），**不扫描 `~/.claude/skills`**；`asc install-skills` 写入 `~/.agents/skills`，DSH 可直接读取，安装后新建会话即可看到 ASC 技能。
 
 ## 上游更新怎么跟
 
 - 所有命令形状集中在 `src/registry.ts`，升级只改一张表 + fixture。
-- `scripts/contract.mjs` 用真实 `asc` 对每个命令跑 `--help`，命令/flag 改名会 CI 失败。
-- `asc_search` / `asc_run` 保证上游新命令无需插件发版即可使用。
+- `scripts/contract.mjs` 用真实 `asc` 对每个命令跑 `--help`，命令/flag 改名会 CI 失败（只校验名称；值与组合由单元测试覆盖）。
+- `asc_search` / `asc_run` 保证上游新命令无需插件发版即可使用：不支持 `--output` 的命令会自动重试一次，无法确认只读的命令会转人工审批而不是静默拒绝。
 - 每日 upstream-watch 工作流巡检最新 release，漂移时开 issue。
 
 ## 开发

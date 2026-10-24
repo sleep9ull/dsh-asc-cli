@@ -148,6 +148,10 @@ function isFlag(token: string): boolean {
   return token.startsWith('-')
 }
 
+function hasFlag(argv: readonly string[], flag: string): boolean {
+  return argv.includes(flag)
+}
+
 /** Classify one arbitrary `asc` invocation. */
 export function classifyArgv(argv: readonly string[]): ActionKind {
   if (argv.length === 0) return 'unknown'
@@ -157,8 +161,20 @@ export function classifyArgv(argv: readonly string[]): ActionKind {
 
   if (root === 'auth') {
     const sub = argv[1]
-    if (sub === 'status' || sub === 'doctor') return 'read'
+    if (sub === 'status') return 'read'
+    // `auth doctor` only inspects; `--fix` rewrites local credential config.
+    if (sub === 'doctor') return hasFlag(argv, '--fix') ? 'local-write' : 'read'
     return 'forbidden'
+  }
+
+  if (root === 'doctor') {
+    // `asc doctor --fix` repairs local keychain/config state.
+    return hasFlag(argv, '--fix') ? 'local-write' : 'read'
+  }
+
+  if (root === 'docs') {
+    // `docs init` writes ASC.md and may update AGENTS.md/CLAUDE.md.
+    return argv[1] === 'init' ? 'local-write' : 'read'
   }
 
   if (root === 'api') {
@@ -182,8 +198,9 @@ export function classifyArgv(argv: readonly string[]): ActionKind {
 
   if (root === 'metadata') {
     const sub = argv[1]
-    if (sub === 'init' || sub === 'pull') return 'local-write'
-    if (sub === 'plan' || sub === 'validate' || sub === 'status') return 'read'
+    // `plan` is read-only against App Store Connect but writes a review artifact.
+    if (sub === 'init' || sub === 'pull' || sub === 'plan') return 'local-write'
+    if (sub === 'validate' || sub === 'status') return 'read'
     return 'write'
   }
 

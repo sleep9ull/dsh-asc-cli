@@ -7,9 +7,9 @@ import type { AscRuntime } from '../runtime.js'
 import { defineActionTool } from './common.js'
 
 const DESCRIPTION = `Manage App Store metadata from canonical JSON files. Actions:
-- init: scaffold metadata template files in a directory (writes local files only).
+- init: scaffold metadata template files in a directory (writes local files; requires confirm and approval).
 - validate: validate canonical files offline (read-only).
-- plan: compute a deterministic change plan and write a review artifact (read-only; this is the default before any apply).
+- plan: compute a deterministic change plan and write a review artifact (writes the review artifact locally; requires confirm and approval; this is the default before any apply).
 - apply: apply canonical files to App Store Connect. Pass dryRun for a preview; a real apply requires confirm and approval.
 Always plan or dry-run first, show the user the diff, then apply with confirm.`
 

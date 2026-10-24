@@ -17,9 +17,11 @@ describe('classifyArgv', () => {
     ['version'],
     ['doctor'],
     ['auth', 'status', '--validate'],
+    ['auth', 'doctor'],
     ['api', 'GET', '/v1/apps'],
-    ['metadata', 'plan', '--app', '1', '--version', '1.2.3', '--dir', './metadata'],
     ['workflow', 'validate'],
+    ['docs', 'list'],
+    ['docs', 'show', 'api-notes'],
   ]
 
   it.each(read)('treats %j as read-only', (...argv) => {
@@ -45,10 +47,17 @@ describe('classifyArgv', () => {
 
   it('classifies local-only writes separately', () => {
     expect(classifyArgv(['metadata', 'init', '--dir', './metadata'])).toBe('local-write')
+    expect(classifyArgv(['metadata', 'plan', '--app', '1', '--version', '1.2.3', '--dir', './metadata'])).toBe(
+      'local-write',
+    )
     expect(classifyArgv(['metadata', 'pull', '--app', '1', '--version', '1.0', '--dir', '.'])).toBe('local-write')
     expect(classifyArgv(['builds', 'dsyms', '--build-id', 'b', '--output-dir', './dsyms'])).toBe(
       'local-write',
     )
+    expect(classifyArgv(['docs', 'init'])).toBe('local-write')
+    expect(classifyArgv(['doctor', '--fix'])).toBe('local-write')
+    expect(classifyArgv(['auth', 'doctor', '--fix'])).toBe('local-write')
+    expect(classifyArgv(['install-skills'])).toBe('local-write')
   })
 
   it('refuses auth mutations and web-session commands', () => {

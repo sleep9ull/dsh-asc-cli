@@ -270,6 +270,7 @@ define({
   tool: 'asc_metadata',
   action: 'init',
   kind: 'local-write',
+  needsConfirm: true,
   build: (args) => {
     const dir = str(args, 'dir')
     if (!dir) throw new Error('asc: `dir` is required for asc_metadata init')
@@ -284,7 +285,8 @@ define({
 define({
   tool: 'asc_metadata',
   action: 'plan',
-  kind: 'read',
+  kind: 'local-write',
+  needsConfirm: true,
   build: (args, context) => {
     const dir = str(args, 'dir')
     if (!dir) throw new Error('asc: `dir` is required for asc_metadata plan')
@@ -374,6 +376,7 @@ define({
     ]
     pushValue(argv, '--metadata-dir', str(args, 'metadataDir'))
     pushValue(argv, '--copy-metadata-from', str(args, 'copyMetadataFrom'))
+    pushValue(argv, '--platform', str(args, 'platform'))
     if (flag(args, 'dryRun')) argv.push('--dry-run')
     else if (flag(args, 'confirm')) argv.push('--confirm')
     return argv

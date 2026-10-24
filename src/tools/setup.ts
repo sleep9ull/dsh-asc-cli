@@ -11,7 +11,7 @@ const DESCRIPTION = `Inspect and prepare the local asc CLI environment. Actions:
 - auth-status: validate stored credentials against Apple (network).
 - doctor: diagnose keychain/config/private-key problems.
 - system-status: check Apple Developer service health.
-- install-skills: install the official ASC agent-skill pack into the global skills directory (requires confirm, needs git).
+- install-skills: install the official ASC agent-skill pack into the global skills directory (requires confirm and approval; needs git).
 Read-only except install-skills, which writes to the user's global skill directory.`
 
 export function registerSetupTool(ctx: Context, runtime: AscRuntime): void {
