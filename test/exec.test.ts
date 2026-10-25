@@ -1,7 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import { scrubbedParentEnv, type SubprocessHandle, type SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import type { Config } from '../src/config.js'
 import { buildSpawnSpec, childEnv, execAsc, globalFlags, type SpawnFn } from '../src/exec.js'
 import { makeConfig } from './helpers.js'
+
+/** The subprocess seam's env merge: scrubbed parent plus explicit entries, `undefined` deleting. */
+function mergedChildEnv(config: Config): NodeJS.ProcessEnv {
+  const env = scrubbedParentEnv()
+  for (const [name, value] of Object.entries(childEnv(config))) {
+    if (value === undefined) delete env[name]
+    else env[name] = value
+  }
+  return env
+}
 
 interface FakeResult {
   stdout?: string
@@ -220,5 +231,25 @@ describe('authentication environment', () => {
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  // Regression: a host `ASC_WEB_SESSION` cookie was inherited by the child and
+  // would have unlocked the `asc web` surface this plugin never exposes.
+  it('tombstones an ambient ASC_WEB_SESSION', () => {
+    vi.stubEnv('ASC_WEB_SESSION', 'session-cookie')
+    try {
+      // The harness scrub drops *KEY*/*TOKEN*-shaped names only, so a web
+      // session survives it and must be removed by this plugin's tombstone.
+      expect(scrubbedParentEnv().ASC_WEB_SESSION).toBe('session-cookie')
+      expect(childEnv(makeConfig()).ASC_WEB_SESSION).toBeUndefined()
+      expect(mergedChildEnv(makeConfig()).ASC_WEB_SESSION).toBeUndefined()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('tombstones ASC_WEB_SESSION even when the plugin config sets it', () => {
+    expect(childEnv(makeConfig({ env: { ASC_WEB_SESSION: 'from-config' } })).ASC_WEB_SESSION).toBeUndefined()
+    expect(mergedChildEnv(makeConfig({ env: { ASC_WEB_SESSION: 'from-config' } })).ASC_WEB_SESSION).toBeUndefined()
   })
 })

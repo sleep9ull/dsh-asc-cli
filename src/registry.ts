@@ -43,6 +43,16 @@ export interface ActionSpec {
   readonly long?: boolean
   /** Whether the command accepts `--output json` (default true). */
   readonly output?: boolean
+  /**
+   * Validate a model-provided argument combination before approval and before
+   * the argv is built.
+   *
+   * Returns an actionable message (what is missing and how to fix it) when the
+   * combination would be rejected by `asc`, `undefined` when it is acceptable.
+   * The optional config lets guards honour documented fallbacks (`defaultAppId`);
+   * the policy passes the live config and the builder passes `context.config`.
+   */
+  validate?(args: ToolArgs, config?: Config): string | undefined
   /** Build the argv tail (subcommand and flags), without global flags. */
   build(args: ToolArgs, context: BuildContext): string[]
 }
@@ -91,10 +101,112 @@ function required(args: ToolArgs, key: string): string {
   return value
 }
 
+// ---------------------------------------------------------------------------
+// Pre-approval argument guards
+//
+// Each guard mirrors a combination `asc` rejects after argument parsing. They
+// run before confirm/approval (`approval.ts`) and again before the argv is
+// built, so a wrong combination never reaches a process or a human prompt.
+// Messages name the upstream flags so the fix is mechanical.
+// ---------------------------------------------------------------------------
+
+/** `asc builds upload`: `.pkg` needs explicit version/build-number; `--dry-run` cannot wait. */
+function validateUpload(args: ToolArgs): string | undefined {
+  if (flag(args, 'dryRun') && flag(args, 'wait')) {
+    return 'asc_apply.upload cannot combine `--dry-run` with `--wait`: asc rejects `--wait` when `--dry-run` is set. Drop `--wait` for the preview, then upload without `--dry-run` to wait for processing.'
+  }
+  const file = str(args, 'file')
+  if (file === undefined) return 'asc_apply.upload needs `file`: the path to the .ipa or .pkg to upload.'
+  if (!file.toLowerCase().endsWith('.pkg')) return undefined
+  const missing = [
+    ...(str(args, 'version') === undefined ? ['--version'] : []),
+    ...(str(args, 'buildNumber') === undefined ? ['--build-number'] : []),
+  ]
+  if (missing.length === 0) return undefined
+  return `asc_apply.upload needs both \`--version\` and \`--build-number\` for a .pkg (asc extracts them only from an .ipa); missing ${missing.join(' and ')}. Pass them explicitly, or upload an .ipa instead.`
+}
+
+/** `asc builds add-groups`: `--submit` cannot be previewed; `--build-id` needs no app. */
+function validateGroups(args: ToolArgs, config?: Config): string | undefined {
+  if (flag(args, 'dryRun') && flag(args, 'submit')) {
+    return 'asc_apply.groups cannot combine `--submit` with `--dry-run`: asc rejects `--submit` when `--dry-run` is set. Preview the assignment without `--submit`, then call again without `--dry-run` to submit.'
+  }
+  if (str(args, 'buildId') === undefined && str(args, 'app') === undefined && config?.defaultAppId === undefined) {
+    return 'asc_apply.groups needs `app` when no `buildId` is given (asc rejects `--app` together with `--build-id`, so pass exactly one form): pass `app` to target the latest build, `buildId` to target a specific build, or set `defaultAppId` in the plugin config.'
+  }
+  return undefined
+}
+
+/** `asc release stage`: version/build-id plus exactly one metadata source. */
+function validateStage(args: ToolArgs): string | undefined {
+  if (str(args, 'version') === undefined) {
+    return 'asc_apply.stage needs `--version`: the marketing version to stage, e.g. 1.2.3.'
+  }
+  if (str(args, 'buildId') === undefined) {
+    return 'asc_apply.stage needs `--build-id`: the processed build to attach to the version.'
+  }
+  return validateMetadataSource(args, 'asc_apply.stage')
+}
+
+/** Shared by `asc_apply.stage` and `asc_job.stage-release`. */
+function validateMetadataSource(args: ToolArgs, label: string): string | undefined {
+  const hasDir = str(args, 'metadataDir') !== undefined
+  const hasCopy = str(args, 'copyMetadataFrom') !== undefined
+  if (hasDir && hasCopy) {
+    return `${label} accepts exactly one metadata source, but both \`--metadata-dir\` and \`--copy-metadata-from\` were given: asc rejects the pair. Keep one.`
+  }
+  if (!hasDir && !hasCopy) {
+    return `${label} needs exactly one metadata source: pass \`--metadata-dir\` (apply a local metadata directory) or \`--copy-metadata-from\` (copy localization text from another version).`
+  }
+  return undefined
+}
+
+/** `asc publish appstore`: exactly one of ipa/pkg; `.pkg` needs version/build-number. */
+function validatePublish(args: ToolArgs): string | undefined {
+  const ipa = str(args, 'ipa')
+  const pkg = str(args, 'pkg')
+  if (ipa !== undefined && pkg !== undefined) {
+    return 'asc_apply.publish accepts exactly one build source, but both `--ipa` and `--pkg` were given: asc rejects the pair. Keep one.'
+  }
+  if (ipa === undefined && pkg === undefined) {
+    return 'asc_apply.publish needs a build source: pass `--ipa` (version optional; asc extracts it from the IPA) or `--pkg` (requires `--version` and `--build-number`).'
+  }
+  if (pkg === undefined) return undefined
+  const missing = [
+    ...(str(args, 'version') === undefined ? ['--version'] : []),
+    ...(str(args, 'buildNumber') === undefined ? ['--build-number'] : []),
+  ]
+  if (missing.length === 0) return undefined
+  return `asc_apply.publish with \`--pkg\` needs both \`--version\` and \`--build-number\` (asc cannot extract them from a package); missing ${missing.join(' and ')}. Add them, or publish an .ipa where the version is optional.`
+}
+
+/** `asc testflight groups list`: the two filters are mutually exclusive. */
+function validateTestflightGroups(args: ToolArgs): string | undefined {
+  if (flag(args, 'internal') && flag(args, 'external')) {
+    return 'asc.testflight-groups cannot combine `--internal` and `--external`: asc treats them as mutually exclusive. Omit both to list every group, or pass exactly one.'
+  }
+  return undefined
+}
+
 const specs: ActionSpec[] = []
 
+/**
+ * Register one action.
+ *
+ * `validate` is enforced centrally here so every builder — including direct
+ * calls from jobs or scripts — rejects an invalid combination before any
+ * process starts. Builders still keep their own required-field checks.
+ */
 function define(spec: ActionSpec): void {
-  specs.push(spec)
+  const { validate, build } = spec
+  specs.push({
+    ...spec,
+    build(args, context) {
+      const invalid = validate?.(args, context.config)
+      if (invalid !== undefined) throw new Error(invalid)
+      return build(args, context)
+    },
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +324,7 @@ define({
   tool: 'asc',
   action: 'testflight-groups',
   kind: 'read',
+  validate: validateTestflightGroups,
   build: (args, context) => {
     const argv = ['testflight', 'groups', 'list', '--app', app(args, context)]
     if (flag(args, 'internal')) argv.push('--internal')
@@ -304,6 +417,7 @@ define({
   kind: 'write',
   needsConfirm: true,
   long: true,
+  validate: validateUpload,
   build: (args, context) => {
     const file = str(args, 'file')
     if (!file) throw new Error('asc: `file` is required (path to .ipa or .pkg)')
@@ -322,18 +436,20 @@ define({
   action: 'groups',
   kind: 'write',
   needsConfirm: true,
+  validate: validateGroups,
   build: (args, context) => {
     const group = str(args, 'group')
     if (!group) throw new Error('asc: `group` is required (beta group id or name)')
     const buildId = str(args, 'buildId')
-    const argv = ['builds', 'add-groups', '--app', app(args, context), '--group', group]
-    if (buildId) {
-      argv.push('--build-id', buildId)
-    } else {
-      argv.push('--latest')
+    // `--build-id` cannot be combined with `--app`, `--latest`, `--version` or
+    // `--platform`, so the build-scoped form passes none of them.
+    const argv = buildId
+      ? ['builds', 'add-groups', '--build-id', buildId, '--group', group]
+      : ['builds', 'add-groups', '--app', app(args, context), '--group', group, '--latest']
+    if (buildId === undefined) {
+      pushValue(argv, '--version', str(args, 'version'))
+      pushValue(argv, '--platform', str(args, 'platform'))
     }
-    pushValue(argv, '--version', str(args, 'version'))
-    pushValue(argv, '--platform', str(args, 'platform'))
     if (flag(args, 'submit')) argv.push('--submit')
     if (flag(args, 'dryRun')) argv.push('--dry-run')
     // `--confirm` is only accepted together with `--submit` on this command.
@@ -381,6 +497,7 @@ define({
   kind: 'write',
   needsConfirm: true,
   long: true,
+  validate: validateStage,
   build: (args, context) => {
     const argv = [
       'release',
@@ -407,8 +524,12 @@ define({
   kind: 'write',
   needsConfirm: true,
   long: true,
+  validate: validatePublish,
   build: (args, context) => {
-    const argv = ['publish', 'appstore', '--app', app(args, context), '--version', required(args, 'version')]
+    const argv = ['publish', 'appstore', '--app', app(args, context)]
+    // `--ipa` may omit the version (asc extracts it from the IPA); `--pkg`
+    // requires it (enforced by the guard above).
+    pushValue(argv, '--version', str(args, 'version'))
     pushValue(argv, '--ipa', str(args, 'ipa'))
     pushValue(argv, '--pkg', str(args, 'pkg'))
     pushValue(argv, '--build-number', str(args, 'buildNumber'))

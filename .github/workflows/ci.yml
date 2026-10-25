@@ -22,6 +22,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Pack manifest (lib/ is exactly the build of src/)
+        run: node scripts/pack-manifest.mjs
 
   contract:
     runs-on: ubuntu-latest
@@ -44,3 +46,7 @@ jobs:
           ./vendor/asc version
       - name: Contract test (every command still accepted)
         run: node scripts/contract.mjs ./vendor/asc
+      - name: Classify audit (no read-classified local-file write leaf)
+        run: node scripts/classify-audit.mjs ./vendor/asc
+      - name: Contract combinations (illegal argv rejected before spawn)
+        run: node scripts/contract-combos.mjs

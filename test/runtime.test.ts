@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { AuditEntry } from '../src/audit.js'
 import { createRuntime, shouldRetryWithoutOutput } from '../src/runtime.js'
 import type { SpawnFn } from '../src/exec.js'
 import { makeConfig } from './helpers.js'
@@ -112,6 +113,78 @@ describe('generic command policy', () => {
     expect(calls).toHaveLength(2)
     expect(calls[0]).toContain('--output')
     expect(calls[1]).not.toContain('--output')
+  })
+})
+
+describe('file-writing leaves and audit context', () => {
+  it('does not append --output json to a file-writing leaf', async () => {
+    const { spawn, calls } = queuedSpawn([{ exitCode: 0 }])
+    const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)
+    const result = await runtime.runArgv(
+      ['analytics', 'download', '--request-id', 'R', '--instance-id', 'I'],
+      { confirm: true },
+      execContext(),
+    )
+    expect(result.ok).toBe(true)
+    expect(calls[0]).not.toContain('--output')
+  })
+
+  it('recognizes a file-writing leaf behind a leading global flag', async () => {
+    const { spawn, calls } = queuedSpawn([{ exitCode: 0 }])
+    const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)
+    await runtime.runArgv(
+      ['--profile', 'p', 'screenshots', 'download', '--id', '1'],
+      { confirm: true },
+      execContext(),
+    )
+    expect(calls[0]).not.toContain('--output')
+  })
+
+  it('recognizes a no-output root behind a leading global flag', async () => {
+    const { spawn, calls } = queuedSpawn([{ exitCode: 0, stdout: 'ASC.md written' }])
+    const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)
+    await runtime.runArgv(['--debug', 'docs', 'init'], { confirm: true }, execContext())
+    expect(calls[0]).not.toContain('--output')
+  })
+
+  it('labels the command with the argv that actually ran after a retry', async () => {
+    const { spawn } = queuedSpawn([
+      { exitCode: 2, stderr: 'accepts exactly one guide name' },
+      { exitCode: 0, stdout: 'guide text' },
+    ])
+    const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)
+    const result = await runtime.runArgv(['schema', 'list'], { confirm: false }, execContext())
+    expect(result.command).not.toMatch(/--output json/)
+  })
+
+  it('records the app id from args, argv, or the configured default', async () => {
+    const entries: AuditEntry[] = []
+    const { spawn } = queuedSpawn([{ exitCode: 0, stdout: '{"data":[]}' }])
+    const config = makeConfig({ workdir: '/tmp', defaultAppId: '999' })
+    const runtime = createRuntime(fakeCtx(), config, spawn, (entry) => entries.push(entry))
+
+    await runtime.runAction('asc', 'apps-list', { app: '42', confirm: false }, execContext())
+    await runtime.runArgv(['apps', 'list', '--app', '77'], { confirm: false }, execContext())
+    await runtime.runArgv(['version'], { confirm: false }, execContext())
+
+    expect(entries.map((entry) => entry.appId)).toEqual(['42', '77', '999'])
+  })
+
+  it('omits the app id when nothing identifies an app', async () => {
+    const entries: AuditEntry[] = []
+    const { spawn } = queuedSpawn([{ exitCode: 0 }])
+    const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn, (entry) => entries.push(entry))
+    await runtime.runArgv(['version'], { confirm: false }, execContext())
+    expect(entries[0]?.appId).toBeUndefined()
+  })
+
+  it('refuses forbidden commands behind a leading global flag before spawning', async () => {
+    const { spawn, calls } = queuedSpawn([{ exitCode: 0 }])
+    const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)
+    await expect(
+      runtime.runArgv(['--debug', 'auth', 'token'], { confirm: true }, execContext()),
+    ).rejects.toThrow(/not exposed/)
+    expect(calls).toHaveLength(0)
   })
 })
 

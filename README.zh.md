@@ -139,15 +139,16 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 | [贡献](CONTRIBUTING.md) | 环境、Git 流程、质量门、发布 |
 | [Spec](docs/SPECS.md) | spec-first 流程与索引 |
 | [路线](docs/ROADMAP.md) | 版本计划与验收指标 |
+| [ASC CLI 参考](ASC.md) | 上游 `asc` 命令目录与工作流配方（由 `asc init` 生成） |
 
 ## 为什么要做成插件，而不是让 Agent 直接跑 bash？
 
 - **审批而非自证**：默认只读；写操作需要显式 `confirm` 和真人审批，模型无法自己放行。
 - **先计划后执行**：`validate`、`status`、`--dry-run` 是一等公民，改动前先给你看。
-- **结果适合对话**：摘要、修复顺序、计数替代大段 JSON；超大结果省略并给出读取路径。
+- **结果适合对话**：摘要、修复顺序、计数替代大段 JSON；超大结果省略并给出下一步（只有原始输出被截断时才给 spill 指针）。
 - **作业而非命令堆叠**：上传 → 等待 → 分组是一条确定性调用，不是五个可能被模型重排的命令。
 - **Agent 自带工作流知识**：内置技能讲清作业、策略与失败恢复。
-- **可审计**：可选的 JSONL 审计记录每次调用；审批结论保留在 DSH 会话日志。
+- **可审计**：可选的 JSONL 审计记录每次由工具发起的 `asc` 调用（engine 探针除外）；审批结论保留在 DSH 会话日志。
 
 ---
 
@@ -155,10 +156,11 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 - **默认只读**：每次调用带 `--read-only` + `ASC_READ_ONLY=1`，写操作在启动子进程前就被拒绝。
 - **写模式**：需要 `confirm: true` 且默认弹出宿主审批；插件只在模型传入 `confirm: true` 时给底层命令加 `--confirm`，不会自行确认。
-- **未知命令不静默**：无法确认只读的命令转人工审批（`ask`），或按配置直接拒绝（`unknownCommands: deny`）；写模式还额外要求 `confirm`。
-- **本地写需确认 + 审批**：`metadata init/plan`、`docs init`、`doctor --fix`、`builds dsyms`、`install-skills`。
+- **未知命令不静默**：无法确认只读的命令转人工审批（`ask`），或按配置直接拒绝（`unknownCommands: deny`）；写模式还额外要求 `confirm`。前导全局 flag 无法把禁区命令藏成 unknown。
+- **非法参数在审批前失败**：已注册 action/job 会先校验互斥 flag、metadata 来源、包类型要求等组合，不会先弹审批再被上游 exit 2。
+- **本地写需确认 + 审批**：`metadata init/plan/pull`、`docs init`、`doctor --fix`、`builds dsyms`、`install-skills`，以及所有写文件的 `download`/`export` 叶子（`screenshots download`、`profiles download`、`certificates export` 等）。
 - **默认关闭值展开**：`asc` 会展开 flag 值里的 `@env:` / `@file:`；插件默认把行首 `@` 转义，除非显式开启 `allowValueExpansion`。
-- **凭据不进模型**：宿主会清洗 `*KEY*` 变量，插件因此显式转发 `ASC_KEY_ID`、`ASC_ISSUER_ID`、`ASC_PRIVATE_KEY_PATH`、`ASC_PRIVATE_KEY`，但从不读取、保存或打印密钥内容。
+- **凭据不进模型**：宿主会清洗 `*KEY*` 变量，插件因此显式转发 `ASC_KEY_ID`、`ASC_ISSUER_ID`、`ASC_PRIVATE_KEY_PATH`、`ASC_PRIVATE_KEY`，从不读取、保存或打印密钥内容，并对 `ASC_WEB_SESSION` 做 tombstone，避免 web 会话 cookie 进入子进程。
 - **永久拒绝**：`auth login/logout` 与 `asc web`；分类器无法确认只读的命令转人工审批（`unknownCommands: ask`）或直接拒绝（`deny`）。
 - **无 shell**：argv 数组直传；诊断信息脱敏；默认关闭 telemetry。
 - **可选治理**：`auditLog` 记录执行内容；`approvedActions` 仅在写模式对已知动作跳过提示。
@@ -269,9 +271,10 @@ DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`�
 
 ```bash
 npm install
-npm run build        # tsc -> lib/
+npm run build        # clean + tsc -> lib/
 npm run typecheck
 npm test             # vitest
+npm run verify       # 全质量门：typecheck/test/build/pack/contract/classify/smoke
 
 node scripts/contract.mjs ./vendor/asc   # 对真实 asc 跑契约测试
 node scripts/smoke.mjs                   # 编译产物冒烟

@@ -326,9 +326,13 @@ export function formatResult(
     } catch {
       serialized = ''
     }
-    if (serialized.length > 0 && serialized.length > (options.maxDataBytes ?? 8_000)) {
+    // Compare in UTF-8 bytes: the documented unit for `maxDataBytes` and
+    // `dataBytes`. Comparing code units would let multibyte payloads (CJK,
+    // emoji) exceed the budget by up to 3-4x.
+    const serializedBytes = Buffer.byteLength(serialized, 'utf8')
+    if (serialized.length > 0 && serializedBytes > (options.maxDataBytes ?? 8_000)) {
       dataOmitted = true
-      dataBytes = serialized.length
+      dataBytes = serializedBytes
     } else {
       data = outcome.data
     }
@@ -359,11 +363,13 @@ export function renderResult(value: AscToolResult): ContentBlock[] {
   lines.push(value.summary)
   if (value.text && value.text !== value.summary) lines.push(value.text)
   if (value.dataOmitted) {
-    lines.push(
-      `payload omitted (${value.dataBytes ?? 'many'} bytes): narrow the query (filters/limit) or read the spilled output${
-        value.spillPath === undefined ? '' : ` at ${value.spillPath}`
-      }`,
-    )
+    // `data` is dropped without a spill file, so only point at a spill when
+    // the subprocess seam actually kept one (truncated stdout).
+    const recovery =
+      value.spillPath === undefined
+        ? 'narrow the query (filters/limit)'
+        : `narrow the query (filters/limit) or read the spilled output at ${value.spillPath}`
+    lines.push(`payload omitted (${value.dataBytes ?? 'many'} bytes): ${recovery}`)
   }
   if (value.stderrTail) lines.push(`stderr (tail):\n${value.stderrTail}`)
   if (value.hint) lines.push(`next: ${value.hint}`)

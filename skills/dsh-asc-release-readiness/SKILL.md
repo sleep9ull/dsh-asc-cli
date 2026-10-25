@@ -39,11 +39,11 @@ Re-run `release-check` after each material fix. An earlier pass does not certify
 
 ## Plan before apply
 
-`asc_plan.metadata-plan` is a local write (review artifact) needing `confirm` + approval. Read `adds`/`updates`/`deletes` and show the diff; `deletes` appear only with `--allow-deletes`. `asc_apply action:"metadata-apply"` needs `confirm` even with `dryRun`; preview, then re-run for real after agreement. It mutates the live listing with no undo.
+`asc_plan.metadata-plan` is a local write (review artifact) needing `confirm` + approval. Read `adds`/`updates`/`deletes` and show the diff. The typed action does not expose `--allow-deletes`; if the plan must include deletes, use `asc action:"run"` with `["metadata","plan",...,"--allow-deletes"]` (still a local write: confirm + approval). `asc_apply action:"metadata-apply"` needs `confirm` even with `dryRun`; preview, then re-run for real after agreement. It mutates the live listing with no undo.
 
 ## Stage versus submit
 
-- `asc_apply action:"stage"` needs `app`, `version` and `buildId`; `metadataDir` and `copyMetadataFrom` are optional. It prepares the version, attaches the build, and stops before submission. The `stage-release` job validates first, stops on blocking items, and needs `version` + `buildId`. Both take `confirm` even for `dryRun`.
+- `asc_apply action:"stage"` needs `app`, `version`, `buildId`, and **exactly one** metadata source: `metadataDir` or `copyMetadataFrom` (both or neither is rejected before approval). It prepares the version, attaches the build, and stops before submission. The `stage-release` job validates first, stops on blocking items, and needs `version` + `buildId` + the same one-of metadata source. Both take `confirm` even for `dryRun`.
 - Submitting is `asc_apply action:"publish"` with `submit: true` (underlying `asc publish appstore --submit --confirm`). It creates the App Review submission; needs write mode, `confirm` and approval. `approvedActions` can waive the prompt, never `confirm`.
 - `asc submit status`/`cancel` manage a submission; `asc submit` alone is not shipping; use `asc action:"run"` for them.
 

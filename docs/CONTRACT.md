@@ -1,6 +1,6 @@
 # 产品契约（CONTRACT）
 
-> 状态：**契约（SSOT）**｜基线：`0.1.5`｜更新：2026-10-24
+> 状态：**契约（SSOT）**｜基线：`0.1.6`｜更新：2026-10-25
 > 常驻规则见 [`../AGENTS.md`](../AGENTS.md)；命令面参考见 [`COMMANDS.md`](./COMMANDS.md)；流程见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) 与 [`SPECS.md`](./SPECS.md)。
 > **优先级**：用户指令 > `AGENTS.md` > 本文件 > 其他文档。代码与测试必须服从本文件；发现不一致，走 spec 流程修正，禁止沉默偏离。
 
@@ -26,7 +26,7 @@
 
 | 阶段 | 范围 |
 |---|---|
-| 已交付（0.1.2–0.1.5） | 2 个 P0 安全修复、engine manager、5 个 job、6 个内置 skill、`/asc` + `/asc-doctor`、审计、审批豁免、更新检查、`--exclude-expired` 透传、文档契约体系 |
+| 已交付（0.1.2–0.1.6） | 2 个 P0 安全修复、engine manager、5 个 job、6 个内置 skill、`/asc` + `/asc-doctor`、审计、审批豁免、更新检查、`--exclude-expired` 透传、文档契约体系、分类器归一化与本地写门禁、审批前参数校验、clean build/verify |
 | v0.2「Prove」 | 契约值/组合测试、参数守卫、工具端到端测试、smoke 断言、结果 projector 补全、错误分类与脱敏补全 |
 | 之后 | job 幂等与恢复、审计报告化、能力快照、审批记忆、多 app/profile、policy as code、CI 模式 |
 
@@ -70,7 +70,8 @@
 补充：
 
 - `approvedActions`（glob）只在 **write 模式的 write/unknown** 上跳过审批；read-only、local-write、confirm 要求、forbidden 均不放宽。
-- `requireApproval: false` 只关闭审批提示，**不关闭 confirm**；默认 `true`。
+- `requireApproval: false` 只关闭审批提示，**不关闭 confirm**；默认 `true`。read-only 下的 `unknown` 始终走审批（I3 优先），不受该项影响。
+- 已注册 action/job 的非法参数组合在 confirm/审批**之前**拒绝（拒绝码 `ASC_INVALID_ARGUMENTS`）；校验逻辑与 builder 共用（`registry.validate` / `validateJobArgs`）。
 - read-only 双防线：插件层拦截 + `asc --read-only` / `ASC_READ_ONLY=1`；write 模式对父进程 `ASC_READ_ONLY` 做 tombstone。
 
 ### 3.2 十条不可变原则（I1–I10）
@@ -81,7 +82,7 @@
 | I2 | 写路径三件套：`mode: write` + `confirm: true` + 宿主审批；模型自证不算批准 | `src/approval.ts`、`test/approval.test.ts` |
 | I3 | unknown 永不静默：`ask`（默认）或 `deny`；read-only 下也走审批 | `src/approval.ts`、`test/approval.test.ts` |
 | I4 | 模型值字面化：前导 `@` → `@@`（含 `--flag=@…`）；`allowValueExpansion` 默认 false | `literalizeArgv`（`src/exec.ts`） |
-| I5 | 单一执行点：`ctx.subprocess` + argv 数组、无 shell；只转发 4 个 `ASC_*` 认证变量；凭据不进模型 | `src/exec.ts` |
+| I5 | 单一执行点：`ctx.subprocess` + argv 数组、无 shell；显式转发 4 个 `ASC_*` 认证变量、`ASC_WEB_SESSION` 强制 tombstone；凭据不进模型 | `src/exec.ts` |
 | I6 | 工具面固定 5 个；新能力进既有工具或 job，不新增命令型工具 | `src/index.ts`、`src/registry.ts` |
 | I7 | 知识随包：6 个 skill 以 rank 600 发布；工具名变更同提交更新 skill | `src/skills.ts`、`package.json files` |
 | I8 | 引擎外置：pin `5.16.0` / 区间 `>=5.16.0 <6.0.0`；provision 默认关 + SHA-256；永不自动升级 | `src/compat.ts`、`src/control/engine.ts` |
@@ -90,9 +91,9 @@
 
 ### 3.3 现状边界（有意保留，不是缺陷）
 
-1. **read-only 不是"零本地写"**：`metadata init/plan`、`docs init`、`doctor --fix`、`builds dsyms/compile/package`、`install-skills` 在 read-only 下仍可执行，但需 confirm + 审批。
+1. **read-only 不是"零本地写"**：`metadata init/plan/pull`、`docs init`、`doctor --fix`、`builds dsyms/compile/package`、`install-skills`、`testflight config export`，以及写文件的 `download`/`export` 叶子（`analytics download`、`profiles download`、`certificates export` 等 9 条）在 read-only 下属于 `local-write`，需 confirm + 审批。
 2. **unknown 在 read-only 下只需审批、不需 confirm**：`asc --read-only` 已在 HTTP 层拦截写，剩下要防的是本地写。
-3. **长尾 `--output` 不是能力表驱动**：根黑名单 + 已带 flag 跳过 + exit 2 单次重试。
+3. **长尾 `--output` 不是能力表驱动**：根黑名单 + 文件写叶子（`download`/`export`）跳过 + 已带 flag 跳过 + exit 2 单次重试。
 4. **`output.schema` 是通用 `json`**：契约靠 `AscToolResult` 类型 + 文档，不靠 schema 强校验。
 
 ---
@@ -118,6 +119,7 @@
 
 - **版本**：`0.x`；工具/action 的破坏性变更用 `feat!`，同一提交内更新：README + README.zh 迁移表、CHANGELOG、受影响 skill、registry/contract。
 - **过渡期**：0.1.4 是硬切换。下一次破坏性变更应保留一个 minor 的 deprecated 别名，或在 README 给出逐步迁移路径。
+- **质量门**：`npm run verify`（typecheck → test → build → pack-manifest → contract → classify-audit → smoke）；`scripts/pack-manifest.mjs` 断言 `lib/` 与 `src/` 文件集一致。
 - **引擎**：pin 与区间只在 `src/compat.ts` 定义；`scripts/contract.mjs` 锁定 23 个注册命令与 `--help` 兼容性；CI + 每日 upstream-watch 兜底。
 - **宿主**：`engines.dsh` = `>=0.2.1-rc.2 <0.3.0`；peer 依赖由宿主提供。
 - **发布物**：`files` 含 `lib`、`skills`、`cordis.patch.yml`、README/CHANGELOG；`prepack`/`prepare` 构建；无 postinstall 下载。
@@ -156,3 +158,4 @@
 |---|---|---|---|
 | 2026-10-24 | 0.1.4 | 初版契约建立 | 0.1.2–0.1.4 收敛后固化边界与路线 |
 | 2026-10-24 | 0.1.5 | 拆分重组为 CONTRACT / COMMANDS / ARCHITECTURE / TESTING / CONTRIBUTING / ROADMAP / SPECS，并按上游仓库模式重写 AGENTS.md | 文档与代码对齐，减少单文件 sprawl |
+| 2026-10-25 | 0.1.6 | 分类器归一化前导全局 flag（I10）、文件写 `download/export` 改 local-write（I1）、审批前参数校验（I2/I3）；I5 增加 `ASC_WEB_SESSION` tombstone | 修复 0.1.5 评估的 2 个安全 P1 与 2 个写路径 P1；spec 003 |

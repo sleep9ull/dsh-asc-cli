@@ -95,6 +95,7 @@ spec 状态 → `implemented`；按 [`CONTRIBUTING.md`](./CONTRIBUTING.md) §4 �
 | `000-template` | 模板 | — |
 | `001-contract-alignment` | `--exclude-expired` 透传、README/skill 失真修正 | implemented |
 | `002-docs-contract-0.1.5` | 文档契约体系重构 + v0.1.5 发布 | implemented |
+| `003-write-path-contract` | 写路径契约与可用性修复（分类器/本地写/参数校验/发布物） | implemented |
 
 ---
 

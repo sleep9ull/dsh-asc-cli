@@ -1,6 +1,6 @@
 # 架构（ARCHITECTURE）
 
-> 基线：`0.1.5`｜契约见 [`CONTRACT.md`](./CONTRACT.md)；命令面见 [`COMMANDS.md`](./COMMANDS.md)。
+> 基线：`0.1.6`｜契约见 [`CONTRACT.md`](./CONTRACT.md)；命令面见 [`COMMANDS.md`](./COMMANDS.md)。
 > 本文回答：代码怎么分层、一次调用经过哪些模块、在哪里加东西、失败如何收口。
 
 ---
@@ -34,7 +34,7 @@
 | `src/approval.ts` | `tools/pre-execute` 策略：policy 矩阵、审批豁免、结构化拒绝 | policy 的 SSOT |
 | `src/runtime.ts` | 执行编排：超时选择、`--output` 决策、projector、审计钩子 | 不直接 spawn，交给 `exec` |
 | `src/exec.ts` | **唯一 spawn 点**：argv 数组、env 构造、`@` 字面化、redact、截断/spill | 无 shell；写模式 tombstone `ASC_READ_ONLY` |
-| `src/format.ts` | 结果契约：summary / errorClass / hint / projector / `maxDataBytes` | 模型可见形状的唯一来源 |
+| `src/format.ts` | 结果契约：summary / errorClass / hint / projector / `maxDataBytes`（UTF-8 字节） | 模型可见形状的唯一来源 |
 | `src/audit.ts` | 选开 JSONL：脱敏、`0o600`、best-effort | 失败不影响调用 |
 | `src/config.ts` | Schema 与默认值 | 默认值即安全边界 |
 | `src/compat.ts` | asc pin / 兼容区间 / release 资源 | 版本事实的 SSOT |
@@ -52,18 +52,18 @@
 
 ```
 模型调用工具
-  → approval.inspectCall(工具名, 参数)          # 分类 + confirm 事实
-  → decideCall()                                # allow / ask / deny
+  → approval.inspectCall(工具名, 参数, config)   # 分类 + confirm 事实 + 参数校验
+  → decideCall()                                # invalid / allow / ask / deny
   → 工具 handler
   → runtime.runAction(tool, action) 或 runArgv  # 超时、--output、审计
-  → registry spec.build(args)                   # argv 尾部
-  → exec.runAsc()                               # globalFlags + literalize + spawn
-  → format.fromOutcome()                        # summary / projector / data 闸门
+  → registry spec.build(args)                   # validate → argv 尾部
+  → exec.execAsc()                              # globalFlags + literalize + spawn
+  → format.formatResult()                       # summary / projector / data 闸门
   → audit.record()                              # best-effort
   → 工具 output.render()
 ```
 
-job 的差别：`asc_job` 一次调用内运行多步，每步都走同一 `runAction`/`runArgv`，因此每一步都重新经过 policy；写 job 在 `runJob` 内再复核 `mode`/`confirm`。
+job 的差别：`asc_job` 一次调用内运行多步，每步都走同一 `runAction`/`runArgv`（超时、`--output`、审计），但**不会**重新经过宿主 `tools/pre-execute`；审批只在外层工具调用发生一次。`runJob` 在 runner 内再复核 `mode`/`confirm`，`runReadOnlyArgv` 对只读探针再跑一次分类器。
 
 ---
 
@@ -71,7 +71,7 @@ job 的差别：`asc_job` 一次调用内运行多步，每步都走同一 `runA
 
 | 要加什么 | 改哪里 | 必须同步 |
 |---|---|---|
-| 新 action | `src/registry.ts`（`define` 一行）+ 所属工具 schema | 测试（registry）、`docs/COMMANDS.md`、相关 skill、CHANGELOG |
+| 新 action | `src/registry.ts`（`define` 一行，含 `validate` 守卫）+ 所属工具 schema | 测试（registry + `test/tools.test.ts`）、`docs/COMMANDS.md`、`scripts/contract-combos.mjs`、相关 skill、CHANGELOG |
 | 新 job | `src/capabilities.ts` 的 `JOBS` + `src/jobs.ts` 实现 | 测试（jobs）、能力卡、对应 skill、`docs/COMMANDS.md` |
 | 新 skill | `skills/<name>/SKILL.md` + `capabilities.BUNDLED_SKILLS` | `test/skills.test.ts`、`docs/COMMANDS.md` |
 | 新 command | `src/commands.ts` | `test/commands.test.ts`、`docs/COMMANDS.md` |
@@ -92,10 +92,13 @@ job 的差别：`asc_job` 一次调用内运行多步，每步都走同一 `runA
 | 状态冲突 | `state-conflict` | hint: 先查状态再重试 |
 | 超时/取消 | `timeout` / `cancelled` | 不自动重试 mutation |
 | 输出非 JSON | `parse` | `stderrTail` + 截断标记 |
-| 超大 `data` | `dataOmitted`（不落盘） | 缩窄查询 |
+| 超大 `data` | `dataOmitted`（不落盘） | 缩窄查询；不产生 `spillPath` |
 | stdout 截断 | `truncated` + `spillPath` | 读 spill 文件 |
+| 限流 | `rate-limit` | 等待后重试，避免大页 `--paginate` |
+| 网络/Apple 5xx | `network` | 查 `asc system-status` 后重试 |
+| 其他 | `unknown` | 看 `stderrTail` |
 
-错误分类、重试边界与超时策略以 [`CONTRACT.md §3`](./CONTRACT.md#3-安全契约不可变) 与 `src/format.ts` 为准。
+完整 10 类 `errorClass` 见 [`COMMANDS.md §6`](./COMMANDS.md#6-结果契约)；错误分类、重试边界与超时策略以 [`CONTRACT.md §3`](./CONTRACT.md#3-安全契约不可变) 与 `src/format.ts` 为准。
 
 ---
 
@@ -104,6 +107,7 @@ job 的差别：`asc_job` 一次调用内运行多步，每步都走同一 `runA
 | 契约条目 | 实现位置 |
 |---|---|
 | policy 矩阵（I1–I3） | `src/approval.ts` + `test/approval.test.ts` |
+| 参数守卫（审批前拒绝） | `src/registry.ts` 的 `validate` + `src/jobs.ts` 的 `validateJobArgs` + `test/registry.test.ts` |
 | `@` 字面化（I4） | `src/exec.ts` + `test/exec.test.ts` |
 | 单一执行点与 env（I5） | `src/exec.ts` |
 | 工具面（I6） | `src/index.ts` + `src/registry.ts` |

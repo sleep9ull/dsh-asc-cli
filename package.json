@@ -1,6 +1,6 @@
 {
   "name": "@sleep9ull/dsh-asc-cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "DeepSeek Harness plugin: App Store Connect operations through the asc CLI, with read-only defaults, per-call approvals and structured output.",
   "license": "MIT",
   "type": "module",
@@ -34,8 +34,10 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.2.1-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-util-values": "0.2.1-rc.2",
     "@deepseek-ai/schemastery": "~3.18.5"
   },
   "devDependencies": {
@@ -48,12 +50,13 @@
     "vitest": "^3.2.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepack": "npm run build",
     "prepare": "npm run build",
+    "verify": "node scripts/verify.mjs",
     "contract": "node scripts/contract.mjs ./vendor/asc",
     "smoke": "node scripts/smoke.mjs"
   },
