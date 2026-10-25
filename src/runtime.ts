@@ -7,7 +7,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { AuditFn } from './audit.js'
 import type { Config } from './config.js'
-import { classifyArgv } from './classify.js'
+import { classifyArgv, isFileWriteArgv, normalizeArgv } from './classify.js'
 import { execAsc, globalFlags, type AscExecOutcome, type SpawnFn } from './exec.js'
 import { formatResult, type AscToolResult } from './format.js'
 import { specFor, type ToolArgs } from './registry.js'
@@ -41,6 +41,29 @@ function defaultSpawn(ctx: Context): SpawnFn {
 export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, audit: AuditFn = () => undefined): AscRuntime {
   const spawnFn = spawn ?? defaultSpawn(ctx)
 
+  /**
+   * App Store Connect id to attach to an audit line.
+   *
+   * Typed actions pass `args.app`; the generic escape hatch can only supply it
+   * through `--app`. The configured `defaultAppId` is the last resort, and an
+   * unknown id stays absent rather than becoming a misleading empty string.
+   */
+  function auditAppId(explicit: unknown, argv: readonly string[] = []): string | undefined {
+    if (typeof explicit === 'string' && explicit.length > 0) return explicit
+    for (let index = 0; index < argv.length; index += 1) {
+      const token = argv[index] as string
+      if (token === '--app') {
+        const value = argv[index + 1]
+        if (value !== undefined && value.length > 0) return value
+      }
+      if (token.startsWith('--app=')) {
+        const value = token.slice('--app='.length)
+        if (value.length > 0) return value
+      }
+    }
+    return config.defaultAppId
+  }
+
   function record(
     tool: string,
     action: string | undefined,
@@ -49,6 +72,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
     cwd: string,
     confirm: boolean,
     result: AscToolResult,
+    appId: string | undefined,
   ): void {
     audit({
       ts: new Date().toISOString(),
@@ -63,6 +87,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
       exitCode: result.exitCode,
       durationMs: result.durationMs,
       ...(result.errorClass === undefined ? {} : { errorClass: result.errorClass }),
+      ...(appId === undefined ? {} : { appId }),
     })
   }
 
@@ -112,8 +137,11 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
       )
     }
     const timeoutMs = options.timeoutMs ?? (kind === 'read' ? config.timeoutMs : config.longTimeoutMs)
+    // File-writing leaves must not receive `--output json`: several interpret the
+    // value as an output file name (`analytics download` would create `./json`).
     const appendOutput = !argv.includes('--output') && !argv.includes('--pretty')
-    const withOutput = appendOutput && !NO_OUTPUT_COMMANDS.has(argv[0] ?? '')
+    const root = normalizeArgv(argv).argv[0] ?? ''
+    let attemptedOutput = appendOutput && !NO_OUTPUT_COMMANDS.has(root) && !isFileWriteArgv(argv)
     let outcome = await execAsc(
       config,
       {
@@ -122,13 +150,14 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
         timeoutMs,
         maxBytes: config.maxOutputBytes,
         signal: exec.signal,
-        appendOutput: withOutput,
+        appendOutput: attemptedOutput,
       },
       spawnFn,
     )
     // Some leaf commands reject `--output`; `exit 2` means the flags were parsed
     // before any work started, so a retry without it cannot duplicate a mutation.
-    if (shouldRetryWithoutOutput(withOutput, outcome)) {
+    if (shouldRetryWithoutOutput(attemptedOutput, outcome)) {
+      attemptedOutput = false
       outcome = await execAsc(
         config,
         {
@@ -142,9 +171,10 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
         spawnFn,
       )
     }
-    const formatted = formatResult(outcome, describeCommand(config, argv, withOutput), {
+    const formatted = formatResult(outcome, describeCommand(config, argv, attemptedOutput), {
       maxDataBytes: config.maxDataBytes,
     })
+    const appId = auditAppId(undefined, argv)
     audit({
       ts: new Date().toISOString(),
       tool: 'asc',
@@ -158,6 +188,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
       exitCode: formatted.exitCode,
       durationMs: formatted.durationMs,
       ...(formatted.errorClass === undefined ? {} : { errorClass: formatted.errorClass }),
+      ...(appId === undefined ? {} : { appId }),
     })
     return formatted
   }
@@ -190,7 +221,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
     const formatted = formatResult(outcome, describeCommand(config, argv, spec.output !== false), {
       maxDataBytes: config.maxDataBytes,
     })
-    record(tool, action, spec.kind, argv, cwd, args.confirm === true, formatted)
+    record(tool, action, spec.kind, argv, cwd, args.confirm === true, formatted, auditAppId(args.app))
     return formatted
   }
 

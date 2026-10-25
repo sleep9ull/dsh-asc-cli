@@ -92,13 +92,22 @@ describe('command registry', () => {
       '--version',
       '1.2.3',
     ])
-    expect(build('asc_apply', 'upload', { file: '/tmp/App.pkg', buildNumber: '42', wait: true })).toEqual([
+    expect(
+      build('asc_apply', 'upload', {
+        file: '/tmp/App.pkg',
+        version: '1.2.3',
+        buildNumber: '42',
+        wait: true,
+      }),
+    ).toEqual([
       'builds',
       'upload',
       '--app',
       '111',
       '--pkg',
       '/tmp/App.pkg',
+      '--version',
+      '1.2.3',
       '--build-number',
       '42',
       '--wait',
@@ -107,9 +116,9 @@ describe('command registry', () => {
 
   it('only passes --confirm where the asc command accepts it', () => {
     expect(
-      build('asc_apply', 'groups', { group: 'Internal', submit: true, confirm: true }),
+      build('asc_apply', 'groups', { app: '111', group: 'Internal', submit: true, confirm: true }),
     ).toEqual(['builds', 'add-groups', '--app', '111', '--group', 'Internal', '--latest', '--submit', '--confirm'])
-    expect(build('asc_apply', 'groups', { group: 'Internal', submit: true })).not.toContain('--confirm')
+    expect(build('asc_apply', 'groups', { app: '111', group: 'Internal', submit: true })).not.toContain('--confirm')
     expect(
       build('asc_apply', 'metadata-apply', { version: '1.2.3', dir: './metadata', confirm: true }),
     ).toContain('--confirm')
@@ -174,10 +183,155 @@ describe('v0.1.2 safety contract', () => {
     const argv = build('asc_apply', 'stage', {
       version: '1.2.3',
       buildId: 'b1',
+      metadataDir: './metadata',
       platform: 'MAC_OS',
       confirm: true,
     })
     expect(argv).toContain('--platform')
     expect(argv[argv.indexOf('--platform') + 1]).toBe('MAC_OS')
+  })
+})
+
+describe('pre-approval argument guards', () => {
+  it('rejects upload dryRun + wait, and allows either one alone', () => {
+    expect(() => build('asc_apply', 'upload', { file: '/tmp/App.ipa', dryRun: true, wait: true })).toThrow(
+      /--dry-run.*--wait/,
+    )
+    expect(build('asc_apply', 'upload', { file: '/tmp/App.ipa', dryRun: true })).toContain('--dry-run')
+    expect(build('asc_apply', 'upload', { file: '/tmp/App.ipa', dryRun: true })).not.toContain('--wait')
+    expect(build('asc_apply', 'upload', { file: '/tmp/App.ipa', wait: true })).toContain('--wait')
+  })
+
+  it('requires version and build number for .pkg uploads but not .ipa', () => {
+    expect(() => build('asc_apply', 'upload', { file: '/tmp/App.pkg' })).toThrow(/--version.*--build-number/)
+    expect(() => build('asc_apply', 'upload', { file: '/tmp/App.pkg', version: '1.0' })).toThrow(/--build-number/)
+    expect(() => build('asc_apply', 'upload', { file: '/tmp/App.pkg', buildNumber: '42' })).toThrow(/--version/)
+    expect(build('asc_apply', 'upload', { file: '/tmp/App.ipa' })).toEqual([
+      'builds',
+      'upload',
+      '--app',
+      '111',
+      '--ipa',
+      '/tmp/App.ipa',
+    ])
+  })
+
+  it('rejects groups submit + dryRun and requires an app when app-less latest has no defaultAppId', () => {
+    expect(() => build('asc_apply', 'groups', { group: 'G', submit: true, dryRun: true })).toThrow(
+      /--submit.*--dry-run/,
+    )
+    // The configured defaultAppId is a documented fallback for the latest form.
+    expect(build('asc_apply', 'groups', { group: 'G' })).toEqual([
+      'builds',
+      'add-groups',
+      '--app',
+      '111',
+      '--group',
+      'G',
+      '--latest',
+    ])
+    const withoutDefault: BuildContext = { config: makeConfig(), cwd: '/tmp' }
+    const spec = specFor('asc_apply', 'groups')
+    if (!spec) throw new Error('missing spec')
+    expect(() => spec.build({ group: 'G' }, withoutDefault)).toThrow(/defaultAppId/)
+  })
+
+  it('builds groups from buildId without app/version/platform, and from app otherwise', () => {
+    const bare: BuildContext = { config: makeConfig(), cwd: '/tmp' }
+    const spec = specFor('asc_apply', 'groups')
+    if (!spec) throw new Error('missing spec')
+    expect(spec.build({ group: 'G', buildId: 'B', app: '999', version: '1.0', platform: 'IOS' }, bare)).toEqual([
+      'builds',
+      'add-groups',
+      '--build-id',
+      'B',
+      '--group',
+      'G',
+    ])
+    expect(spec.build({ group: 'G', app: '999' }, bare)).toEqual([
+      'builds',
+      'add-groups',
+      '--app',
+      '999',
+      '--group',
+      'G',
+      '--latest',
+    ])
+  })
+
+  it('requires stage version/buildId and exactly one metadata source', () => {
+    expect(() => build('asc_apply', 'stage', { buildId: 'B', metadataDir: 'm' })).toThrow(/--version/)
+    expect(() => build('asc_apply', 'stage', { version: '1.2.3', metadataDir: 'm' })).toThrow(/--build-id/)
+    expect(() => build('asc_apply', 'stage', { version: '1.2.3', buildId: 'B' })).toThrow(/metadata/)
+    expect(() =>
+      build('asc_apply', 'stage', {
+        version: '1.2.3',
+        buildId: 'B',
+        metadataDir: 'm',
+        copyMetadataFrom: '1.0.0',
+      }),
+    ).toThrow(/metadata/)
+    expect(
+      build('asc_apply', 'stage', { version: '1.2.3', buildId: 'B', copyMetadataFrom: '1.0.0' }),
+    ).toEqual([
+      'release',
+      'stage',
+      '--app',
+      '111',
+      '--version',
+      '1.2.3',
+      '--build-id',
+      'B',
+      '--copy-metadata-from',
+      '1.0.0',
+    ])
+  })
+
+  it('requires exactly one publish source and pkg version/build number', () => {
+    expect(() => build('asc_apply', 'publish', {})).toThrow(/--ipa.*--pkg|--pkg.*--ipa/)
+    expect(() => build('asc_apply', 'publish', { ipa: 'a.ipa', pkg: 'a.pkg' })).toThrow(/--ipa.*--pkg/)
+    expect(() => build('asc_apply', 'publish', { pkg: 'a.pkg' })).toThrow(/--version.*--build-number/)
+    expect(() => build('asc_apply', 'publish', { pkg: 'a.pkg', version: '1.0' })).toThrow(/--build-number/)
+    expect(build('asc_apply', 'publish', { ipa: 'a.ipa' })).toEqual([
+      'publish',
+      'appstore',
+      '--app',
+      '111',
+      '--ipa',
+      'a.ipa',
+    ])
+    expect(build('asc_apply', 'publish', { pkg: 'a.pkg', version: '1.0', buildNumber: '7' })).toEqual([
+      'publish',
+      'appstore',
+      '--app',
+      '111',
+      '--version',
+      '1.0',
+      '--pkg',
+      'a.pkg',
+      '--build-number',
+      '7',
+    ])
+  })
+
+  it('rejects testflight-groups internal + external', () => {
+    expect(() => build('asc', 'testflight-groups', { internal: true, external: true })).toThrow(
+      /--internal.*--external/,
+    )
+    expect(build('asc', 'testflight-groups', { internal: true })).toEqual([
+      'testflight',
+      'groups',
+      'list',
+      '--app',
+      '111',
+      '--internal',
+    ])
+  })
+
+  it('exposes the same context-free validator to the approval layer', () => {
+    const spec = specFor('asc_apply', 'publish')
+    expect(spec?.validate?.({})).toMatch(/--ipa.*--pkg/)
+    expect(spec?.validate?.({ ipa: 'a.ipa' })).toBeUndefined()
+    expect(specFor('asc_apply', 'upload')?.validate?.({ file: 'a.pkg' })).toMatch(/--build-number/)
   })
 })

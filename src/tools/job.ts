@@ -18,12 +18,12 @@ const DESCRIPTION = `Run one delivery job end to end. Prefer a job over assembli
 
 Jobs:
 - release-check (read-only): run validate for an app/version and return blockers with ordered fixes.
-- ship-testflight (write): upload an .ipa/.pkg (waits for processing) and add the build to a TestFlight group; pass dryRun first.
-- stage-release (write): validate, then prepare the version (metadata + build) without submitting; pass dryRun first.
-- triage-feedback (read-only): aggregate TestFlight feedback, crashes and optional reviews.
+- ship-testflight (write): upload an .ipa/.pkg and, unless dryRun, wait for processing and add the build to a TestFlight group. A .pkg needs version and buildNumber; an .ipa does not. Pass dryRun first (dryRun never waits).
+- stage-release (write): validate, then prepare the version without submitting. Requires version, buildId and exactly one of metadataDir / copyMetadataFrom (asc rejects zero or two metadata sources). Pass dryRun first.
+- triage-feedback (read-only): aggregate TestFlight feedback, crashes and reviews. Reviews are always attempted; a crashes failure is reported without hiding reviews.
 - compliance-sweep (read-only): probe age rating, encryption declarations, accessibility and current pricing; a failed probe is reported, not fatal.
 
-Write jobs need mode "write", an explicit confirm: true and host approval. Always show the user the dry-run result before a real run.`
+Write jobs need mode "write", an explicit confirm: true and host approval. Missing or mutually exclusive parameters are rejected before approval, so fix them instead of retrying. Always show the user the dry-run result before a real run.`
 
 function renderJob(value: JobResult): string {
   const header = `## ${value.title} (${value.job}) · ${value.ok ? 'ok' : 'failed'}${value.dryRun ? ' · dry run' : ''}`
@@ -57,7 +57,11 @@ export function registerJobTool(ctx: Context, runtime: AscRuntime, engine: AscEn
       file: { type: 'string', description: 'For ship-testflight: path to the .ipa or .pkg file.' },
       buildNumber: { type: 'string', description: 'For ship-testflight: build number (CFBundleVersion).' },
       group: { type: 'string', description: 'For ship-testflight: TestFlight beta group id(s) or name(s).' },
-      metadataDir: { type: 'string', description: 'For stage-release: metadata directory to apply.' },
+      metadataDir: { type: 'string', description: 'For stage-release: metadata directory to apply. Pass exactly one of metadataDir / copyMetadataFrom.' },
+      copyMetadataFrom: {
+        type: 'string',
+        description: 'For stage-release: copy localization text from this existing version instead of metadataDir. Pass exactly one of metadataDir / copyMetadataFrom.',
+      },
       limit: { type: 'integer', description: 'For triage-feedback: page size (default 20).' },
       dryRun: { type: 'boolean', description: 'Preview the job without mutating App Store Connect.' },
       submit: { type: 'boolean', description: 'For ship-testflight: submit for beta review after adding external groups.' },
@@ -100,6 +104,7 @@ export function registerJobTool(ctx: Context, runtime: AscRuntime, engine: AscEn
         ...(args.buildNumber === undefined ? {} : { buildNumber: args.buildNumber }),
         ...(args.group === undefined ? {} : { group: args.group }),
         ...(args.metadataDir === undefined ? {} : { metadataDir: args.metadataDir }),
+        ...(args.copyMetadataFrom === undefined ? {} : { copyMetadataFrom: args.copyMetadataFrom }),
         ...(args.limit === undefined ? {} : { limit: args.limit }),
         ...(args.dryRun === undefined ? {} : { dryRun: args.dryRun }),
         ...(args.submit === undefined ? {} : { submit: args.submit }),

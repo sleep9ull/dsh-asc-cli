@@ -36,7 +36,7 @@ Actions:
 - reviews-list: customer reviews (newest first with sort: "-createdDate").
 - metadata-validate: validate a canonical metadata directory offline.
 - discover: search asc's own command tree (local, no network) when you are unsure which command to use.
-- run: any asc argv (no shell). Read-only commands run directly; mutations need confirm: true and host approval and are refused in read-only mode. Authentication and web-session commands are always refused.
+- run: any asc argv (no shell). Read-only commands run directly. Mutations and local writes need confirm: true and host approval (local writes such as \`download\`/\`export\` in both modes; mutations only in write mode). Authentication and web-session commands are always refused. Known actions and jobs validate their arguments before confirm/approval, so illegal combinations (e.g. upload dryRun+wait, publish without ipa/pkg, stage with zero or two metadata sources) are rejected up front instead of failing inside asc.
 
 Prefer asc_job for whole workflows (release-check, ship-testflight, stage-release, triage-feedback, compliance-sweep) and asc_apply for mutations. Values are passed literally: a leading @ is escaped so asc's @env:/@file: expansion cannot read local files unless allowValueExpansion is enabled.`
 

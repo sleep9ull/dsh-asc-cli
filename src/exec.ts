@@ -74,6 +74,9 @@ export function childEnv(config: Config): NodeJS.ProcessEnv {
   if (config.bypassKeychain) env.ASC_BYPASS_KEYCHAIN = '1'
   // `undefined` is a tombstone: it removes an ambient value instead of passing one.
   env.ASC_READ_ONLY = config.mode === 'read-only' ? '1' : undefined
+  // A web-session cookie grants the Web API surface (including `asc web`), which
+  // this plugin never exposes. Never inherit it from the host environment.
+  env.ASC_WEB_SESSION = undefined
   return env
 }
 

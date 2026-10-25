@@ -31,6 +31,8 @@ export interface JobArgs {
   readonly buildNumber?: string
   readonly group?: string
   readonly metadataDir?: string
+  /** Copy localization text from this existing version instead of a metadata dir. */
+  readonly copyMetadataFrom?: string
   readonly limit?: number
   readonly dryRun?: boolean
   readonly submit?: boolean
@@ -159,7 +161,7 @@ const releaseCheck: JobSpec = {
       ),
     )
     return finish(this, [validate], {
-      dryRun: true,
+      dryRun: false,
       data: { validate: validate.data ?? null },
       ...(validate.ok ? {} : { errorClass: validate.errorClass, hint: validate.hint }),
     })
@@ -169,6 +171,7 @@ const releaseCheck: JobSpec = {
 const shipTestflight: JobSpec = {
   ...(JOBS.find((job) => job.id === 'ship-testflight') as CapabilityJob),
   async run(args, context) {
+    // Field check lives in `validateJobArgs`; keep the guard for direct callers.
     if (args.file === undefined) throw new Error('asc_job ship-testflight: `file` is required (path to .ipa or .pkg)')
     const app = appOf(args, context.config)
     const dryRun = args.dryRun === true
@@ -182,7 +185,8 @@ const shipTestflight: JobSpec = {
         {
           app,
           file: args.file,
-          wait: true,
+          // `asc builds upload` rejects `--wait` together with `--dry-run`.
+          ...(dryRun ? {} : { wait: true }),
           ...(args.version === undefined ? {} : { version: args.version }),
           ...(args.buildNumber === undefined ? {} : { buildNumber: args.buildNumber }),
           ...(dryRun ? { dryRun: true } : {}),
@@ -276,6 +280,7 @@ const stageRelease: JobSpec = {
           version: args.version,
           buildId: args.buildId,
           ...(args.metadataDir === undefined ? {} : { metadataDir: args.metadataDir }),
+          ...(args.copyMetadataFrom === undefined ? {} : { copyMetadataFrom: args.copyMetadataFrom }),
           ...(args.platform === undefined ? {} : { platform: args.platform }),
           ...(dryRun ? { dryRun: true } : { confirm: true }),
         },
@@ -320,33 +325,40 @@ const triageFeedback: JobSpec = {
     )
     steps.push(crashes)
 
-    let reviews: JobStepResult | undefined
-    if (crashes.ok) {
-      const result = await context.runtime.runAction(
+    // Reviews are independent of crashes: a crashed-fetch failure must not hide
+    // customer reviews, and the failure is surfaced as `attempted-failed`.
+    const reviews = asStep(
+      'reviews',
+      await context.runtime.runAction(
         'asc',
         'reviews-list',
         { app, limit, sort: '-createdDate' },
         context.exec,
-      )
-      reviews = asStep('reviews', result)
-      steps.push(reviews)
-    }
+      ),
+    )
+    steps.push(reviews)
 
-    const count = (step: JobStepResult | undefined): string => {
-      if (step === undefined) return 'n/a'
+    const count = (step: JobStepResult): string => {
       const payload = step.data
       if (Array.isArray(payload)) return String(payload.length)
       const collection = payload !== null && typeof payload === 'object' ? (payload as Record<string, unknown>).data : undefined
       return Array.isArray(collection) ? String(collection.length) : 'n/a'
     }
+    // Distinguish "never ran" from "ran and failed": the old `n/a` collapsed
+    // both and read as if reviews were unavailable.
+    const describe = (step: JobStepResult | undefined): string => {
+      if (step === undefined) return 'skipped'
+      if (!step.ok) return 'attempted-failed'
+      return count(step)
+    }
     return finish(this, steps, {
-      dryRun: true,
+      dryRun: false,
       ignoreFailures: ['reviews'],
-      summary: `feedback=${count(feedback)} crashes=${count(crashes)} reviews=${count(reviews)}`,
+      summary: `feedback=${describe(feedback)} crashes=${describe(crashes)} reviews=${describe(reviews)}`,
       data: {
         feedback: feedback.data ?? null,
         crashes: crashes.data ?? null,
-        reviews: reviews?.data ?? null,
+        reviews: reviews.data ?? null,
       },
       ...(feedback.ok ? {} : { errorClass: feedback.errorClass, ...(feedback.hint === undefined ? {} : { hint: feedback.hint }) }),
     })
@@ -391,7 +403,7 @@ const complianceSweep: JobSpec = {
     const counts = steps.map((step) => `${step.name}=${step.ok ? 'ok' : 'n/a'}`)
     const failed = steps.filter((step) => !step.ok)
     return finish(this, steps, {
-      dryRun: true,
+      dryRun: false,
       summary: `compliance: ${counts.join(' ')}${failed.length === 0 ? '' : ` (${failed.length} probe(s) unavailable)`}`,
       data: {
         ageRating: steps[0]?.data ?? null,
@@ -425,6 +437,56 @@ export function jobIds(): string[] {
   return JOB_SPECS.map((spec) => spec.id)
 }
 
+function jobText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/**
+ * Validate a job call before approval and before the runner starts a step.
+ *
+ * Same contract as `ActionSpec.validate`: an actionable message or `undefined`.
+ * Context-free on purpose — job-level guards only look at the arguments (the
+ * `defaultAppId` fallback is applied later by `appOf`). Unknown ids return
+ * `undefined`; `runJob` and the policy reject those separately.
+ *
+ * @param id - job id (`release-check`, `ship-testflight`, ...).
+ * @param args - model-provided job arguments.
+ */
+export function validateJobArgs(id: string, args: JobArgs): string | undefined {
+  if (jobSpecFor(id) === undefined) return undefined
+  if (id === 'ship-testflight') {
+    const file = jobText(args.file)
+    if (file === undefined) {
+      return 'asc_job ship-testflight needs `file`: the path to the .ipa or .pkg to upload.'
+    }
+    if (!file.toLowerCase().endsWith('.pkg')) return undefined
+    const missing = [
+      ...(jobText(args.version) === undefined ? ['--version'] : []),
+      ...(jobText(args.buildNumber) === undefined ? ['--build-number'] : []),
+    ]
+    if (missing.length === 0) return undefined
+    return `asc_job ship-testflight needs both \`--version\` and \`--build-number\` for a .pkg (asc extracts them only from an .ipa); missing ${missing.join(' and ')}. Pass them explicitly, or ship an .ipa instead.`
+  }
+  if (id === 'stage-release') {
+    if (jobText(args.version) === undefined) {
+      return 'asc_job stage-release needs `version`: the marketing version to stage, e.g. 1.2.3.'
+    }
+    if (jobText(args.buildId) === undefined) {
+      return 'asc_job stage-release needs `buildId`: the processed build to attach to the version.'
+    }
+    const hasDir = jobText(args.metadataDir) !== undefined
+    const hasCopy = jobText(args.copyMetadataFrom) !== undefined
+    if (hasDir && hasCopy) {
+      return 'asc_job stage-release accepts exactly one metadata source, but both `metadataDir` and `copyMetadataFrom` were given (asc rejects `--metadata-dir` with `--copy-metadata-from`). Keep one.'
+    }
+    if (!hasDir && !hasCopy) {
+      return 'asc_job stage-release needs exactly one metadata source: pass `metadataDir` (apply a local metadata directory) or `copyMetadataFrom` (copy localization text from another version).'
+    }
+    return undefined
+  }
+  return undefined
+}
+
 /**
  * Run one job after the mode/confirm gate.
  *
@@ -433,6 +495,10 @@ export function jobIds(): string[] {
 export async function runJob(id: string, args: JobArgs, context: JobContext): Promise<JobResult> {
   const spec = jobSpecFor(id)
   if (spec === undefined) throw new Error(`asc_job: unknown job "${id}" (expected one of ${jobIds().join(', ')})`)
+  // Guard first, exactly like the pre-execution policy: an invalid combination
+  // must never reach read-only/confirm prompts or the first nested step.
+  const invalid = validateJobArgs(id, args)
+  if (invalid !== undefined) throw new Error(invalid)
   if (spec.risk === 'write' && context.config.mode === 'read-only') {
     throw new Error(
       `asc_job ${spec.id} mutates App Store Connect but the plugin is in read-only mode. Ask the user to switch the \`asc-tools\` row to \`mode: write\`.`,

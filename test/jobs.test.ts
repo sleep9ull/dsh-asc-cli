@@ -123,6 +123,22 @@ describe('ship-testflight', () => {
     expect(outcome.dryRun).toBe(true)
   })
 
+  it('never sends --wait on a dry-run upload', async () => {
+    const { ctx, runAction } = context()
+    await runJob('ship-testflight', args({ file: 'a.ipa', dryRun: true }), ctx)
+    const uploadArgs = runAction.mock.calls[0]?.[2] as Record<string, unknown>
+    expect(uploadArgs.dryRun).toBe(true)
+    expect(uploadArgs.wait).toBeUndefined()
+  })
+
+  it('requires version and build number for a .pkg even in a dry run', async () => {
+    const { ctx, runAction } = context()
+    await expect(
+      runJob('ship-testflight', args({ file: 'App.pkg', dryRun: true }), ctx),
+    ).rejects.toThrow(/--version.*--build-number/)
+    expect(runAction).not.toHaveBeenCalled()
+  })
+
   it('explains a missing buildId instead of silently skipping the group', async () => {
     const { ctx } = context({ runAction: async () => result({ data: {} }) })
     const outcome = await runJob('ship-testflight', args({ file: 'a.ipa', group: 'Internal' }), ctx)
@@ -137,10 +153,34 @@ describe('stage-release', () => {
     const { ctx, runAction } = context({
       runAction: async () => result({ ok: false, exitCode: 1, summary: 'not ready', errorClass: 'usage' }),
     })
-    const outcome = await runJob('stage-release', args({ version: '1.2.3', buildId: 'b1' }), ctx)
+    const outcome = await runJob(
+      'stage-release',
+      args({ version: '1.2.3', buildId: 'b1', metadataDir: './metadata' }),
+      ctx,
+    )
     expect(outcome.ok).toBe(false)
     expect(runAction).toHaveBeenCalledTimes(1)
     expect(outcome.steps.map((step) => step.name)).toEqual(['validate'])
+  })
+
+  it('rejects a missing metadata source before running any step', async () => {
+    const { ctx, runAction } = context()
+    await expect(runJob('stage-release', args({ version: '1.2.3', buildId: 'b1' }), ctx)).rejects.toThrow(
+      /metadata/,
+    )
+    expect(runAction).not.toHaveBeenCalled()
+  })
+
+  it('rejects both metadata sources before running any step', async () => {
+    const { ctx, runAction } = context()
+    await expect(
+      runJob(
+        'stage-release',
+        args({ version: '1.2.3', buildId: 'b1', metadataDir: './metadata', copyMetadataFrom: '1.0.0' }),
+        ctx,
+      ),
+    ).rejects.toThrow(/metadata/)
+    expect(runAction).not.toHaveBeenCalled()
   })
 
   it('validates, then stages with confirm for a real run', async () => {
@@ -156,9 +196,21 @@ describe('stage-release', () => {
     )
   })
 
+  it('passes copyMetadataFrom through instead of metadataDir', async () => {
+    const { ctx, runAction } = context()
+    await runJob('stage-release', args({ version: '1.2.3', buildId: 'b1', copyMetadataFrom: '1.1.0' }), ctx)
+    const stageArgs = runAction.mock.calls[1]?.[2] as Record<string, unknown>
+    expect(stageArgs.copyMetadataFrom).toBe('1.1.0')
+    expect(stageArgs.metadataDir).toBeUndefined()
+  })
+
   it('uses --dry-run instead of confirm for a preview', async () => {
     const { ctx, runAction } = context()
-    await runJob('stage-release', args({ version: '1.2.3', buildId: 'b1', dryRun: true }), ctx)
+    await runJob(
+      'stage-release',
+      args({ version: '1.2.3', buildId: 'b1', metadataDir: './metadata', dryRun: true }),
+      ctx,
+    )
     const stageArgs = runAction.mock.calls[1]?.[2] as Record<string, unknown>
     expect(stageArgs.dryRun).toBe(true)
     expect(stageArgs.confirm).toBeUndefined()
@@ -187,7 +239,7 @@ describe('triage-feedback', () => {
     )
   })
 
-  it('treats reviews as optional', async () => {
+  it('treats reviews as optional and reports the failure accurately', async () => {
     const { ctx } = context({
       runAction: async (tool, action) =>
         action === 'reviews-list'
@@ -196,10 +248,41 @@ describe('triage-feedback', () => {
     })
     const outcome = await runJob('triage-feedback', args({ confirm: false }), ctx)
     expect(outcome.ok).toBe(true)
-    expect(outcome.summary).toContain('reviews=n/a')
+    expect(outcome.summary).toContain('reviews=attempted-failed')
+  })
+
+  it('still fetches reviews when crashes fail', async () => {
+    const { ctx, runAction } = context({
+      runAction: async (tool, action) =>
+        action === 'testflight-crashes'
+          ? result({ ok: false, exitCode: 1, summary: 'crashes unavailable', errorClass: 'unknown' })
+          : result({ data: { data: action === 'reviews-list' ? [{}, {}, {}] : [{}, {}] } }),
+    })
+    const outcome = await runJob('triage-feedback', args({ confirm: false }), ctx)
+    expect(runAction).toHaveBeenCalledWith(
+      'asc',
+      'reviews-list',
+      expect.objectContaining({ app: '111' }),
+      expect.anything(),
+    )
+    expect(outcome.summary).toContain('crashes=attempted-failed')
+    expect(outcome.summary).toContain('reviews=3')
   })
 })
 
+
+describe('read-only jobs report dryRun: false', () => {
+  it('does not label release-check, triage-feedback or compliance-sweep as previews', async () => {
+    const { ctx } = context()
+    for (const id of ['release-check', 'triage-feedback', 'compliance-sweep']) {
+      const outcome = await runJob(id, args({ confirm: false }), {
+        ...ctx,
+        config: { ...ctx.config, mode: 'read-only' },
+      })
+      expect(outcome.dryRun, id).toBe(false)
+    }
+  })
+})
 
 describe('compliance-sweep', () => {
   it('probes age rating, encryption, accessibility and pricing as read-only argv', async () => {

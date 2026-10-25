@@ -26,7 +26,7 @@ export const JOBS: readonly CapabilityJob[] = [
     intent: ['这版能发了吗', '卡在哪、先修什么', '提交前检查'],
     risk: 'read',
     needsConfirm: false,
-    ascCommands: ['asc validate --app', 'asc status --app'],
+    ascCommands: ['asc validate --app'],
     skill: 'dsh-asc-release-readiness',
   },
   {

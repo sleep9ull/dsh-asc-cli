@@ -18,13 +18,17 @@
  * `unknown` never means "allow silently": it is either escalated to a human or
  * refused. That closes the gap where a write command the classifier does not
  * recognize could run on the model's own `confirm` argument.
+ *
+ * A registered action/job also runs its argument validator here first: a
+ * combination `asc` would reject is denied (`ASC_INVALID_ARGUMENTS`) before any
+ * confirm prompt or human approval, never after.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { classifyArgv, kindLabel } from './classify.js'
 import type { Config } from './config.js'
-import { jobSpecFor } from './jobs.js'
-import { specFor, type ActionKind } from './registry.js'
+import { jobSpecFor, validateJobArgs, type JobArgs } from './jobs.js'
+import { specFor, type ActionKind, type ToolArgs } from './registry.js'
 
 /** Structured refusal identity, routable by the host and by retry logic. */
 export interface AscErrorInfo {
@@ -42,6 +46,12 @@ export interface CallFacts {
   readonly kind: ActionKind
   readonly needsConfirm: boolean
   readonly label: string
+  /**
+   * Actionable argument problem for a registered action/job, discovered before
+   * any confirm or approval prompt. `undefined` when the combination is fine
+   * (or when the policy has no validator for this call).
+   */
+  readonly invalid?: string
 }
 
 const INFO = {
@@ -49,6 +59,7 @@ const INFO = {
   confirm: { name: 'ASC_CONFIRM_REQUIRED', code: 'ASC_CONFIRM_REQUIRED' },
   forbidden: { name: 'ASC_FORBIDDEN', code: 'ASC_FORBIDDEN' },
   unknown: { name: 'ASC_UNKNOWN_COMMAND', code: 'ASC_UNKNOWN_COMMAND' },
+  invalidArguments: { name: 'ASC_INVALID_ARGUMENTS', code: 'ASC_INVALID_ARGUMENTS' },
 } as const satisfies Record<string, AscErrorInfo>
 
 function argvOf(args: unknown): string[] {
@@ -69,8 +80,12 @@ function confirmOf(args: unknown): boolean {
   return (args as Record<string, unknown>).confirm === true
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 /** Inspect one tool call without trusting its argument shape. */
-export function inspectCall(name: string, args: unknown): CallFacts | undefined {
+export function inspectCall(name: string, args: unknown, config?: Config): CallFacts | undefined {
   if (name !== 'asc' && !name.startsWith('asc_')) return undefined
   if (name === 'asc') {
     const action = actionOf(args)
@@ -93,10 +108,12 @@ export function inspectCall(name: string, args: unknown): CallFacts | undefined 
     if (spec === undefined) {
       return { kind: 'forbidden', needsConfirm: false, label: action === undefined ? name : `${name}.${action}` }
     }
+    const invalid = isRecord(args) ? validateJobArgs(spec.id, args as JobArgs) : undefined
     return {
       kind: spec.risk === 'write' ? 'write' : 'read',
       needsConfirm: spec.needsConfirm,
       label: `asc_job.${spec.id}`,
+      ...(invalid === undefined ? {} : { invalid }),
     }
   }
   if (name === 'asc_setup') {
@@ -114,10 +131,14 @@ export function inspectCall(name: string, args: unknown): CallFacts | undefined 
   if (!spec) {
     return { kind: 'forbidden', needsConfirm: false, label: action ? `${name}.${action}` : name }
   }
+  // Validators may consult the config for documented fallbacks (`defaultAppId`);
+  // `inspectCall` stays usable without it, so undefined must be tolerated.
+  const invalid = spec.validate?.(isRecord(args) ? (args as ToolArgs) : {}, config)
   return {
     kind: spec.kind,
     needsConfirm: spec.needsConfirm === true,
     label: action ? `${name}.${action}` : name,
+    ...(invalid === undefined ? {} : { invalid }),
   }
 }
 
@@ -151,9 +172,16 @@ function askAbout(facts: CallFacts, reason: string, question: { en: string; zh: 
 
 /** Decide whether one call may proceed, must ask, or must be denied. */
 export function decideCall(config: Config, name: string, args: unknown): AscDecision | undefined {
-  const facts = inspectCall(name, args)
+  const facts = inspectCall(name, args, config)
   if (!facts) return undefined
   const confirmed = confirmOf(args)
+
+  // A combination `asc` would reject must not reach a confirm prompt or a human
+  // approval: deny it here with the actionable reason from the same validator
+  // the builder uses, before any matrix branch (read-only, confirm, approval).
+  if (facts.invalid !== undefined) {
+    return { kind: 'deny', info: INFO.invalidArguments, reason: facts.invalid }
+  }
 
   if (facts.kind === 'forbidden') {
     return {
