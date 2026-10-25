@@ -167,4 +167,39 @@ describe('payload size guard', () => {
     expect(result.dataOmitted).toBeUndefined()
     expect(result.data).toEqual({ data: [{ id: '1' }] })
   })
+
+  it('measures the payload in UTF-8 bytes, not JavaScript characters', () => {
+    // 3,000 CJK characters: ~3,0xx characters but ~9,0xx UTF-8 bytes, so only a
+    // byte-aware budget omits it at the documented 8,000-byte default.
+    const payload = { data: { note: '证'.repeat(3_000) } }
+    const serialized = JSON.stringify(payload)
+    expect(serialized.length).toBeLessThan(8_000)
+    expect(Buffer.byteLength(serialized, 'utf8')).toBeGreaterThan(8_000)
+
+    const result = formatResult(outcome({ data: payload }), 'asc apps list')
+    expect(result.data).toBeUndefined()
+    expect(result.dataOmitted).toBe(true)
+    expect(result.dataBytes).toBe(Buffer.byteLength(serialized, 'utf8'))
+  })
+
+  it('does not promise spilled output when data was dropped without a spill file', () => {
+    const payload = { data: { note: '证'.repeat(3_000) } }
+    const block = renderResult(formatResult(outcome({ data: payload }), 'asc apps list'))[0]
+    if (block?.type !== 'text') throw new Error('expected a text block')
+    expect(block.text).toContain('payload omitted')
+    expect(block.text).toContain('narrow the query')
+    expect(block.text).not.toContain('spilled')
+  })
+
+  it('points at the spill file when one exists', () => {
+    const payload = { data: { note: '证'.repeat(3_000) } }
+    const result = formatResult(
+      outcome({ data: payload, truncated: true, spillPath: '/tmp/asc-spill.json' }),
+      'asc apps list',
+    )
+    expect(result.dataOmitted).toBe(true)
+    const block = renderResult(result)[0]
+    if (block?.type !== 'text') throw new Error('expected a text block')
+    expect(block.text).toContain('spilled output at /tmp/asc-spill.json')
+  })
 })

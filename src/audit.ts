@@ -11,7 +11,7 @@
  * `asc` call into a tool failure.
  */
 
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, chmodSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Config } from './config.js'
 import { redact } from './exec.js'
@@ -36,9 +36,33 @@ export interface AuditEntry {
 /** Sink called after every execution; `createAudit` returns a no-op without a path. */
 export type AuditFn = (entry: AuditEntry) => void
 
+/** Hard cap for one JSONL line, in UTF-8 bytes. */
 const MAX_LINE_BYTES = 8_192
 
-const SENSITIVE_FLAG = /^--?(?:password|passwd|token|secret|api[-_]?key|private[-_]?key|authorization)$/i
+const ELLIPSIS = '…'
+
+/** Credential-shaped flag names, without the leading dashes. */
+const SENSITIVE_FLAG_NAMES =
+  'password|passwd|token|secret|api[-_]?key|private[-_]?key|authorization|pagination[-_]?token'
+
+/** `--token` / `-token`: the next argv token is the value. */
+const SENSITIVE_FLAG = new RegExp(`^--?(?:${SENSITIVE_FLAG_NAMES})$`, 'i')
+
+/** `--token=VALUE` / `--pagination-token=VALUE`: value is inline. */
+const INLINE_SENSITIVE_FLAG = new RegExp(`^(--?(?:${SENSITIVE_FLAG_NAMES}))=`, 'i')
+
+/**
+ * Truncate to at most `maxBytes` UTF-8 bytes without splitting a multibyte
+ * character. A continuation byte (10xxxxxx) means the boundary landed inside a
+ * sequence, so step back to the character's first byte.
+ */
+function truncateToBytes(text: string, maxBytes: number): string {
+  const buffer = Buffer.from(text, 'utf8')
+  if (buffer.length <= maxBytes) return text
+  let end = maxBytes
+  while (end > 0 && ((buffer[end] ?? 0) & 0xc0) === 0x80) end -= 1
+  return buffer.subarray(0, end).toString('utf8')
+}
 
 /** Replace the value after a credential-shaped flag before anything is written. */
 export function sanitizeArgv(argv: readonly string[]): string[] {
@@ -48,6 +72,12 @@ export function sanitizeArgv(argv: readonly string[]): string[] {
     if (redactNext) {
       out.push('[redacted]')
       redactNext = false
+      continue
+    }
+    const inline = INLINE_SENSITIVE_FLAG.exec(token)
+    if (inline !== null) {
+      // Keep the flag, drop only the inline value: `--token=SECRET` → `--token=[redacted]`.
+      out.push(`${inline[1] ?? ''}=[redacted]`)
       continue
     }
     out.push(token)
@@ -67,12 +97,23 @@ export function createAudit(config: Config): AuditFn {
   if (path === undefined || path.trim().length === 0) return () => undefined
   return (entry) => {
     let line = redact(JSON.stringify({ ...entry, argv: sanitizeArgv(entry.argv.slice(0, 32)) }))
-    if (line.length > MAX_LINE_BYTES) line = `${line.slice(0, MAX_LINE_BYTES)}…`
+    if (Buffer.byteLength(line, 'utf8') > MAX_LINE_BYTES) {
+      // Reserve room for the ellipsis so the written line stays within the cap.
+      line = `${truncateToBytes(line, MAX_LINE_BYTES - Buffer.byteLength(ELLIPSIS, 'utf8'))}${ELLIPSIS}`
+    }
     try {
       mkdirSync(dirname(path), { recursive: true })
       appendFileSync(path, `${line}\n`, { mode: 0o600 })
     } catch {
       // Auditing is best-effort; never fail the invocation because of it.
+      return
+    }
+    // `mode` is applied on creation only; tighten a pre-existing loose file.
+    // Best-effort: a foreign owner or read-only mount must not fail the call.
+    try {
+      if (existsSync(path)) chmodSync(path, 0o600)
+    } catch {
+      // ignore
     }
   }
 }
