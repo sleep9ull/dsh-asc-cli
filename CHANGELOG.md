@@ -2,6 +2,61 @@
 
 All notable changes to this plugin are documented here.
 
+## 0.1.6 — 2026-10-25 (write-path contract)
+
+### Security
+
+- The classifier now strips leading global flags (`--profile`, `--debug`,
+  `--read-only`, `--output`, `--`, ...) before taking the command root, so a
+  forbidden command can no longer be downgraded to `unknown`
+  (`--debug auth token` is now `forbidden`, as is `--profile p auth login`).
+- File-writing `download`/`export` leaves are `local-write` instead of `read`
+  (nine commands, including `screenshots download`, `profiles download` and
+  `certificates export`). Both modes now require `confirm: true` and, by
+  default, approval; `analytics download` no longer receives `--output json`.
+- `ASC_WEB_SESSION` is tombstoned in the child environment.
+- Parameter guards run before confirm/approval and reject invalid combinations
+  with `ASC_INVALID_ARGUMENTS` instead of prompting and then failing upstream.
+
+### Fixed
+
+- `asc_job ship-testflight` with `dryRun: true` no longer sends `--wait`
+  (`--wait` and `--dry-run` are mutually exclusive); the upload builder rejects
+  the pair with an actionable message.
+- `asc_apply stage` / `asc_job stage-release` require exactly one metadata
+  source (`metadataDir` or the new `copyMetadataFrom`); the previous default
+  always failed with `exactly one of --metadata-dir or --copy-metadata-from is
+  required`.
+- `groups` (submit + dry-run), `testflight-groups` (internal + external),
+  `upload .pkg` (missing version/build-number) and `publish` (no source,
+  ipa + pkg, pkg without version/build-number) are validated before approval.
+- `publish --ipa` no longer requires `--version` (asc extracts it); `groups`
+  with `buildId` no longer requires `--app`.
+- `triage-feedback` runs the reviews step independently of the crashes step and
+  reports `skipped` / `attempted-failed` instead of a misleading `n/a`.
+- Read-only jobs no longer mark their result as `dryRun: true`.
+- `dataBytes` / `maxDataBytes` use UTF-8 bytes; `dataOmitted` no longer points at
+  a spill file that does not exist; the retry label shows the executed argv.
+- Audit: 8 KB cap by bytes, `0o600` re-applied on every append, inline
+  `--token=...` forms redacted, `appId` recorded when known.
+
+### Build & release
+
+- `build` cleans `lib/` first; `scripts/pack-manifest.mjs` asserts `lib/` maps
+  one-to-one to `src/` (0.1.5 shipped 21 stale `lib/tools/*` files).
+- Added `npm run verify` (typecheck, test, build, pack-manifest, contract,
+  classify-audit, smoke) and wired `pack-manifest` / `classify-audit` /
+  `contract-combos` into CI.
+- Added `@deepseek-ai/dsh-llm` and `@deepseek-ai/dsh-util-values` peers; removed
+  the duplicate `prepack` build (kept `prepare`).
+
+### Documentation
+
+- COMMANDS §2/§3/§6/§8, ARCHITECTURE §3/§5/§6, TESTING, README/README.zh,
+  CONTRACT §3.3/§8 and the affected skills now match the implementation.
+- Corrected historical test counts: 0.1.4 is 144 tests, 0.1.2 is 85 tests.
+- Adds `docs/specs/003-write-path-contract.md`.
+
 ## 0.1.5 — 2026-10-24 (contract & docs release)
 
 ### Fixed
@@ -205,7 +260,7 @@ intentional security fixes.
 
 ### Tests
 
-- 84 tests (from 62), including a new `runtime.test.ts` covering the policy
+- 85 tests (from 62), including a new `runtime.test.ts` covering the policy
   matrix, output retry and read-only/unknown interactions; approval tests now
   cover the unknown-write approval gap and local-write confirmations.
 

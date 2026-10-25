@@ -1,7 +1,7 @@
 # 路线图（ROADMAP）
 
 > 契约级的范围见 [`CONTRACT.md`](./CONTRACT.md) §2；本文是**可变**的版本计划与退出条件。
-> 基线：`0.1.5`｜更新：2026-10-24
+> 基线：`0.1.6`｜更新：2026-10-25
 
 ---
 
@@ -13,6 +13,7 @@
 | 0.1.3 | Know & Do | engine manager（locate/diagnose/provision/版本握手/更新检查）；`/asc` + `/asc-doctor`；`asc_job` 四工作流；6 个内置 skill；三 projector + `maxDataBytes`。tests 85 → 132 |
 | 0.1.4 | Consolidate | 工具面 9 → 5（`feat!`）；`compliance-sweep`；`auditLog`；`approvedActions`；`checkUpdates`；只读分类扩充。tests → 144 |
 | 0.1.5 | Contract & Docs | 文档契约体系（CONTRACT / COMMANDS / ARCHITECTURE / TESTING / CONTRIBUTING / ROADMAP / SPECS）；`--exclude-expired` 透传；README/skill 失真修正；spec-first 流程。tests → 145 |
+| 0.1.6 | Write-path contract | 前导全局 flag 归一化（I10）、文件写 `download/export` 改 local-write（I1）、审批前参数校验（`ASC_INVALID_ARGUMENTS`）、`ship-testflight` dryRun、`stage` metadata 二选一、`clean` build + pack-manifest、`verify`/CI 门、文档/skill 收口。tests 145 → 208 |
 
 ---
 
@@ -20,15 +21,20 @@
 
 **主题**：让"它可靠"可验证，而不是加功能。
 
-| 工作项 | 退出条件 |
-|---|---|
-| 契约升级：`contract.mjs` 覆盖 `--output`/dryRun/枚举值/组合，pin 上游版本 | 值/组合错误能在 CI 挂掉，而非生产 exit 2 |
-| 参数守卫（P2-1..5）：`groups` dryRun+submit、`stage` 元数据二选一、`publish` ipa/pkg、`upload --pkg` 版本+构建号、`testflight groups` internal/external 互斥 | 已批准的调用不再用法报错 |
-| 工具端到端：每个工具至少 1 条 `defineTool → registry → exec` 测试 | `src/tools/*` 覆盖；覆盖率门槛入 CI |
-| smoke 断言：退出码 + 关键输出；使用真实 scrubbed env | 回归能被发现 |
-| 结果补齐：`search`/`system-status` projector；超限 `data` 改为"投影 + spill 指针"；`output.schema` 至少顶层类型化 | 典型调用 token 再降 |
-| 错误/脱敏：补 `pending`(exit 7)/`validation-failed`；redact 覆盖 `data`/`command` | 错误可路由、不泄露 |
-| 文档：README 与实现一致性校验 | 无已知失真 |
+| 工作项 | 状态 | 退出条件 / 剩余 |
+|---|---|---|
+| 参数守卫（7 组）+ 审批前校验 | ✅ 0.1.6 | `contract-combos.mjs` 12 组拒绝 / 8 组接受 |
+| `upload` pkg、`publish` 来源、`stage` metadata 二选一 | ✅ 0.1.6 | 已批准调用不再用法报错 |
+| 分类器/本地写/禁区归一化 | ✅ 0.1.6 | `classify-audit.mjs` 无 read 写文件叶子 |
+| 工具端到端（`defineTool → execute`，stub） | ⚠️ 部分 | 仍缺真实 runtime/spawn 集成与覆盖率门槛 |
+| 结果：`dataBytes` 真字节、`dataOmitted` 文案 | ✅ 0.1.6 | — |
+| 结果：`search`/`system-status` projector、`output.schema` 顶层类型化 | ⏳ | 典型调用 token 再降 |
+| smoke 断言：退出码 + 关键输出；真实 scrubbed env | ⏳ | 回归能被发现 |
+| 错误/脱敏：`pending`(exit 7)/`validation-failed`；`data`/`summary` 深度脱敏 | ⏳ | 错误可路由、不泄露 |
+| 引擎：`compatStatus` 从 `SUPPORTED_ASC_RANGE` 派生；解析失败返回 `unknown` | ⏳ | 区间事实单源、畸形版本不误判 |
+| 审计：engine 探针（version/auth/doctor/diagnose/provision）写入审计或声明为稳定例外 | ⏳ | `auditLog` 覆盖所有调用 |
+| CI：lint、覆盖率门槛、smoke 断言；`upstream-watch` 用 token 并区分限流 | ⏳ | 发布物与回归可持续守护 |
+| 文档：COMMANDS/ARCHITECTURE/TESTING/README 与实现一致性 | ✅ 0.1.6 | 无已知失真（engine 探针审计为声明例外） |
 
 ---
 
@@ -66,13 +72,13 @@
 
 ## 5. 验收指标
 
-| 指标 | 目标 | 0.1.5 现状 |
+| 指标 | 目标 | 0.1.6 现状 |
 |---|---|---|
 | time-to-first-success（装 → 第一次成功查询） | < 3 分钟 | 路径 2 步 + `/asc`；未实测 |
-| 任务成功率（发版前检查 / 上传 / 提交） | > 90% | 未测量（缺真实响应 fixture / smoke 断言） |
-| 每任务审批次数 | ≤ 2 | 可测（policy + audit）；unknown 会额外触发 |
-| 每任务 token 消耗 | 下降 30%+ | projector 已有；search/system-status 待补 |
-| 上游漂移致败率 | < 1% | contract 只校验名字，无法度量 |
+| 任务成功率（发版前检查 / 上传 / 提交） | > 90% | 文档化参数路径已修（守卫 + dryRun + metadata 二选一）；真实响应 fixture 与 smoke 断言仍缺 |
+| 每任务审批次数 | ≤ 2 | 非法组合在审批前拒绝；unknown 仍会额外触发（安全选择） |
+| 每任务 token 消耗 | 下降 30%+ | projector 已有；`dataBytes`/`dataOmitted` 已修；search/system-status 待补 |
+| 上游漂移致败率 | < 1% | contract + classify-audit + contract-combos 兜底；值校验仍不完整 |
 | 未知/被拒命令可恢复率 | > 80% | hint 覆盖主要拒绝路径；未量化 |
 
 ---

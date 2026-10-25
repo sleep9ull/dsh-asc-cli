@@ -31,12 +31,12 @@ asc_job { action: "ship-testflight", app: "123456789", version: "1.2.3",
           group: "Internal Testers", dryRun: true, confirm: true }
 ```
 
-The job uploads with `wait`, extracts `buildId`, and adds it to the group. `submit: true` also submits for beta review. `dryRun` previews the upload and skips groups; the write gate still applies, so show the preview, then do the real run.
+A real run uploads with `--wait`, extracts `buildId`, and adds it to the group. `submit: true` also submits for beta review. `dryRun` previews the upload **without** waiting for processing and skips groups (`--wait` and `--dry-run` are mutually exclusive); the write gate still applies, so show the preview, then do the real run. A `.pkg` needs `version` + `buildNumber` even in a preview; an `.ipa` can omit them.
 
 Do not add groups before buildId is confirmed. Fallback: `asc_apply action:"groups"` with `buildId`; `--latest` can target another build. Manual order:
 
 ```
-asc_apply { action: "upload", app, file, version, buildNumber, wait: true, dryRun: true, confirm: true }
+asc_apply { action: "upload", app, file, version, buildNumber, dryRun: true, confirm: true }
 asc_apply { action: "upload", app, file, version, buildNumber, wait: true, confirm: true }
 asc_apply { action: "groups", app, buildId: "<from upload>", group, confirm: true }
 ```

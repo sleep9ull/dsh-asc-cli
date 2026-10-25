@@ -27,13 +27,14 @@
 
 完整矩阵与理由见 [`docs/CONTRACT.md`](docs/CONTRACT.md) §3；以下是每轮都要生效的硬约束：
 
-1. **只读默认**：read-only 模式注入 `--read-only` + `ASC_READ_ONLY=1`；ASC 写只在 `mode: write` 放行。本地写在两种模式都要 `confirm`，默认还需审批。
+1. **只读默认**：read-only 模式注入 `--read-only` + `ASC_READ_ONLY=1`；ASC 写只在 `mode: write` 放行。本地写（含 `download`/`export` 文件写）在两种模式都要 `confirm`，默认还需审批。
 2. **写路径三件套**：`mode: write` + `confirm: true` + 宿主审批；模型自证不算批准；`approvedActions` 只放松写模式的 write/unknown。
 3. **unknown 不静默**：`unknownCommands` 默认 `ask`，可 `deny`；read-only 下也走审批。
 4. **值字面化**：模型值前导 `@` → `@@`（含 `--flag=@…`）；`allowValueExpansion` 默认 false。
-5. **单一执行点**：只经 `ctx.subprocess` 传 argv 数组，无 shell；只转发 4 个 `ASC_*` 认证变量；凭据不进模型、不落审计。
+5. **单一执行点**：只经 `ctx.subprocess` 传 argv 数组，无 shell；显式转发 4 个 `ASC_*` 认证变量并 tombstone `ASC_WEB_SESSION`；凭据不进模型、不落审计。
 6. **工具面固定 5 个**：`asc` / `asc_plan` / `asc_apply` / `asc_job` / `asc_setup`；新能力扩 action 或 job，不新增命令型工具。
 7. **知识随包**：6 个 skill 以 rank 600 发布；工具名/action 变更必须同提交更新受影响 skill。
+7.1 **审批前校验**：已注册 action/job 的非法参数组合在 confirm/审批前拒绝（`ASC_INVALID_ARGUMENTS`）；守卫与 builder 共用同一校验。
 8. **引擎外置**：`asc` 不进 npm 包；pin `5.16.0`、区间 `>=5.16.0 <6.0.0`（`src/compat.ts` 是 SSOT）；provision 默认关、校验 SHA-256；永不自动升级。
 9. **审计可关**：未配 `auditLog` 不写；best-effort、脱敏、`0o600`、单行 8 KB。
 10. **禁区**：`auth login/logout` 与 `asc web` 一律 `forbidden`；未识别命令走 `unknown`。
@@ -47,7 +48,7 @@
 ```bash
 ./vendor/asc <command> --help          # 上游权威行为
 sed -n '1,80p' src/registry.ts         # action → kind / argv 构造
-npm test                               # 当前契约的断言
+npm test                               # 当前契约的断言（208 tests）
 node scripts/contract.mjs ./vendor/asc # 23 条注册命令 vs 上游
 ```
 
@@ -80,10 +81,14 @@ action 的具体行为以 `src/registry.ts`、工具 schema、`src/approval.ts` 
 ## 构建与验证
 
 ```bash
+npm run verify                             # 一键：typecheck/test/build/pack-manifest/contract/classify-audit/smoke
+# 或分开跑
 npm run typecheck
-npm test                                   # 基线 144 tests 起只增不减
-npm run build
+npm test                                   # 基线 208 tests 起只增不减
+npm run build                              # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc     # 需要 vendor/asc
+node scripts/contract-combos.mjs           # 插件侧非法组合必须被拒
+node scripts/classify-audit.mjs ./vendor/asc  # completion 漂移门
 ```
 
 CI 跑 node 22/24 的 typecheck + test + build，外加独立 contract job 与每日 upstream-watch。改了命令面还要同步 `docs/COMMANDS.md`、相关 skill 与 README（若用户可见）。

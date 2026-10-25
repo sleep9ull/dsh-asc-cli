@@ -1,6 +1,6 @@
 # 文档地图（docs/）
 
-> 基线：`0.1.5`｜常驻规则：[`../AGENTS.md`](../AGENTS.md)｜契约：[`CONTRACT.md`](./CONTRACT.md)
+> 基线：`0.1.6`｜常驻规则：[`../AGENTS.md`](../AGENTS.md)｜契约：[`CONTRACT.md`](./CONTRACT.md)
 
 本目录是仓库的**规范文档**。代码、测试与 `./vendor/asc --help` 是权威事实源；文档是它们的缓存，冲突时以代码为准并修正文档。
 
@@ -47,7 +47,7 @@
 
 ## 4. 本地评估文档
 
-`ASSESSMENT.md` 与 `assessment/` 是本地未跟踪的评估快照（0.1.1 初评 + 0.1.4 复核），不随仓库发布；需要历史依据时读取，不要把其中的数字当作当前事实。
+`ASSESSMENT.md` 与 `assessment/` 是本地未跟踪的评估快照（0.1.1 初评、0.1.4 复核、0.1.5 全面评估见 `assessment/05-implementation-review-0.1.5.md`），不随仓库发布；需要历史依据时读取，不要把其中的数字当作当前事实。
 
 ---
 

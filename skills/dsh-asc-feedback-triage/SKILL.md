@@ -52,7 +52,7 @@ Draft: acknowledge the issue, avoid promises, exclude personal data, route bugs 
 
 ## Policy and privacy
 
-`reviews-list` is read-only, and common read subcommands under the expanded roots run through `asc action:"run"` without approval. `auditLog` records argv, exit, duration and error class for these reads, not result content; tester emails, device ids and screenshots stay out of logs and files. Share screenshot URLs only with the requesting user.
+`reviews-list` is read-only, and classifier-proven read subcommands under the expanded roots run through `asc action:"run"` without approval. Commands the classifier cannot prove read-only (for example `testflight crashes log`) are `unknown`: they need approval in read-only mode and `confirm` + approval in write mode. `auditLog` records argv, exit, duration and error class for these reads, not result content; tester emails, device ids and screenshots stay out of logs and files. Share screenshot URLs only with the requesting user.
 
 `approvedActions` may waive the approval prompt for a reply command in write mode, but `confirm` and the draft-first rule still apply. Never submit a response automatically.
 

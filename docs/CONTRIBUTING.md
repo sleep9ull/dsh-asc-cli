@@ -44,10 +44,14 @@ npm pack && dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-*.tgz
 ## 3. 提交前质量门
 
 ```bash
+npm run verify                             # 一键：typecheck/test/build/pack/contract/classify/smoke
+# 或分开跑
 npm run typecheck
-npm test                                   # 基线 144 tests 起只增不减
-npm run build
+npm test                                   # 基线 208 tests 起只增不减
+npm run build                              # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc     # 23 条注册命令
+node scripts/contract-combos.mjs           # 插件侧非法组合
+node scripts/classify-audit.mjs ./vendor/asc
 ```
 
 - 改了命令面/参数：同时更新 `docs/COMMANDS.md`、相关 skill、README/README.zh（若用户可见）。

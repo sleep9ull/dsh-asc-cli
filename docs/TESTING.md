@@ -1,7 +1,7 @@
 # 测试规范（TESTING）
 
 > 测试的**规则**（写什么、不写什么）在 [`../AGENTS.md`](../AGENTS.md)「测试」一节；本文给模式与工具。
-> 基线 `0.1.5`｜质量门见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) §3。
+> 基线 `0.1.6`｜质量门见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) §3。
 
 ---
 
@@ -19,17 +19,18 @@
 
 | 文件 | 覆盖 |
 |---|---|
-| `test/classify.test.ts` | 任意 argv 的分类（read/write/local-write/forbidden/unknown）、只读根扩充 |
-| `test/approval.test.ts` | policy 矩阵、confirm/审批/豁免、unknown 两条路、结构化拒绝 |
-| `test/registry.test.ts` | 每个 action 的 argv 构造、参数校验、confirm 位置、`--platform`、`--exclude-expired` |
-| `test/exec.test.ts` | env 构造、`@` 字面化、`ASC_READ_ONLY` tombstone、redact、超时/取消、截断/spill |
-| `test/runtime.test.ts` | `--output` 决策、重试边界、projector 挂接、审计调用 |
-| `test/format.test.ts` | summary / errorClass / hint / projector / `maxDataBytes` |
-| `test/jobs.test.ts` | 5 个 job 的步骤顺序、写闸门二次复核、read-only 守卫、dryRun |
+| `test/classify.test.ts` | 前导全局 flag 归一化、`--` 哨兵、auth/web 禁区、`download`/`export` 文件写叶子、read/write/local-write/unknown |
+| `test/approval.test.ts` | policy 矩阵、confirm/审批/豁免、unknown 两条路、**审批前参数校验**（`ASC_INVALID_ARGUMENTS`）、job/engine 闸门 |
+| `test/registry.test.ts` | 23 条 action 的 argv、7 组参数守卫、两个放宽（publish ipa 省 version / groups buildId 省 app）、confirm 位置、`--exclude-expired` |
+| `test/tools.test.ts` | 5 个工具 `defineTool → execute` 的参数透传与错误（stub runtime/engine，不启真实进程） |
+| `test/exec.test.ts` | env 构造、`ASC_READ_ONLY`/`ASC_WEB_SESSION` tombstone、`@` 字面化、redact、超时、截断/spill |
+| `test/runtime.test.ts` | `--output` 决策、文件写叶子不追加 `--output`、重试边界、审计 `appId`、forbidden 在 spawn 前拒绝 |
+| `test/format.test.ts` | summary / errorClass / hint / projector / `maxDataBytes`（UTF-8 字节）/ `dataOmitted` 文案 |
+| `test/jobs.test.ts` | 5 个 job 的步骤顺序、写闸门二次复核、read-only 守卫、dryRun、metadata 二选一、triage 解耦 |
 | `test/engine.test.ts` | 定位顺序、版本区间、provision 校验（含篡改校验和）、更新检查缓存 |
 | `test/commands.test.ts` | `/asc`、`/asc-doctor` 的渲染与只读性 |
 | `test/skills.test.ts` | frontmatter、rank 600、provider list/get、非法目录 |
-| `test/audit.test.ts` | 脱敏、`0o600`、失败不影响调用 |
+| `test/audit.test.ts` | 脱敏（独立/内联 flag）、8 KB 按字节、`0o600`、失败不影响调用 |
 | `test/helpers.ts` / `test/compat-helpers.ts` | `makeConfig`、spawn 替身等共用夹具 |
 
 ---
@@ -63,9 +64,14 @@ const spawn = (spec: SubprocessSpawnSpec) => {
 
 重复的 argv/flag 组合放表格里，加一行而不是复制一个 `it`。每个 action 的**独有**行为（路径、flag、confirm 位置）才单独断言。
 
-### 3.5 契约测试
+### 3.5 契约与漂移门
 
-`scripts/contract.mjs` 把 23 条注册命令逐条交给真实 `asc --help`，用于发现上游漂移；它不校验值/组合（见 [`ROADMAP.md`](./ROADMAP.md) v0.2）。
+- `scripts/contract.mjs`：23 条注册命令逐条交给真实 `asc --help`，发现命令/flag 重命名；
+- `scripts/contract-combos.mjs`：插件侧负向契约——12 组非法参数组合必须被 builder 拒绝、8 组合法组合必须可构造（不需要 asc）；
+- `scripts/classify-audit.mjs`：从 `asc completion` 取全部路径，任何"写文件却分类为 read"的叶子都失败；
+- `scripts/pack-manifest.mjs`：构建后断言 `lib/` 文件集与 `src/` 一一对应，防止 stale 模块进包。
+
+四者都接在 `npm run verify` 与 CI 上。
 
 ---
 
@@ -86,19 +92,25 @@ const spawn = (spec: SubprocessSpawnSpec) => {
 ## 5. 质量门
 
 ```bash
+npm run verify               # 一键：typecheck → test → build → pack-manifest → contract → classify-audit → smoke
+# 或分开跑
 npm run typecheck
-npm test                     # 11 个 suite，0.1.4 基线 144 tests 起只增不减
-npm run build
+npm test                     # 12 个 suite，0.1.6 基线 208 tests 起只增不减
+npm run build                # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc
+node scripts/contract-combos.mjs
+node scripts/classify-audit.mjs ./vendor/asc
 ```
 
-CI：node 22/24 的 typecheck + test + build；独立 contract job；每日 `upstream-watch` 发现漂移自动开 issue。
+CI：node 22/24 的 typecheck + test + build + pack-manifest；独立 contract job（contract + classify-audit + contract-combos）；每日 `upstream-watch` 发现漂移自动开 issue。
 
 ---
 
-## 6. 已知缺口（v0.2 关闭）
+## 6. 已知缺口（v0.2 / 0.1.7 关闭）
 
-- 没有从 `src/tools/*` 进入 `defineTool → registry → exec` 的端到端测试；
-- contract 只校验命令名/flag 名，不校验值/组合/dryRun；
-- `scripts/smoke.mjs` 无断言、未使用真实 scrubbed env；
-- 没有覆盖率门槛；CI 无 lint。
+- `test/tools.test.ts` 用 stub runtime 验证参数透传，没有真实 `defineTool → registry → exec` 的进程级集成；
+- `contract.mjs` 仍只校验命令/flag 接受性（组合由 `contract-combos.mjs` 在插件侧覆盖，未对上游做值校验）；
+- `scripts/smoke.mjs` 无断言、失败仍退出 0、未模拟 scrubbed env；
+- 没有覆盖率门槛；CI 无 lint；
+- engine 探针（version/auth/doctor/diagnose/provision）不写审计（文档已声明例外）；
+- `data`/`summary` 未做敏感键深度脱敏（0.1.7）。

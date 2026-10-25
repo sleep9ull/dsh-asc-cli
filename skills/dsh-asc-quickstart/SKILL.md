@@ -28,7 +28,7 @@ This plugin wraps `asc` for App Store Connect; it does not build or sign apps. A
 | Mutate | `asc_apply`: `upload`, `groups`, `metadata-init`, `metadata-apply`, `stage`, `publish` |
 | New command | `asc action:"discover"` → `asc action:"run"` |
 
-`release-check`, `triage-feedback` and `compliance-sweep` are read-only; `ship-testflight` and `stage-release` write. Reads need no confirm. All `asc_apply` actions and the local writes `asc_plan.metadata-plan` and `asc_apply.metadata-init` need confirm + approval.
+`release-check`, `triage-feedback` and `compliance-sweep` are read-only; `ship-testflight` and `stage-release` write. Reads need no confirm. All `asc_apply` actions and every local write need confirm + approval: `asc_plan.metadata-plan`, `asc_apply.metadata-init`, `asc_setup.install-skills`, and the file-writing `download`/`export` leaves (for example `screenshots download`, `profiles download`).
 
 ## Read a result
 
@@ -42,9 +42,9 @@ Most tools return `{ok, exitCode, command, durationMs, summary, data?, errorClas
 
 Read-only is the default; writes need `mode: write`, `confirm` and approval, dry runs included. `approvedActions` globs (e.g. `asc_apply.upload`) waive only the prompt in write mode; confirm stays, read-only is never bypassed.
 
-`auditLog` writes one JSONL line per asc invocation (tool, action, argv, exit, duration, errorClass, app); no approval outcome.
+`auditLog` writes one JSONL line per tool-initiated asc invocation (tool, action, argv, exit, duration, errorClass, appId when known); engine probes and approval outcomes are not in this file.
 
-Read-only classification covers recognized read subcommands under age-rating, encryption, accessibility, pricing, users, devices, actors, account, analytics, finance, performance, insights, ads, game-center, xcode-cloud, product-pages, asset-library, categories, eula and app-tags; write verbs still win. Unprovable `run` commands go to human approval, or are refused with `unknownCommands: "deny"`. A leading `@` is escaped; `@env:`/`@file:` expansion is off. `asc --read-only` blocks App Store Connect writes, not local files.
+Read-only classification covers recognized read subcommands under age-rating, encryption, accessibility, pricing, users, devices, actors, account, analytics, finance, performance, insights, ads, game-center, xcode-cloud, product-pages, asset-library, categories, eula and app-tags; write verbs still win, and file-writing `download`/`export` leaves are local-write. Leading global flags are stripped before the root is judged, so `--debug auth login` is still forbidden. Unprovable `run` commands go to human approval, or are refused with `unknownCommands: "deny"`. A leading `@` is escaped; `@env:`/`@file:` expansion is off. `asc --read-only` blocks App Store Connect writes, not local files.
 
 ## Stop and ask
 
