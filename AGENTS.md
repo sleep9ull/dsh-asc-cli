@@ -108,3 +108,7 @@ CI 跑 node 22/24 的 typecheck + test + build，外加独立 contract job 与�
 - 测试：[`docs/TESTING.md`](docs/TESTING.md)
 - 流程：[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) · spec：[`docs/SPECS.md`](docs/SPECS.md)
 - 路线：[`docs/ROADMAP.md`](docs/ROADMAP.md)
+
+## asc cli reference
+
+See `ASC.md` for the command catalog and workflows.

@@ -139,6 +139,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 | [贡献](CONTRIBUTING.md) | 环境、Git 流程、质量门、发布 |
 | [Spec](docs/SPECS.md) | spec-first 流程与索引 |
 | [路线](docs/ROADMAP.md) | 版本计划与验收指标 |
+| [ASC CLI 参考](ASC.md) | 上游 `asc` 命令目录与工作流配方（由 `asc init` 生成） |
 
 ## 为什么要做成插件，而不是让 Agent 直接跑 bash？
 
