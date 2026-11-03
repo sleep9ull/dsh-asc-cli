@@ -8,12 +8,14 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
+当前 npm 发布版本：[**0.2.0**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.0)，已验证 DeepSeek Harness `0.2.1-rc.5` 与 asc `6.3.0`。详见[更新日志](CHANGELOG.md#020--2026-11-03-upstream-compatibility)和[升级步骤](#从-016-升级到-020)。
+
 App Store Connect 是 iOS 发布流程的核心，也是团队最耗时间的地方：命令行参数、大段 JSON、状态机、审批与合规检查。这个插件把它搬进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：安装一次，用自然语言提出需求，Agent 会选对流程、先给出计划，并在真正改动线上之前停下来等你审批。
 
 底层执行引擎仍是 [`asc` CLI](https://github.com/rorkai/App-Store-Connect-CLI)（MIT，Go）。本插件是它上层的产品层：5 个任务型**作业**、按意图组织的**读 / 计划 / 变更**工具面、随包发布的**内置技能**，以及负责体检、安装与版本对齐的**引擎管理器**。
 
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 ```
 
 > 安装后运行 `/asc`：它会告诉你引擎、认证、默认 app 以及**下一步该做什么**（不经过模型）。
@@ -39,8 +41,10 @@ dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
 
 ### 1 · 安装插件
 
+先打开一次 DeepSeek Harness Desktop，初始化 profile，然后完全退出再安装。下面的命令安装 `0.2.0`；如果使用其他 profile，请把 `desktop` 替换为对应名称。
+
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 ```
 
 重启或重新加载 profile。插件会向 `cordis.patch.yml` 插入一行配置（默认 `mode: read-only`）。
@@ -232,7 +236,15 @@ DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`�
 
 ---
 
-## 从 0.1.6 升级
+## 从 0.1.6 升级到 0.2.0
+
+先将 DeepSeek Harness 升级到 `0.2.1-rc.5`，完全退出 Desktop，再在原来安装插件的 profile 中更新：
+
+```bash
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
+```
+
+重新打开 Desktop 或重新加载 profile，运行 `/asc` 和 `/asc-doctor`，检查实际使用的引擎、认证与兼容状态。启用写工作流前，请核对 `asc-tools` 配置。
 
 0.2.0 适配两个上游当前默认发布渠道：DeepSeek Harness `0.2.1-rc.5` 和 asc `6.3.0`。请升级宿主与引擎，或开启 `allowProvision` 后显式安装新引擎。工具与作业名称不变。asc 支持线为 `>=6.3.0 <7.0.0`；本次实际验证版本为 `6.3.0`，每日上游检查发现后续漂移。独立 alpha 与未发布分支不属于本次兼容基线。
 

@@ -8,12 +8,14 @@ English | [中文](README.zh.md)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
+Current npm release: [**0.2.0**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.0), verified with DeepSeek Harness `0.2.1-rc.5` and asc `6.3.0`. See the [changelog](CHANGELOG.md#020--2026-11-03-upstream-compatibility) and [upgrade steps](#upgrading-from-016-to-020).
+
 App Store Connect is where iOS releases happen — and where teams lose hours to CLI flags, JSON blobs, half-documented states and approval rituals. This plugin puts it inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): install once, ask in plain language, and the agent runs the right workflow, showing a plan and stopping for approval before anything ships.
 
 The [asc CLI](https://github.com/rorkai/App-Store-Connect-CLI) (MIT, Go) remains the engine. This plugin is the product layer around it: five task-shaped **jobs**, a small **read / plan / apply** tool surface, **bundled skills** that teach the agent how to use it, and an **engine manager** that diagnoses, provisions and version-checks `asc`.
 
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 ```
 
 > After installing, run `/asc`. It reports the engine, authentication, default app and the one next step — no model involved.
@@ -39,8 +41,10 @@ Every write follows the same shape: **plan first → `confirm: true` → host ap
 
 ### 1 · Install the plugin
 
+Open DeepSeek Harness Desktop once to initialize its profile, then fully quit it before installing. The command below installs `0.2.0`; replace `desktop` with your profile name if you use another profile.
+
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 ```
 
 Restart or reload the profile. The plugin inserts one row (`mode: read-only`) into the profile's `cordis.patch.yml`.
@@ -232,7 +236,15 @@ DeepSeek Harness scans `<project>/.dsh/skills`, `<project>/.agents/skills`, `cus
 
 ---
 
-## Upgrading from 0.1.6
+## Upgrading from 0.1.6 to 0.2.0
+
+After upgrading DeepSeek Harness to `0.2.1-rc.5`, fully quit Desktop and update the plugin in the profile where it is installed:
+
+```bash
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
+```
+
+Reopen Desktop or reload your profile, then run `/asc` and `/asc-doctor` to check the resolved engine, authentication and compatibility. Review your `asc-tools` configuration before enabling write workflows.
 
 0.2.0 targets the current default upstream releases: DeepSeek Harness `0.2.1-rc.5` and asc `6.3.0`. Upgrade the harness and engine, or explicitly provision the new engine after enabling `allowProvision`. Tool and job names stay the same. The supported asc line is `>=6.3.0 <7.0.0`; `6.3.0` is the version verified for this release, and daily upstream checks detect later drift. Independent alpha releases and unpublished upstream branches are outside this baseline.
 
