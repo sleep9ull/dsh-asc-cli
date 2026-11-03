@@ -6,7 +6,9 @@ import {
   renderDoctorCard,
   renderStartCard,
   type CommandDefinition,
+  type CommandInvocation,
 } from '../src/commands.js'
+import { CommandId } from '@deepseek-ai/dsh-commands/brand'
 
 function report(overrides: Partial<DiagnoseReport> = {}): DiagnoseReport {
   return {
@@ -81,14 +83,19 @@ describe('command registration', () => {
     registerCommands(ctx, engine)
     expect(registered.map((definition) => definition.name)).toEqual(['asc', 'asc-doctor'])
 
-    const start = await registered[0]?.handler({})
+    const invocation: CommandInvocation = {
+      commandId: CommandId('asc-command-test'),
+      agent: {} as CommandInvocation['agent'],
+      rawInput: '', attachments: [], signal: new AbortController().signal,
+    }
+    const start = await registered[0]?.handler(invocation)
     expect(start?.kind).toBe('success')
     if (start?.kind === 'success') expect(start.text).toContain('Jobs:')
-    expect(diagnose).toHaveBeenCalledWith({ validateAuth: false, checkUpdates: false })
+    expect(diagnose).toHaveBeenCalledWith({ validateAuth: false, checkUpdates: false, signal: invocation.signal })
 
-    const doctor = await registered[1]?.handler({})
+    const doctor = await registered[1]?.handler(invocation)
     expect(doctor?.kind).toBe('success')
-    expect(diagnose).toHaveBeenCalledWith({ validateAuth: true, checkUpdates: true })
+    expect(diagnose).toHaveBeenCalledWith({ validateAuth: true, checkUpdates: true, signal: invocation.signal })
   })
 
   it('registers nothing when the host has no command service', () => {

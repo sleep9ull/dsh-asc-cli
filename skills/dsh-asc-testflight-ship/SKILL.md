@@ -31,7 +31,7 @@ asc_job { action: "ship-testflight", app: "123456789", version: "1.2.3",
           group: "Internal Testers", dryRun: true, confirm: true }
 ```
 
-A real run uploads with `--wait`, extracts `buildId`, and adds it to the group. `submit: true` also submits for beta review. `dryRun` previews the upload **without** waiting for processing and skips groups (`--wait` and `--dry-run` are mutually exclusive); the write gate still applies, so show the preview, then do the real run. A `.pkg` needs `version` + `buildNumber` even in a preview; an `.ipa` can omit them.
+A real run uploads with `--wait`, extracts `buildId`, and adds it to the group. `submit: true` also submits for beta review. `dryRun` reserves upload operations with App Store Connect, without transferring the file, waiting for processing or assigning groups (`--wait` and `--dry-run` are mutually exclusive). It still contacts Apple and needs the write gate; show the result, then do the real run. A `.pkg` needs `version` + `buildNumber` even in a preview; an `.ipa` can omit them.
 
 Do not add groups before buildId is confirmed. Fallback: `asc_apply action:"groups"` with `buildId`; `--latest` can target another build. Manual order:
 

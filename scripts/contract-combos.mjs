@@ -39,6 +39,7 @@ const reject = [
   ['asc_apply.stage', { buildId: 'B', metadataDir: 'm' }, /version/i],
   ['asc_apply.publish', { app: '111', version: '1.0.0' }, /ipa.*pkg|pkg.*ipa/i],
   ['asc_apply.publish', { app: '111', version: '1.0.0', ipa: 'a.ipa', pkg: 'a.pkg' }, /ipa.*pkg|pkg.*ipa/i],
+  ['asc_apply.publish', { app: '111', ipa: 'a.ipa', platform: 'MAC_OS' }, /ipa.*MAC_OS|MAC_OS.*ipa/i],
   ['asc_apply.publish', { app: '111', pkg: 'a.pkg' }, /version|build-number/i],
   ['asc_apply.publish', { app: '111', pkg: 'a.pkg', version: '1.0.0' }, /build-number/i],
   ['asc.testflight-groups', { app: '111', internal: true, external: true }, /internal.*external|external.*internal/i],

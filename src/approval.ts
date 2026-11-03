@@ -25,7 +25,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { classifyArgv, kindLabel } from './classify.js'
+import type { ToolExecution } from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-user-approval'
+import { classifyArgv, kindLabel, writesReportFile } from './classify.js'
 import type { Config } from './config.js'
 import { jobSpecFor, validateJobArgs, type JobArgs } from './jobs.js'
 import { specFor, type ActionKind, type ToolArgs } from './registry.js'
@@ -45,6 +47,7 @@ export type AscDecision =
 export interface CallFacts {
   readonly kind: ActionKind
   readonly needsConfirm: boolean
+  readonly localWrite?: boolean
   readonly label: string
   /**
    * Actionable argument problem for a registered action/job, discovered before
@@ -95,6 +98,7 @@ export function inspectCall(name: string, args: unknown, config?: Config): CallF
       return {
         kind,
         needsConfirm: kind === 'write' || kind === 'unknown' || kind === 'local-write',
+        localWrite: writesReportFile(argv),
         label: `asc.run: asc ${argv.join(' ')}`,
       }
     }
@@ -225,7 +229,7 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
         reason: `${facts.label} mutates state and needs an explicit \`confirm: true\` argument. Explain the intended change to the user and retry with \`confirm: true\` only after they agree.`,
       }
     }
-    if (config.requireApproval && !approved(config, facts)) {
+    if (config.requireApproval && (facts.localWrite || !approved(config, facts))) {
       return askAbout(facts, 'mutates App Store Connect', {
         en: `Allow ${facts.label} to modify App Store Connect?`,
         zh: `允许 ${facts.label} 修改 App Store Connect 吗？`,
@@ -243,6 +247,13 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
         reason: `${facts.label} cannot be proven read-only and \`unknownCommands\` is set to \`deny\`. Use a known command, or set \`unknownCommands: ask\` to approve it interactively.`,
       }
     }
+    if (facts.localWrite && !confirmed) {
+      return {
+        kind: 'deny',
+        info: INFO.confirm,
+        reason: `${facts.label} writes a report and needs an explicit \`confirm: true\` argument.`,
+      }
+    }
     return askAbout(facts, 'cannot be proven read-only', {
       en: `Run ${facts.label}? It is not recognized as read-only; App Store Connect writes are still blocked by asc --read-only, but it may write local files.`,
       zh: `执行 ${facts.label} 吗？该命令无法确认为只读；App Store Connect 的写操作仍会被 asc --read-only 拦截，但它可能写入本地文件。`,
@@ -256,7 +267,7 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
       reason: `${facts.label} may mutate state and needs an explicit \`confirm: true\` argument. Confirm with the user first.`,
     }
   }
-  if (config.requireApproval && !approved(config, facts)) {
+  if (config.requireApproval && (facts.localWrite || !approved(config, facts))) {
     return askAbout(facts, 'may mutate App Store Connect', {
       en: `Allow ${facts.label}? It is not recognized as read-only.`,
       zh: `允许 ${facts.label} 吗？该命令无法确认为只读。`,
@@ -265,12 +276,95 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
   return undefined
 }
 
-/** Register the policy listener on the host context. */
+/** A grant belongs to one execution and the exact request shown for approval. */
+interface ApprovalReceipt {
+  readonly token: ToolExecution['token']
+  readonly name: string
+  readonly callId: ToolExecution['callId']
+  readonly agent: ToolExecution['agent']
+  readonly signal: AbortSignal
+  readonly arguments: string
+}
+
+function receiptFor(exec: ToolExecution): ApprovalReceipt {
+  return {
+    token: exec.token,
+    name: exec.name,
+    callId: exec.callId,
+    agent: exec.agent,
+    signal: exec.signal,
+    // Harness materializes lossless JSON before policy. Keeping a value
+    // snapshot also detects a listener replacing the frozen argument object.
+    arguments: JSON.stringify(exec.arguments),
+  }
+}
+
+function matchesReceipt(receipt: ApprovalReceipt, exec: ToolExecution): boolean {
+  return receipt.token === exec.token && receipt.name === exec.name
+    && receipt.callId === exec.callId && receipt.agent === exec.agent
+    && receipt.signal === exec.signal && !receipt.signal.aborted
+    && receipt.arguments === JSON.stringify(exec.arguments)
+}
+
+function approvalDenied(reason: string, code = 'ASC_APPROVAL_REQUIRED'): AscDecision {
+  return { kind: 'deny', reason, info: { name: code, code } }
+}
+
+/**
+ * Resolve human approval through the host, then enforce the policy monotonically.
+ *
+ * `pre-execute` is an extensible waterfall: another listener may short-circuit
+ * it or replace its decision. Only a real `approval.request()` grant creates a
+ * receipt, and the final guard denies an ask without that exact, unused grant.
+ */
 export function registerApproval(ctx: Context, config: Config): void {
-  ctx.effect(() =>
-    ctx.on('tools/pre-execute', async (exec, next) => {
-      const decision = decideCall(config, exec.name, exec.arguments)
-      return decision ?? next()
-    }),
-  )
+  // Weak ownership avoids retaining a receipt when another policy denies before
+  // guards run. The token is a symbol, so it cannot itself be a WeakMap key.
+  const receipts = new WeakMap<ToolExecution, ApprovalReceipt>()
+
+  ctx.effect(() => ctx.tools.guard((exec) => {
+    const receipt = receipts.get(exec)
+    receipts.delete(exec)
+    const decision = decideCall(config, exec.name, exec.arguments)
+    if (receipt !== undefined && !matchesReceipt(receipt, exec)) {
+      return 'ASC_APPROVAL_REQUIRED: the approved tool request changed or was cancelled; request approval again.'
+    }
+    if (decision?.kind === 'deny') return `${decision.info.code}: ${decision.reason}`
+    if (decision?.kind === 'ask' && receipt === undefined) {
+      return `ASC_APPROVAL_REQUIRED: ${decision.reason}; this execution has no host approval.`
+    }
+    return undefined
+  }))
+
+  ctx.effect(() => ctx.on('tools/pre-execute', async (exec, next) => {
+    const decision = decideCall(config, exec.name, exec.arguments)
+    if (decision?.kind !== 'ask') return decision ?? next()
+    const approval = ctx.get('approval')
+    const agent = exec.agent
+    if (approval === undefined || agent === undefined) {
+      return approvalDenied(`${decision.reason}; host approval requires an approval service and a calling agent.`)
+    }
+    const receipt = receiptFor(exec)
+    if (receipt.signal.aborted) return { kind: 'cancel' }
+    try {
+      const outcome = await approval.request({
+        agent,
+        toolName: receipt.name,
+        callId: receipt.callId,
+        reason: decision.reason,
+        displayReason: decision.displayReason,
+        signal: receipt.signal,
+      })
+      if (receipt.signal.aborted || outcome === 'cancelled') return { kind: 'cancel' }
+      if (outcome !== 'allowed-once') {
+        return approvalDenied(`${decision.reason}; host approval was ${outcome}.`, 'ASC_APPROVAL_REJECTED')
+      }
+      receipts.set(exec, receipt)
+      return next()
+    } catch {
+      // Missing/open-turn failures and unavailable host policy must never turn
+      // into permission, even if an outer listener later forces `allow`.
+      return approvalDenied(`${decision.reason}; host approval could not be obtained.`)
+    }
+  }))
 }

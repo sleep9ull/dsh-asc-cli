@@ -53,12 +53,23 @@ describe('catalog discovery', () => {
 describe('provider contract', () => {
   it('loads a skill body on demand and strips frontmatter', async () => {
     const provider = createSkillProvider(FIXTURES)
-    const [alpha] = await provider.list()
+    const [alpha] = await provider.list({})
     expect(alpha?.name).toBe('alpha')
-    const definition = await provider.get(alpha ?? ({} as never))
+    const definition = await provider.get(alpha ?? ({} as never), {})
     expect(definition?.content).toContain('Use `asc apps list`')
     expect(definition?.content.startsWith('---')).toBe(false)
-    expect(await provider.get({ name: 'missing' } as never)).toBeUndefined()
+    expect(await provider.get({ name: 'missing' } as never, {})).toBeUndefined()
+  })
+
+  it('honors caller cancellation and the provider registration lifetime', async () => {
+    const lifecycle = new AbortController()
+    const provider = createSkillProvider(FIXTURES, lifecycle.signal)
+    const [alpha] = await provider.list({})
+    const signal = AbortSignal.abort(new Error('lookup cancelled'))
+    await expect(provider.list({ signal })).rejects.toThrow('lookup cancelled')
+    await expect(provider.get(alpha!, { signal })).rejects.toThrow('lookup cancelled')
+    lifecycle.abort(new Error('provider unloaded'))
+    await expect(provider.get(alpha!, {})).rejects.toThrow('provider unloaded')
   })
 })
 
@@ -75,7 +86,8 @@ describe('registration', () => {
     const ctx = { inject: (_deps: string[], callback: (scope: unknown) => void) => callback(scope) } as unknown as Context
     registerSkills(ctx, FIXTURES)
     expect(captured?.name).toBe('asc')
-    expect((await captured?.list())?.length).toBe(2)
+    const catalog = await captured?.list({})
+    expect(catalog !== undefined && 'candidates' in catalog ? catalog.candidates.length : catalog?.length).toBe(2)
   })
 
   it('no-ops when the host has no skill service', () => {

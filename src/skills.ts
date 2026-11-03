@@ -15,44 +15,16 @@ import { readFile } from 'node:fs/promises'
 import { join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
+import type { SkillCandidate, SkillLookupOptions, SkillProvider, SkillRegistry } from '@deepseek-ai/dsh-skill'
+
+export type { SkillCandidate, SkillDefinition, SkillProvider as SkillProviderContract } from '@deepseek-ai/dsh-skill'
+export type SkillsService = Pick<SkillRegistry, 'registerProvider'>
 
 /** Bundled skills sort below every filesystem root. */
 export const BUNDLED_SKILL_RANK = 600
 
 /** Provider name shown in diagnostics. */
 export const SKILL_PROVIDER = 'asc'
-
-/** One catalog entry. */
-export interface SkillCandidate {
-  readonly name: string
-  readonly description: string
-  readonly whenToUse?: string
-  readonly invocation: { readonly modelInvocable: boolean; readonly userInvocable: boolean }
-  readonly provider: string
-  readonly source: string
-  readonly rank: number
-  readonly resourceBase?: { readonly kind: 'directory'; readonly path: string }
-  readonly locator?: string
-}
-
-/** A candidate with its body. */
-export interface SkillDefinition extends Omit<SkillCandidate, 'rank' | 'locator'> {
-  readonly content: string
-}
-
-/** Provider contract mirrored from `@deepseek-ai/dsh-skill` (structural). */
-export interface SkillProviderContract {
-  readonly name: string
-  list(options?: unknown): Promise<readonly SkillCandidate[]>
-  get(candidate: SkillCandidate, options?: unknown): Promise<SkillDefinition | undefined>
-}
-
-/** Structural view of the host skill registry. */
-export interface SkillsService {
-  registerProvider(
-    create: (control: { readonly signal: AbortSignal; readonly invalidate: () => void }) => SkillProviderContract,
-  ): () => void
-}
 
 /** Parsed SKILL.md frontmatter. */
 export interface ParsedSkill {
@@ -135,21 +107,31 @@ export function loadSkillCatalog(root: string): SkillCandidate[] {
 }
 
 /** Build a provider over one skills directory. */
-export function createSkillProvider(root: string): SkillProviderContract {
+export function createSkillProvider(root: string, lifecycle?: AbortSignal) {
   const candidates = loadSkillCatalog(root)
+  function signalFor(options: SkillLookupOptions): AbortSignal | undefined {
+    const signal = lifecycle === undefined ? options.signal
+      : options.signal === undefined ? lifecycle : AbortSignal.any([lifecycle, options.signal])
+    signal?.throwIfAborted()
+    return signal
+  }
   return {
     name: SKILL_PROVIDER,
-    list: () => Promise.resolve(candidates),
-    async get(candidate) {
+    list: async (options: SkillLookupOptions) => {
+      signalFor(options)
+      return candidates
+    },
+    async get(candidate: SkillCandidate, options: SkillLookupOptions) {
+      const signal = signalFor(options)
       const match = candidates.find((entry) => entry.name === candidate.name)
-      if (match?.locator === undefined) return undefined
-      const raw = await readFile(match.locator, 'utf8')
+      if (typeof match?.locator !== 'string') return undefined
+      const raw = await readFile(match.locator, { encoding: 'utf8', signal })
       const parsed = parseSkillDocument(raw)
       if (parsed.body.length === 0) return undefined
       const { rank: _rank, locator: _locator, ...summary } = match
       return { ...summary, content: parsed.body }
     },
-  }
+  } satisfies SkillProvider
 }
 
 /** Default directory of the bundled skills inside the package. */
@@ -165,10 +147,8 @@ export function bundledSkillRoot(): string {
  */
 export function registerSkills(ctx: Context, root: string = bundledSkillRoot()): void {
   ctx.inject(['skills'], (scope) => {
-    const service = (scope as unknown as { skills?: SkillsService }).skills
-    if (service === undefined) return
     scope.effect(() =>
-      service.registerProvider(() => createSkillProvider(root)),
+      scope.skills.registerProvider((control) => createSkillProvider(root, control.signal)),
     )
   })
 }

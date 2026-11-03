@@ -11,6 +11,8 @@
 
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type { Config } from './config.js'
+import { isUnambiguousBooleanFlag, normalizeArgv } from './classify.js'
+import { resolveAscBinary } from './control/binary.js'
 
 /** Minimal spawn surface, injectable for tests. */
 export type SpawnFn = (spec: SubprocessSpawnSpec) => SubprocessHandle
@@ -97,26 +99,50 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647
 /**
  * Neutralize `asc`'s `@env:NAME` / `@file:PATH` value expansion.
  *
- * `asc` expands these anywhere a flag takes a value, which would let a
- * model-supplied argument read an arbitrary local file into the result. The
+ * `asc` expands these in value-taking flags except output/root selectors and
+ * the payload after `--`. Expansion could read arbitrary files into results. The
  * harness does not sandbox `ctx.subprocess`, so the plugin escapes a leading
  * `@` (as documented by `asc`: a literal `@` is written `@@`) unless the user
  * opted into expansion.
  */
 export function literalizeArgv(argv: readonly string[], allowExpansion: boolean): string[] {
   if (allowExpansion) return [...argv]
-  return argv.map((token) => {
-    if (token.startsWith('@@')) return token
-    if (token.startsWith('@')) return `@${token}`
-    // Support `--flag=@file:...` as well as `--flag @file:...`.
-    const separator = token.startsWith('-') ? token.indexOf('=') : -1
-    if (separator > 0) {
-      const value = token.slice(separator + 1)
-      if (value.startsWith('@') && !value.startsWith('@@')) {
-        return `${token.slice(0, separator + 1)}@${value}`
+  const normalized = normalizeArgv(argv)
+  const rootIndex = argv.length - normalized.argv.length
+  // Without upstream's per-command FlagSet, a non-inline option can be a
+  // boolean or consume a value (even `--output` or `--`). Track both parses;
+  // escape wherever either could expand. The four states bound this walk.
+  type Position = 'option' | 'value' | 'literal' | 'payload'
+  let positions = new Set<Position>(['option'])
+  const escape = (value: string) => value.startsWith('@') && !value.startsWith('@@') ? `@${value}` : value
+  return argv.map((token, index) => {
+    const next = new Set<Position>()
+    let result = positions.has('value') ? escape(token) : token
+    for (const position of positions) {
+      if (position === 'payload' || (position === 'option' && token === '--')) {
+        next.add('payload')
+        continue
+      }
+      if (position !== 'option' || !token.startsWith('-') || token === '-') {
+        next.add('option')
+        continue
+      }
+      const separator = token.indexOf('=')
+      const name = token.replace(/^-+/, '').split('=')[0]
+      const excluded = name === 'output' || (name === 'profile' && (index < rootIndex || normalized.argv[0] !== 'signing')) ||
+        (index < rootIndex && (name === 'report' || name === 'report-file'))
+      if (separator > 0) {
+        next.add('option')
+        if (!excluded) result = `${token.slice(0, separator + 1)}${escape(token.slice(separator + 1))}`
+      } else if (excluded) {
+        next.add('literal')
+      } else {
+        next.add('option')
+        if (!isUnambiguousBooleanFlag(token)) next.add('value')
       }
     }
-    return token
+    positions = next
+    return result
   })
 }
 
@@ -124,7 +150,7 @@ export function literalizeArgv(argv: readonly string[], allowExpansion: boolean)
 export function buildSpawnSpec(config: Config, request: AscExecRequest, signal: AbortSignal): SubprocessSpawnSpec {
   const output = request.appendOutput === false ? [] : ['--output', 'json']
   const argv = [
-    config.ascPath,
+    resolveAscBinary(config).path,
     ...globalFlags(config),
     ...literalizeArgv(request.argv, config.allowValueExpansion),
     ...output,
@@ -177,6 +203,7 @@ export async function execAsc(
 
   let handle: SubprocessHandle | undefined
   try {
+    combined.throwIfAborted()
     handle = spawn(buildSpawnSpec(config, request, combined))
     const outcome = await handle.done
     const stdoutRead = handle.collected.stdout?.readFrom(0)

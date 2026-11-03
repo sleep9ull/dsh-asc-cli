@@ -7,18 +7,22 @@
 ## 1. 环境
 
 ```bash
-# Node >= 22.19（CI 跑 22 / 24）
+# Node ^22.19.0 || >=24.0.0（CI 跑 22 / 24）
 npm install
 npm run build          # tsc -> lib/（gitignored）
 
 # 契约测试需要真实的 asc 二进制（gitignored）
-mkdir -p vendor && cp "$(command -v asc)" vendor/asc   # 或放入 5.16.0 发布包
+node scripts/download-asc.mjs    # src/compat.ts 的基线版本，验证 SHA-256 后安装
 ```
+
+下载器及开发脚本共用平台路径：Windows 为 `vendor/asc.exe`，其它平台为 `vendor/asc`。跨平台运行使用脚本默认路径（如 `npm run contract`），传显式路径时保留对应后缀。
 
 独立开发实例（不污染日常 profile）：
 
 ```bash
-dsh web --patch ./dev/cordis.patch.yml --no-open --port 3199
+node scripts/dev-patch.mjs      # 从当前 checkout/worktree 生成绝对路径 overlay
+# --write 生成显式写模式 overlay，仍要求宿主审批
+dsh web --patch ./vendor/cordis.dev.patch.yml --no-open --port 3199
 ```
 
 本地打包安装：
@@ -44,7 +48,8 @@ npm pack && dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-*.tgz
 ## 3. 提交前质量门
 
 ```bash
-npm run verify                             # 一键：typecheck/test/build/pack/contract/classify/smoke
+npm run verify                             # 完整门禁，必须有 vendor/asc
+npm run verify -- --unit-only               # 显式仅本地类型/测试/构建/pack/参数守卫，不代表引擎验证
 # 或分开跑
 npm run typecheck
 npm test                                   # 基线 208 tests 起只增不减

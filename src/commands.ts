@@ -10,33 +10,12 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+export type { CommandDefinition, CommandInvocation } from '@deepseek-ai/dsh-commands'
+export type { CommandResult } from '@deepseek-ai/dsh-commands/types'
 import { BUNDLED_SKILLS } from './capabilities.js'
 import { JOBS } from './capabilities.js'
 import { SUPPORTED_ASC_RANGE, PINNED_ASC_VERSION } from './compat.js'
 import type { AscEngine, DiagnoseReport } from './control/engine.js'
-
-/** Result shape the host renders outside the session history. */
-export type CommandResult = { kind: 'success'; text?: string } | { kind: 'error'; text: string }
-
-/** What a handler receives. */
-export interface CommandInvocation {
-  readonly rawInput?: string
-  readonly signal?: AbortSignal
-  readonly agent?: unknown
-}
-
-/** One command definition. */
-export interface CommandDefinition {
-  readonly name: string
-  readonly description: string
-  readonly input?: { readonly hint?: string }
-  handler(invocation: CommandInvocation): Promise<CommandResult> | CommandResult
-}
-
-/** Structural view of `@deepseek-ai/dsh-commands`. */
-export interface CommandService {
-  register(definition: CommandDefinition): () => void
-}
 
 function mark(ok: boolean): string {
   return ok ? '✓' : '✗'
@@ -105,15 +84,13 @@ export function renderDoctorCard(report: DiagnoseReport): string {
 /** Register `/asc` and `/asc-doctor` when the host provides commands. */
 export function registerCommands(ctx: Context, engine: AscEngine): void {
   ctx.inject(['commands'], (scope) => {
-    const service = (scope as unknown as { commands?: CommandService }).commands
-    if (service === undefined) return
     scope.effect(() =>
-      service.register({
+      scope.commands.register({
         name: 'asc',
         description: 'App Store Connect: status, capabilities and the next step',
-        handler: async () => {
+        handler: async (invocation) => {
           try {
-            const report = await engine.diagnose({ validateAuth: false, checkUpdates: false })
+            const report = await engine.diagnose({ validateAuth: false, checkUpdates: false, signal: invocation.signal })
             return { kind: 'success', text: renderStartCard(report, { skills: BUNDLED_SKILLS.length }) }
           } catch (error) {
             return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
@@ -122,12 +99,12 @@ export function registerCommands(ctx: Context, engine: AscEngine): void {
       }),
     )
     scope.effect(() =>
-      service.register({
+      scope.commands.register({
         name: 'asc-doctor',
         description: 'Diagnose asc binary, version, authentication, default app and provisioning',
-        handler: async () => {
+        handler: async (invocation) => {
           try {
-            const report = await engine.diagnose({ validateAuth: true, checkUpdates: true })
+            const report = await engine.diagnose({ validateAuth: true, checkUpdates: true, signal: invocation.signal })
             return { kind: 'success', text: renderDoctorCard(report) }
           } catch (error) {
             return { kind: 'error', text: error instanceof Error ? error.message : String(error) }

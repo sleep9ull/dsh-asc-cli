@@ -8,10 +8,12 @@
  */
 
 /** Version provisioned by default when the user opts in. */
-export const PINNED_ASC_VERSION = '5.16.0'
+export const PINNED_ASC_VERSION = '6.3.0'
 
-/** Tested range. `a.b.c` triplets; pre-release suffixes are ignored. */
-export const SUPPORTED_ASC_RANGE = '>=5.16.0 <6.0.0'
+/** Compatibility bounds; future minors are monitored, not individually certified. */
+const MIN_ASC_VERSION = PINNED_ASC_VERSION
+const NEXT_ASC_MAJOR = '7.0.0'
+export const SUPPORTED_ASC_RANGE = `>=${MIN_ASC_VERSION} <${NEXT_ASC_MAJOR}`
 
 /** Release download root for the upstream GitHub project. */
 export const RELEASE_BASE = 'https://github.com/rorkai/App-Store-Connect-CLI/releases/download'
@@ -64,7 +66,7 @@ export function parseChecksums(text: string): Map<string, string> {
 export type CompatStatus = 'supported' | 'older' | 'newer' | 'unknown'
 
 function semver(text: string): [number, number, number] | undefined {
-  const match = /(\d+)\.(\d+)\.(\d+)/.exec(text)
+  const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(text.trim())
   if (!match) return undefined
   return [Number(match[1]), Number(match[2]), Number(match[3])]
 }
@@ -82,9 +84,9 @@ export function compareVersions(a: string, b: string): number {
 
 /** Classify one engine version against the tested range. */
 export function compatStatus(version: string | undefined): CompatStatus {
-  if (version === undefined) return 'unknown'
-  if (compareVersions(version, '5.16.0') < 0) return 'older'
-  if (compareVersions(version, '6.0.0') >= 0) return 'newer'
+  if (version === undefined || semver(version) === undefined) return 'unknown'
+  if (compareVersions(version, MIN_ASC_VERSION) < 0) return 'older'
+  if (compareVersions(version, NEXT_ASC_MAJOR) >= 0) return 'newer'
   return 'supported'
 }
 

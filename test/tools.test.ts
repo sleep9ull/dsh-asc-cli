@@ -107,6 +107,22 @@ describe('tool registration', () => {
     )
   })
 
+  it('asc_setup diagnosis receives caller cancellation', async () => {
+    const h = harness()
+    const diagnose = vi.spyOn(h.engine, 'diagnose')
+    registerSetupTool(h.ctx, h.runtime, h.engine)
+    await toolOf(h.registered, 'asc_setup').execute({ action: 'diagnose' }, h.exec)
+    expect(diagnose).toHaveBeenCalledWith({ signal: h.exec.signal })
+  })
+
+  it('asc_setup provisioning receives caller cancellation', async () => {
+    const h = harness()
+    const provision = vi.spyOn(h.engine, 'provision')
+    registerSetupTool(h.ctx, h.runtime, h.engine)
+    await toolOf(h.registered, 'asc_setup').execute({ action: 'provision', confirm: true }, h.exec)
+    expect(provision).toHaveBeenCalledWith({ signal: h.exec.signal })
+  })
+
   it('asc_setup forwards version to runAction', async () => {
     const h = harness()
     registerSetupTool(h.ctx, h.runtime, h.engine)

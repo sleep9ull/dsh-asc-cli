@@ -1,7 +1,7 @@
 # 测试规范（TESTING）
 
 > 测试的**规则**（写什么、不写什么）在 [`../AGENTS.md`](../AGENTS.md)「测试」一节；本文给模式与工具。
-> 基线 `0.1.6`｜质量门见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) §3。
+> 基线 `0.2.0`｜质量门见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) §3。
 
 ---
 
@@ -27,10 +27,12 @@
 | `test/runtime.test.ts` | `--output` 决策、文件写叶子不追加 `--output`、重试边界、审计 `appId`、forbidden 在 spawn 前拒绝 |
 | `test/format.test.ts` | summary / errorClass / hint / projector / `maxDataBytes`（UTF-8 字节）/ `dataOmitted` 文案 |
 | `test/jobs.test.ts` | 5 个 job 的步骤顺序、写闸门二次复核、read-only 守卫、dryRun、metadata 二选一、triage 解耦 |
-| `test/engine.test.ts` | 定位顺序、版本区间、provision 校验（含篡改校验和）、更新检查缓存 |
+| `test/engine.test.ts` | 定位顺序、相对缓存与子进程 cwd 一致性、版本区间、provision 校验与取消后不覆盖、更新检查缓存 |
 | `test/commands.test.ts` | `/asc`、`/asc-doctor` 的渲染与只读性 |
 | `test/skills.test.ts` | frontmatter、rank 600、provider list/get、非法目录 |
 | `test/audit.test.ts` | 脱敏（独立/内联 flag）、8 KB 按字节、`0o600`、失败不影响调用 |
+| `test/harness.test.ts` | rc.5 真实 Tools/ApprovalService/Skills/Commands；五工具、六技能、两命令；审批拒绝/取消/缺失、listener 绕过、参数替换与并发隔离 |
+| `test/scripts.test.ts` | 隔离 checkout 中运行实际下载/验证/overlay 脚本，模拟 Windows/macOS/Linux 路径、损坏下载与显式路径；不启动原生 Windows 引擎 |
 | `test/helpers.ts` / `test/compat-helpers.ts` | `makeConfig`、spawn 替身等共用夹具 |
 
 ---
@@ -58,7 +60,7 @@ const spawn = (spec: SubprocessSpawnSpec) => {
 ### 3.3 注入时间与网络
 
 - 超时/重试：注入时钟或直接构造 `AscExecOutcome`，不用 `setTimeout` 等待。
-- 引擎：`provision({ fetch })` / `latestVersion({ fetch, now })`，用假的 `Response`；篡改校验和的用例必须保留。
+- 引擎：`provision({ fetch, signal })` / `latestVersion({ fetch, now })`，用假的 `Response`；篡改校验和的用例必须保留。取消用例覆盖 fetch 前、checksum/binary 下载中、响应 body 读取后，断言原文件不变。
 
 ### 3.4 表驱动
 
@@ -66,8 +68,8 @@ const spawn = (spec: SubprocessSpawnSpec) => {
 
 ### 3.5 契约与漂移门
 
-- `scripts/contract.mjs`：23 条注册命令逐条交给真实 `asc --help`，发现命令/flag 重命名；
-- `scripts/contract-combos.mjs`：插件侧负向契约——12 组非法参数组合必须被 builder 拒绝、8 组合法组合必须可构造（不需要 asc）；
+- `scripts/contract.mjs`：23 条注册命令和 5 条 job/discovery 路径检查真实 `asc --help` 中的命令及已声明 flags；负向控制验证门禁能拒绝未知 flag；
+- `scripts/contract-combos.mjs`：插件侧负向契约——13 组非法参数组合（含 IPA/MAC_OS）必须被 builder 拒绝、8 组合法组合必须可构造（不需要 asc）；
 - `scripts/classify-audit.mjs`：从 `asc completion` 取全部路径，任何"写文件却分类为 read"的叶子都失败；
 - `scripts/pack-manifest.mjs`：构建后断言 `lib/` 文件集与 `src/` 一一对应，防止 stale 模块进包。
 
@@ -92,25 +94,26 @@ const spawn = (spec: SubprocessSpawnSpec) => {
 ## 5. 质量门
 
 ```bash
-npm run verify               # 一键：typecheck → test → build → pack-manifest → contract → classify-audit → smoke
+npm run verify               # 完整：typecheck → test → build → pack-manifest → contract-combos → contract → classify-audit → smoke
+npm run verify -- --unit-only # 显式仅本地检查，不代表已通过引擎门禁
 # 或分开跑
 npm run typecheck
-npm test                     # 12 个 suite，0.1.6 基线 208 tests 起只增不减
+npm test                     # 13 个 suite；保留 0.1.6 的 208 测试基线并增加迁移回归
 npm run build                # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc
 node scripts/contract-combos.mjs
 node scripts/classify-audit.mjs ./vendor/asc
 ```
 
-CI：node 22/24 的 typecheck + test + build + pack-manifest；独立 contract job（contract + classify-audit + contract-combos）；每日 `upstream-watch` 发现漂移自动开 issue。
+CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contract-combos；独立引擎 job 校验下载的固定基线 SHA-256 后跑 contract + classify-audit + offline smoke。每日 `upstream-watch` 对 latest release 执行相同引擎门禁，漂移时自动开 issue。完整 verify 缺少 vendor/asc 时失败，不再静默跳过。
 
 ---
 
-## 6. 已知缺口（v0.2 / 0.1.7 关闭）
+## 6. 验证边界与剩余缺口
 
-- `test/tools.test.ts` 用 stub runtime 验证参数透传，没有真实 `defineTool → registry → exec` 的进程级集成；
+- 工具单测保留 stub runtime；`test/harness.test.ts` 用真实宿主 dispatch 到 exec seam，`scripts/smoke.mjs` 用真实 subprocess 到实际 6.3.0 引擎。尚未执行真实账号的 Apple 端业务读写验证；
 - `contract.mjs` 仍只校验命令/flag 接受性（组合由 `contract-combos.mjs` 在插件侧覆盖，未对上游做值校验）；
-- `scripts/smoke.mjs` 无断言、失败仍退出 0、未模拟 scrubbed env；
+- 0.2.0 已关闭 smoke 缺口：真实 Harness subprocess、隔离 HOME/ASC 配置、显式认证 canary 与 tombstone、离线 search/metadata init/validate、拒绝时零 spawn；断言失败非零退出。
 - 没有覆盖率门槛；CI 无 lint；
 - engine 探针（version/auth/doctor/diagnose/provision）不写审计（文档已声明例外）；
 - `data`/`summary` 未做敏感键深度脱敏（0.1.7）。

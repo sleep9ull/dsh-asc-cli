@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { assetNameForTest, checksumsForTest } from './compat-helpers.js'
@@ -39,12 +39,16 @@ describe('compatibility helpers', () => {
     expect(compareVersions('5.16.0', '5.16.0')).toBe(0)
     expect(compareVersions('5.15.9', '5.16.0')).toBe(-1)
     expect(compareVersions('6.0.0', '5.16.0')).toBe(1)
-    expect(compatStatus('5.16.0')).toBe('supported')
-    expect(compatStatus('5.15.0')).toBe('older')
-    expect(compatStatus('6.0.0')).toBe('newer')
+    expect(compatStatus('6.3.0')).toBe('supported')
+    expect(compatStatus('6.2.9')).toBe('older')
+    expect(compatStatus('6.99.0')).toBe('supported')
+    expect(compatStatus('7.0.0')).toBe('newer')
     expect(compatStatus(undefined)).toBe('unknown')
-    expect(pinDrift('5.16.0')).toBe('none')
-    expect(pinDrift('6.0.0')).toBe('newer')
+    expect(compatStatus('not-a-version')).toBe('unknown')
+    expect(compatStatus('6.3.0oops')).toBe('unknown')
+    expect(pinDrift(PINNED_ASC_VERSION)).toBe('none')
+    expect(pinDrift('7.0.0')).toBe('newer')
+    expect(pinDrift('bad')).toBe('unknown')
   })
 
   it('parses release checksum files', () => {
@@ -59,6 +63,22 @@ describe('engine resolution', () => {
   it('prefers an explicitly configured path', () => {
     const engine = createEngine(makeConfig({ ascPath: '/opt/asc' }), scriptedSpawn(['']).spawn)
     expect(engine.resolve()).toEqual({ path: '/opt/asc', source: 'configured' })
+  })
+
+  it('runs the same cached file when a relative cache and child cwd differ', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'asc-relative-cache-'))
+    const config = makeConfig({ cacheDir: relative(process.cwd(), directory), workdir: join(directory, 'app') })
+    const engine = createEngine(config, (spec) => {
+      expect(resolve(spec.cwd, spec.argv[0] as string)).toBe(engine.cachedBinaryPath())
+      return handle(PINNED_ASC_VERSION)
+    })
+    try {
+      const cached = engine.cachedBinaryPath()
+      mkdirSync(join(cached, '..'), { recursive: true })
+      writeFileSync(cached, 'fixture')
+      expect(await engine.version()).toBe(PINNED_ASC_VERSION)
+      expect(isAbsolute(engine.resolve().path)).toBe(true)
+    } finally { rmSync(directory, { recursive: true, force: true }) }
   })
 
   it('falls back to ASC_CLI_PATH, then the cache, then PATH', () => {
@@ -83,6 +103,44 @@ describe('engine resolution', () => {
 })
 
 describe('engine probes', () => {
+  it('cancels diagnostic probes without poisoning the next version probe', async () => {
+    const controller = new AbortController()
+    const calls: SubprocessSpawnSpec[] = []
+    const spawn: SpawnFn = (spec) => {
+      calls.push(spec)
+      if (calls.length === 1) {
+        const pending = handle('')
+        return {
+          ...pending,
+          done: new Promise((resolve) => {
+            spec.signal?.addEventListener('abort', () => resolve({ exitCode: null, signal: 'SIGTERM' }), { once: true })
+          }),
+        } as unknown as SubprocessHandle
+      }
+      return handle(`${PINNED_ASC_VERSION} (commit: fixture)`)
+    }
+    const engine = createEngine(makeConfig({ ascPath: '/opt/asc' }), spawn)
+    const diagnostic = engine.diagnose({ signal: controller.signal, checkUpdates: false })
+    controller.abort()
+    await expect(diagnostic).rejects.toThrow()
+    expect(calls[0]?.signal?.aborted).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(await engine.version()).toBe(PINNED_ASC_VERSION)
+    expect(calls).toHaveLength(2)
+  })
+
+  it('does not report authentication success from a failed status probe', async () => {
+    let calls = 0
+    const spawn: SpawnFn = () => ++calls === 1
+      ? handle(PINNED_ASC_VERSION)
+      : handle(JSON.stringify({ credentials: [{}], environmentCredentialsProvided: true }), 3)
+    const engine = createEngine(makeConfig({ ascPath: '/opt/asc', defaultAppId: '111' }), spawn)
+    const report = await engine.diagnose({ checkUpdates: false })
+    expect(report.authenticated).toBe(false)
+    expect(report.checks.find((check) => check.name === 'auth')?.ok).toBe(false)
+    expect(report.next?.title).not.toBe('Ready')
+  })
+
   it('reads and caches the version', async () => {
     const { spawn, calls } = scriptedSpawn(['5.16.0 (commit: 744cce8, date: 2026-10-19T18:46:54-04:00)'])
     const engine = createEngine(makeConfig({ ascPath: '/opt/asc' }), spawn)
@@ -110,14 +168,14 @@ describe('engine probes', () => {
   })
 
   it('reports ready when version, auth and default app are set', async () => {
-    const version = '5.16.0 (commit: abc)'
+    const version = `${PINNED_ASC_VERSION} (commit: abc)`
     const auth = JSON.stringify({ credentials: [{}], storageBackend: 'System Keychain', environmentCredentialsProvided: false })
     const engine = createEngine(
       makeConfig({ ascPath: '/opt/asc', defaultAppId: '111' }),
       scriptedSpawn([version, auth]).spawn,
     )
     const report = await engine.diagnose()
-    expect(report.version).toBe('5.16.0')
+    expect(report.version).toBe(PINNED_ASC_VERSION)
     expect(report.compat).toBe('supported')
     expect(report.authenticated).toBe(true)
     expect(report.next?.title).toBe('Ready')
@@ -151,6 +209,44 @@ describe('provisioning', () => {
     expect(result.version).toBe(PINNED_ASC_VERSION)
     expect(result.bytes).toBe(bytes.length)
     expect(readFileSync(result.path as string)).toEqual(bytes)
+  })
+
+  it.each(['before-fetch', 'checksums', 'binary', 'body'])('does not install after cancellation during %s', async (phase) => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'asc-cancel-provision-'))
+    const controller = new AbortController()
+    const bytes = Buffer.from('replacement')
+    const asset = assetNameForTest()
+    const digest = createHash('sha256').update(bytes).digest('hex')
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      const checksums = String(url).endsWith('checksums.txt')
+      if ((phase === 'checksums' && checksums) || (phase === 'binary' && !checksums)) {
+        return await new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true })
+          controller.abort(new Error('cancelled fixture'))
+          // Do not hang the red test if caller cancellation was not forwarded.
+          if (!init?.signal?.aborted) reject(new Error('caller signal was not forwarded'))
+        })
+      }
+      if (checksums) return new Response(checksumsForTest(asset, digest))
+      return {
+        ok: true,
+        arrayBuffer: async () => { controller.abort(new Error('cancelled fixture')); return bytes },
+      } as unknown as Response
+    })
+    const engine = createEngine(makeConfig({ allowProvision: true, cacheDir }), scriptedSpawn(['']).spawn)
+    const destination = engine.cachedBinaryPath()
+    mkdirSync(join(destination, '..'), { recursive: true })
+    writeFileSync(destination, 'existing-engine')
+    if (phase === 'before-fetch') controller.abort(new Error('cancelled fixture'))
+    try {
+      const result = await engine.provision({ fetch: fetchImpl, signal: controller.signal })
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('cancelled fixture')
+      expect(readFileSync(destination, 'utf8')).toBe('existing-engine')
+      expect(existsSync(`${destination}.download`)).toBe(false)
+      if (phase === 'before-fetch') expect(fetchImpl).not.toHaveBeenCalled()
+      if (phase === 'checksums') expect(fetchImpl).toHaveBeenCalledTimes(1)
+    } finally { rmSync(cacheDir, { recursive: true, force: true }) }
   })
 
   it('rejects a checksum mismatch', async () => {

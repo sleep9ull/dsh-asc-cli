@@ -1,6 +1,6 @@
 # 命令面参考（COMMANDS）
 
-> 基线：`0.1.6`｜**权威来源**：`src/registry.ts`（action 表）、各工具 schema（参数）、`./vendor/asc <cmd> --help`（上游行为）。
+> 基线：`0.2.0`｜**权威来源**：`src/registry.ts`（action 表）、各工具 schema（参数）、`./vendor/asc <cmd> --help`（上游行为）。
 > 本文件是参考手册，不是契约；与代码冲突时以代码 + 测试为准，并修正本文件。契约见 [`CONTRACT.md`](./CONTRACT.md)，架构见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。
 
 ---
@@ -47,12 +47,13 @@
 | `asc_apply.metadata-init` | local-write | ✓ | ✓ | — | `asc metadata init --dir <dir> [--version] [--locale] [--force]` |
 | `asc_apply.metadata-apply` | write | ✓ | ✓ | — | `asc metadata apply --app <app> --version <v> --dir <dir> [--platform] [--review-dir] [--dry-run]` |
 | `asc_apply.stage` | write | ✓ | ✓ | ✓ | `asc release stage --app <app> --version <v> --build-id <id> (--metadata-dir <dir> / --copy-metadata-from <v>) [--platform] [--dry-run]` |
-| `asc_apply.publish` | write | ✓ | ✓ | ✓ | `asc publish appstore --app <app> (--ipa <f> / --pkg <f>) [--version] [--build-number] [--platform] [--wait] [--submit --confirm]`；`.pkg` 必填 version+build-number |
+| `asc_apply.publish` | write | ✓ | ✓ | ✓ | `asc publish appstore --app <app> (--ipa <f> / --pkg <f>) [--version] [--build-number] [--platform] [--wait] [--submit --confirm]`；`.pkg` 必填 version+build-number，`.ipa` 不接受 `MAC_OS` |
 
 统计：**15 read / 5 write / 3 local-write**。`run` / `discover` 不在表内：
 - `asc.run`：argv 由模型给，分类器决定 kind（先归一化前导全局 flag）；**写本地文件的 `download`/`export` 叶子是 `local-write`**，两种模式都要 confirm + 审批；write/unknown 需要 confirm（read-only 下 write 拒绝、unknown 审批）。
 - 参数组合由 registry 在 confirm/审批**之前**校验，非法组合直接 `ASC_INVALID_ARGUMENTS` 拒绝（见 §3 与 `scripts/contract-combos.mjs`）。
 - `asc.discover`：把关键词交给 `asc search`，`kind: read`。
+- `run` 的 `--report-file`、doctor `--fix`、Xcode Cloud `--save-logs`、review digest `--write-state` 等本地产物写入需要 confirm + 默认审批；`--report-file` 不降低 unknown 风险，仍走原有 ask/deny；flag 值不参与命令动词判断。`versions phased-release guard` 可执行任意程序，即使 dry-run 也 forbidden。
 
 ---
 
@@ -61,7 +62,7 @@
 | job | 风险 | 需要 confirm | 必填 | 可选 | 说明 |
 |---|---|---|---|---|---|
 | `release-check` | read | — | app（或 `defaultAppId`） | version、platform | validate → 阻塞项与修复顺序 |
-| `ship-testflight` | write | ✓ | app（或 `defaultAppId`）、file；`.pkg` 另需 version+buildNumber | version、buildNumber、group、submit、dryRun、platform | dryRun 只预览上传（不等处理、不加组）；真实运行 upload `--wait` → buildId → add-groups（可选 beta 审核） |
+| `ship-testflight` | write | ✓ | app（或 `defaultAppId`）、file；`.pkg` 另需 version+buildNumber | version、buildNumber、group、submit、dryRun、platform | dryRun 向 ASC 预留上传操作但不传文件、不等处理、不加组，仍需写审批；真实运行 upload `--wait` → buildId → add-groups（可选 beta 审核） |
 | `stage-release` | write | ✓ | app（或 `defaultAppId`）、version、buildId、metadataDir/copyMetadataFrom **二选一** | platform、dryRun | 校验 → 附 build → 应用 metadata，不提交 |
 | `triage-feedback` | read | — | app（或 `defaultAppId`） | limit | 反馈 + 崩溃 + 评论聚合；评论失败不致命，summary 用 `skipped`/`attempted-failed` 区分 |
 | `compliance-sweep` | read | — | app（或 `defaultAppId`） | — | 四个只读探针，单个失败不致命 |
@@ -119,7 +120,7 @@
 | `allowValueExpansion` | `false` | 允许 `@env:` / `@file:` 展开 |
 | `unknownCommands` | `ask` | 无法证明只读时 `ask` / `deny` |
 | `allowProvision` | `false` | 允许下载固定版本 asc |
-| `cacheDir` | — | provision 缓存目录 |
+| `cacheDir` | — | provision 缓存目录；相对路径按宿主进程 cwd 解析为绝对路径，不随工具 cwd 改变 |
 | `auditLog` | — | JSONL 审计路径 |
 | `approvedActions` | `[]` | 写模式跳过审批的 action glob |
 | `checkUpdates` | `true` | `/asc-doctor` 检查上游新版本 |
@@ -146,8 +147,8 @@
 | 环节 | 规则 |
 |---|---|
 | 定位 | `ascPath` → `ASC_CLI_PATH` → 插件缓存 → `PATH` |
-| 版本 | pin `5.16.0`；区间 `>=5.16.0 <6.0.0`（`src/compat.ts`） |
-| provision | 默认关；pin 版本 + SHA-256；缓存到 `cacheDir` |
+| 版本 | pin `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`src/compat.ts`）；实际验证基线为 6.3.0，未来 minor 由漂移门监测 |
+| provision | 默认关；pin 版本 + SHA-256；缓存到 `cacheDir`；下载透传取消信号，安装前再次检查取消 |
 | 更新检查 | GitHub latest，24h 缓存，只建议，永不自动升级 |
 
 ---
@@ -156,7 +157,7 @@
 
 ```bash
 npm test                                  # 含 registry / policy / jobs / tools 断言
-node scripts/contract.mjs ./vendor/asc    # 23 条命令对上游 --help 校验
+node scripts/contract.mjs ./vendor/asc    # 23 条 action + 5 条 job/discovery 路径，含 flag 声明校验
 node scripts/contract-combos.mjs          # 非法参数组合必须由插件拒绝
 node scripts/classify-audit.mjs ./vendor/asc  # completion 漂移：不得有 read 的写文件叶子
 npm run verify                            # 一键质量门（含 build/pack/contract/classify/smoke）

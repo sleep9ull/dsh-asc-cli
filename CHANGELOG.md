@@ -2,6 +2,31 @@
 
 All notable changes to this plugin are documented here.
 
+## 0.2.0 — 2026-11-03 (upstream compatibility)
+
+### Changed
+
+- Adopt DeepSeek Harness `0.2.1-rc.5`, Node `^22.19.0 || >=24.0.0`, and asc `6.3.0` (support line `>=6.3.0 <7.0.0`). Upgrade the host and engine when migrating from 0.1.6; provisioning remains opt-in and checksum verified. Future 6.x releases are monitored, not individually pretested.
+- Use real host types for optional skills and commands. Keep five tools, five jobs, six bundled skills and two commands.
+
+### Security and fixes
+
+- Require actual host approval receipts bound to one execution and its arguments, with a final guard preventing pre-execute listeners from bypassing policy.
+- Classify actual command paths rather than flag values; handle explicit boolean flags and local report/log/state writes. Forbid `versions phased-release guard`, which executes arbitrary local programs even with dry-run.
+- Reject publishing an IPA with `MAC_OS` before confirmation or approval.
+- Share dynamic executable resolution between diagnostics, actions and jobs. Respect failed authentication and propagate diagnostic cancellation.
+- Preserve inline output options and file output paths; retry only proven read commands that explicitly reject an injected output flag.
+- Keep value expansion blocked when string values resemble flags or `--`; keep unknown-command policy when report files are requested, including confirmation for the file side effect.
+- Resolve relative cache paths against the host directory, preserve `.exe` for Windows development engines, and cancel provisioning downloads before installing after caller cancellation.
+
+### Verification and development
+
+- Correct upload dry-run guidance: it reserves operations with Apple and still requires write approval.
+- Add real Harness service integration tests and an isolated offline smoke using the real subprocess provider.
+- Require engine gates for full verification; provide explicit `--unit-only`. Check generated flags against upstream help and include negative parameter combinations.
+- Verify downloaded checksums in pinned CI and latest-release monitoring. Generate development overlays using paths from the current checkout.
+- Migration contract and acceptance evidence: [spec 004](docs/specs/004-upstream-compatibility.md).
+
 ## 0.1.6 — 2026-10-25 (write-path contract)
 
 ### Security

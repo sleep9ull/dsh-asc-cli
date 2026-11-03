@@ -1,6 +1,6 @@
 # 架构（ARCHITECTURE）
 
-> 基线：`0.1.6`｜契约见 [`CONTRACT.md`](./CONTRACT.md)；命令面见 [`COMMANDS.md`](./COMMANDS.md)。
+> 基线：`0.2.0`｜契约见 [`CONTRACT.md`](./CONTRACT.md)；命令面见 [`COMMANDS.md`](./COMMANDS.md)。
 > 本文回答：代码怎么分层、一次调用经过哪些模块、在哪里加东西、失败如何收口。
 
 ---
@@ -30,21 +30,23 @@
 |---|---|---|
 | `src/index.ts` | 组合根：注册 policy、工具、skills、commands | 只注入所需服务；可选表面缺失时降级 |
 | `src/registry.ts` | **唯一命令表**：23 个 action 的 `kind` / argv 构造 / `needsConfirm` / `output` / `long` | 新增 action 只在这里加一行 |
-| `src/classify.ts` | 任意 argv 的分类器（`read`/`write`/`local-write`/`forbidden`/`unknown`） | 保守：不能证明只读即不视为只读 |
-| `src/approval.ts` | `tools/pre-execute` 策略：policy 矩阵、审批豁免、结构化拒绝 | policy 的 SSOT |
+| `src/classify.ts` | 任意 argv 的分类器、独立报告文件副作用、已知无歧义布尔 flag | 保守：报告不降低 unknown 风险；类型不明时字面化覆盖两种解析 |
+| `src/approval.ts` | policy 矩阵、审批豁免、真实批准收据、pre-execute 与最终 guard | policy 的 SSOT；收据绑定单次执行与参数 |
 | `src/runtime.ts` | 执行编排：超时选择、`--output` 决策、projector、审计钩子 | 不直接 spawn，交给 `exec` |
 | `src/exec.ts` | **唯一 spawn 点**：argv 数组、env 构造、`@` 字面化、redact、截断/spill | 无 shell；写模式 tombstone `ASC_READ_ONLY` |
 | `src/format.ts` | 结果契约：summary / errorClass / hint / projector / `maxDataBytes`（UTF-8 字节） | 模型可见形状的唯一来源 |
 | `src/audit.ts` | 选开 JSONL：脱敏、`0o600`、best-effort | 失败不影响调用 |
 | `src/config.ts` | Schema 与默认值 | 默认值即安全边界 |
 | `src/compat.ts` | asc pin / 兼容区间 / release 资源 | 版本事实的 SSOT |
-| `src/control/engine.ts` | 引擎管理：locate / diagnose / provision / update check | provision 默认关、校验 SHA-256 |
+| `src/control/binary.ts` | engine/runtime 共用的动态二进制与缓存路径解析 | 缓存解析为宿主侧绝对路径，诊断、普通工具、job 使用同一路径；provision 后重新解析 |
+| `src/control/engine.ts` | 引擎管理：locate / diagnose / provision / update check | provision 默认关、校验 SHA-256；取消信号透传 |
 | `src/capabilities.ts` | 能力卡数据：JOBS / TOOLS / BUNDLED_SKILLS | 与 registry / skills 保持一致 |
 | `src/jobs.ts` | 5 个工作流实现 | 嵌套调用走同一 runtime；runner 二次闸门 |
 | `src/skills.ts` | 随包 skill 的 provider（rank 600） | 不落用户目录 |
 | `src/commands.ts` | `/asc`、`/asc-doctor` | 只读、不产生模型消息 |
 | `src/tools/*.ts` | 5 个工具定义（schema、描述、呈现） | 薄；逻辑在 registry/runtime |
 | `skills/*/SKILL.md` | 模型知识：何时用哪个 job/tool、失败恢复 | 工具面变更必须同步 |
+| `scripts/vendor-path.mjs` | 开发脚本的 vendor 引擎路径 | 下载、verify、contract、audit、smoke、overlay 共用平台后缀 |
 
 ---
 
@@ -54,6 +56,8 @@
 模型调用工具
   → approval.inspectCall(工具名, 参数, config)   # 分类 + confirm 事实 + 参数校验
   → decideCall()                                # invalid / allow / ask / deny
+  → approval.request()                         # ask 需真实 allowed-once，生成本次调用收据
+  → tools.guard                                # 最终复核 deny/confirm/收据，防 listener 绕过
   → 工具 handler
   → runtime.runAction(tool, action) 或 runArgv  # 超时、--output、审计
   → registry spec.build(args)                   # validate → argv 尾部
@@ -88,7 +92,7 @@ job 的差别：`asc_job` 一次调用内运行多步，每步都走同一 `runA
 |---|---|---|
 | 二进制缺失 | `errorClass: missing-binary` | hint: `brew install asc` / `ascPath` / provision |
 | 认证失败 | `auth` | hint: `asc auth status --validate` |
-| 参数/flag 错 | `usage`（exit 2） | hint: 查 `--help`；`--output` 场景单次重试 |
+| 参数/flag 错 | `usage`（exit 2） | hint: 查 `--help`；仅只读且明确拒绝 output flag 时单次重试 |
 | 状态冲突 | `state-conflict` | hint: 先查状态再重试 |
 | 超时/取消 | `timeout` / `cancelled` | 不自动重试 mutation |
 | 输出非 JSON | `parse` | `stderrTail` + 截断标记 |

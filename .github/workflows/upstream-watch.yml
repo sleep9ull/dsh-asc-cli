@@ -20,17 +20,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Download latest asc
-        run: |
-          mkdir -p vendor
-          url=$(curl -fsSL https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/latest \
-            | grep -o '"browser_download_url": "[^"]*linux_amd64"' | head -1 | cut -d'"' -f4)
-          test -n "$url"
-          curl -fsSL -o vendor/asc "$url"
-          chmod +x vendor/asc
-          ./vendor/asc version
+      - name: Download latest asc and verify SHA-256
+        run: node scripts/download-asc.mjs --latest
       - name: Contract test
         run: node scripts/contract.mjs ./vendor/asc
+      - name: Completion and side-effect flag audit
+        run: node scripts/classify-audit.mjs ./vendor/asc
+      - name: Offline smoke against latest
+        run: node scripts/smoke.mjs ./vendor/asc --latest
       - name: Open an issue on drift
         if: failure()
         uses: actions/github-script@v7
@@ -40,7 +37,7 @@ jobs:
             const body = [
               'The scheduled contract test against the latest `asc` release failed.',
               '',
-              'Run `node scripts/contract.mjs ./vendor/asc` locally, update `src/registry.ts` and the fixtures, then bump the tested version in the README.',
+              'Run `node scripts/download-asc.mjs --latest`, then the contract, classify-audit and offline smoke scripts locally. Review the failed stage and update the compatibility baseline only after verification.',
             ].join('\n')
             const existing = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'upstream-drift' })
             if (existing.data.length === 0) {

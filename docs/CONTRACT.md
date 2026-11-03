@@ -1,6 +1,6 @@
 # 产品契约（CONTRACT）
 
-> 状态：**契约（SSOT）**｜基线：`0.1.6`｜更新：2026-10-25
+> 状态：**契约（SSOT）**｜基线：`0.2.0`｜更新：2026-11-03
 > 常驻规则见 [`../AGENTS.md`](../AGENTS.md)；命令面参考见 [`COMMANDS.md`](./COMMANDS.md)；流程见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) 与 [`SPECS.md`](./SPECS.md)。
 > **优先级**：用户指令 > `AGENTS.md` > 本文件 > 其他文档。代码与测试必须服从本文件；发现不一致，走 spec 流程修正，禁止沉默偏离。
 
@@ -27,7 +27,8 @@
 | 阶段 | 范围 |
 |---|---|
 | 已交付（0.1.2–0.1.6） | 2 个 P0 安全修复、engine manager、5 个 job、6 个内置 skill、`/asc` + `/asc-doctor`、审计、审批豁免、更新检查、`--exclude-expired` 透传、文档契约体系、分类器归一化与本地写门禁、审批前参数校验、clean build/verify |
-| v0.2「Prove」 | 契约值/组合测试、参数守卫、工具端到端测试、smoke 断言、结果 projector 补全、错误分类与脱敏补全 |
+| 0.2.0 迁移实现 | Harness rc.5 / asc 6.3.0、真实宿主审批收据与最终 guard、动态引擎路径、离线 subprocess smoke、可复现 CI；验收状态见 spec 004 |
+| 后续「Prove」 | 契约值校验、结果 projector 补全、错误分类与深度脱敏补全 |
 | 之后 | job 幂等与恢复、审计报告化、能力快照、审批记忆、多 app/profile、policy as code、CI 模式 |
 
 完整版本计划与退出条件见 [`ROADMAP.md`](./ROADMAP.md)。
@@ -71,7 +72,8 @@
 
 - `approvedActions`（glob）只在 **write 模式的 write/unknown** 上跳过审批；read-only、local-write、confirm 要求、forbidden 均不放宽。
 - `requireApproval: false` 只关闭审批提示，**不关闭 confirm**；默认 `true`。read-only 下的 `unknown` 始终走审批（I3 优先），不受该项影响。
-- 已注册 action/job 的非法参数组合在 confirm/审批**之前**拒绝（拒绝码 `ASC_INVALID_ARGUMENTS`）；校验逻辑与 builder 共用（`registry.validate` / `validateJobArgs`）。
+- 已注册 action/job 的非法参数组合在 confirm/审批**之前**拒绝（拒绝码 `ASC_INVALID_ARGUMENTS`）；校验逻辑与 builder 共用（`registry.validate` / `validateJobArgs`），包括 `publish` 的 `.ipa` + `MAC_OS`。
+- 宿主最终 `tools.guard` 复核策略；需审批的调用必须持有实际 `approval.request` 返回的单次批准收据，绑定本次执行 token 与参数，不能由其他 pre-execute listener 的 allow 代替。
 - read-only 双防线：插件层拦截 + `asc --read-only` / `ASC_READ_ONLY=1`；write 模式对父进程 `ASC_READ_ONLY` 做 tombstone。
 
 ### 3.2 十条不可变原则（I1–I10）
@@ -81,20 +83,22 @@
 | I1 | 只读默认；ASC 写只在 `mode: write` 放行 | `src/exec.ts`、`src/approval.ts`、policy 测试 |
 | I2 | 写路径三件套：`mode: write` + `confirm: true` + 宿主审批；模型自证不算批准 | `src/approval.ts`、`test/approval.test.ts` |
 | I3 | unknown 永不静默：`ask`（默认）或 `deny`；read-only 下也走审批 | `src/approval.ts`、`test/approval.test.ts` |
-| I4 | 模型值字面化：前导 `@` → `@@`（含 `--flag=@…`）；`allowValueExpansion` 默认 false | `literalizeArgv`（`src/exec.ts`） |
+| I4 | 模型值字面化：可展开值的前导 `@` → `@@`（含 `--flag=@…`）；上游排除展开的 output / root selectors 及 `--` 后负载保持原文；`allowValueExpansion` 默认 false | `literalizeArgv`（`src/exec.ts`） |
 | I5 | 单一执行点：`ctx.subprocess` + argv 数组、无 shell；显式转发 4 个 `ASC_*` 认证变量、`ASC_WEB_SESSION` 强制 tombstone；凭据不进模型 | `src/exec.ts` |
 | I6 | 工具面固定 5 个；新能力进既有工具或 job，不新增命令型工具 | `src/index.ts`、`src/registry.ts` |
 | I7 | 知识随包：6 个 skill 以 rank 600 发布；工具名变更同提交更新 skill | `src/skills.ts`、`package.json files` |
-| I8 | 引擎外置：pin `5.16.0` / 区间 `>=5.16.0 <6.0.0`；provision 默认关 + SHA-256；永不自动升级 | `src/compat.ts`、`src/control/engine.ts` |
+| I8 | 引擎外置：pin `6.3.0` / 区间 `>=6.3.0 <7.0.0`；provision 默认关 + SHA-256；永不自动升级 | `src/compat.ts`、`src/control/engine.ts` |
 | I9 | 审计可关：未配置 `auditLog` 即不写；best-effort、脱敏、`0o600`、单行 8 KB | `src/audit.ts` |
-| I10 | 禁区：`auth login/logout` 与 `asc web` 一律 `forbidden`；未识别命令走 `unknown` | `src/classify.ts` |
+| I10 | 禁区：`auth login/logout`、`asc web`、`versions phased-release guard` 一律 `forbidden`；未识别命令走 `unknown` | `src/classify.ts` |
 
 ### 3.3 现状边界（有意保留，不是缺陷）
 
 1. **read-only 不是"零本地写"**：`metadata init/plan/pull`、`docs init`、`doctor --fix`、`builds dsyms/compile/package`、`install-skills`、`testflight config export`，以及写文件的 `download`/`export` 叶子（`analytics download`、`profiles download`、`certificates export` 等 9 条）在 read-only 下属于 `local-write`，需 confirm + 审批。
-2. **unknown 在 read-only 下只需审批、不需 confirm**：`asc --read-only` 已在 HTTP 层拦截写，剩下要防的是本地写。
-3. **长尾 `--output` 不是能力表驱动**：根黑名单 + 文件写叶子（`download`/`export`）跳过 + 已带 flag 跳过 + exit 2 单次重试。
-4. **`output.schema` 是通用 `json`**：契约靠 `AscToolResult` 类型 + 文档，不靠 schema 强校验。
+2. **unknown 在 read-only 下始终走 ask/deny**：没有已识别本地写副作用时不需 confirm；带 `--report-file` 仍保持 unknown，并额外要求 confirm。报告副作用不能降低未知命令的策略等级，也不能借 `approvedActions` 跳过默认本地写审批。
+3. **长尾 `--output` 不是能力表驱动**：根黑名单 + 文件输出路径跳过 + 已带 flag（含内联值）跳过；仅对确认是新增 output flag 被解析器拒绝的只读调用单次重试，不能因普通 exit 2 重放写操作。
+4. **额外本地写需审批**：全局 `--report-file`、`doctor --fix`（含布尔值形态）、`xcode-cloud doctor --save-logs`、`reviews digest --write-state`、`apps registry pull`、`analytics sales`、`notarization log --fetch --path` 不能借 flag 值中的 read 动词绕过门禁。
+5. **任意子程序不开放**：`versions phased-release guard` 的 `--dry-run` 仍执行健康检查程序，属于 forbidden。
+6. **`output.schema` 是通用 `json`**：契约靠 `AscToolResult` 类型 + 文档，不靠 schema 强校验。
 
 ---
 
@@ -121,7 +125,7 @@
 - **过渡期**：0.1.4 是硬切换。下一次破坏性变更应保留一个 minor 的 deprecated 别名，或在 README 给出逐步迁移路径。
 - **质量门**：`npm run verify`（typecheck → test → build → pack-manifest → contract → classify-audit → smoke）；`scripts/pack-manifest.mjs` 断言 `lib/` 与 `src/` 文件集一致。
 - **引擎**：pin 与区间只在 `src/compat.ts` 定义；`scripts/contract.mjs` 锁定 23 个注册命令与 `--help` 兼容性；CI + 每日 upstream-watch 兜底。
-- **宿主**：`engines.dsh` = `>=0.2.1-rc.2 <0.3.0`；peer 依赖由宿主提供。
+- **宿主**：`engines.dsh` = `>=0.2.1-rc.5 <0.2.2-0`；peer 依赖由宿主提供。
 - **发布物**：`files` 含 `lib`、`skills`、`cordis.patch.yml`、README/CHANGELOG；`prepack`/`prepare` 构建；无 postinstall 下载。
 
 ---
@@ -159,3 +163,5 @@
 | 2026-10-24 | 0.1.4 | 初版契约建立 | 0.1.2–0.1.4 收敛后固化边界与路线 |
 | 2026-10-24 | 0.1.5 | 拆分重组为 CONTRACT / COMMANDS / ARCHITECTURE / TESTING / CONTRIBUTING / ROADMAP / SPECS，并按上游仓库模式重写 AGENTS.md | 文档与代码对齐，减少单文件 sprawl |
 | 2026-10-25 | 0.1.6 | 分类器归一化前导全局 flag（I10）、文件写 `download/export` 改 local-write（I1）、审批前参数校验（I2/I3）；I5 增加 `ASC_WEB_SESSION` tombstone | 修复 0.1.5 评估的 2 个安全 P1 与 2 个写路径 P1；spec 003 |
+| 2026-11-03 | 0.2.0 | I8 升至 asc 6.3.0 / 6.x 支持线，宿主 rc.5；I1 本地写 flags、I2 真实批准收据与最终 guard、I10 phased-release guard 禁区；发布 IPA/MAC_OS 审批前拒绝 | 用户要求适配两个上游最新默认发布版本；spec 004，未来 6.x 由漂移门监测 |
+| 2026-11-03 | 0.2.0 | PR 评审修复：I4 按可能值位置字面化，I3 报告副作用不降低 unknown 风险；缓存绝对路径、Windows 后缀与 provision 取消 | 用户要求修复全部 P1/P2；spec 004 §7.1 |

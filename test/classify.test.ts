@@ -139,8 +139,40 @@ describe('file-writing download/export leaves', () => {
     expect(classifyArgv(['analytics', 'reports', 'view', '--app', '1'])).toBe('read')
   })
 
-  it('still treats a write verb given as a flag value as a write', () => {
-    expect(classifyArgv(['apps', 'list', '--name', 'delete'])).toBe('write')
+  it('never treats flag values or positional payloads as command verbs', () => {
+    expect(classifyArgv(['apps', 'list', '--name', 'delete'])).toBe('read')
+    expect(classifyArgv(['apps', 'registry', 'pull', '--path', 'status'])).toBe('local-write')
+    expect(classifyArgv(['reviews', 'digest', '--state-file', 'status', '--write-state'])).toBe('local-write')
+    expect(classifyArgv(['analytics', 'sales', '--output', 'report'])).toBe('local-write')
+    expect(classifyArgv(['apps', 'future-command', '--name', 'list'])).toBe('unknown')
+    expect(classifyArgv(['apps', 'future-command', '--', 'list'])).toBe('unknown')
+  })
+
+  it('keeps forbidden commands behind explicit boolean values forbidden', () => {
+    for (const prefix of [['--debug', 'false'], ['--api-debug=true'], ['-debug', '0']]) {
+      expect(classifyArgv([...prefix, 'web', 'apps', 'list'])).toBe('forbidden')
+      expect(classifyArgv([...prefix, 'auth', 'token'])).toBe('forbidden')
+    }
+    expect(classifyArgv(['versions', 'phased-release', 'guard', '--dry-run', '--', 'status'])).toBe('forbidden')
+    expect(classifyArgv(['--report-file=receipt.xml', 'versions', 'phased-release', 'guard'])).toBe('forbidden')
+  })
+
+  it('requires confirmation only for variants that write local artifacts', () => {
+    for (const argv of [
+      ['--report', 'junit', '--report-file=receipt.xml', 'apps', 'list'],
+      ['doctor', '--fix=true'], ['auth', 'doctor', '--fix', 'true'],
+      ['xcode-cloud', 'doctor', '--save-logs=logs'],
+      ['reviews', 'digest', '--write-state=true'],
+      ['notarization', 'log', '--fetch', '--path=log.json'],
+    ]) expect(classifyArgv(argv)).toBe('local-write')
+    expect(classifyArgv(['apps', 'list', '--name', '--report-file'])).toBe('read')
+    expect(classifyArgv(['reviews', 'digest', '--state-file', '--write-state'])).toBe('read')
+    expect(classifyArgv(['doctor', '--fix=false'])).toBe('read')
+    expect(classifyArgv(['doctor', '--fix', 'false'])).toBe('read')
+    expect(classifyArgv(['xcode-cloud', 'doctor'])).toBe('read')
+    expect(classifyArgv(['reviews', 'digest', '--write-state=false'])).not.toBe('local-write')
+    expect(classifyArgv(['notarization', 'log', '--fetch'])).not.toBe('local-write')
+    expect(classifyArgv(['screenshots', 'reorder', '--set-id', 'status'])).toBe('write')
   })
 
   it('exposes the file-write check the runtime uses to skip --output', () => {
