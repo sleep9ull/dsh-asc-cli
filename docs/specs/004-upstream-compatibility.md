@@ -71,6 +71,16 @@ README 中英文给出从 0.1.6 迁移到新基线的要求：升级 Harness 至
 - [x] README/README.zh、AGENTS/CONTRACT/COMMANDS、ARCHITECTURE/TESTING/CONTRIBUTING、相关技能、CHANGELOG 同步；历史 spec 保留历史版本事实。
 - [x] 用户明确批准完整验证后，当前工作区 `npm run verify` 全部 8 阶段一次通过（exit 0），status 标记为 implemented。
 
+## 7.1 PR 评审修复验收（2026-11-03）
+
+用户已明确要求修复全部 P1/P2；以下补充既有契约的回归验收：
+
+- [x] flag 值为 `--output` / `--` 时，后续真实 flag 的 `@file:` / `@env:` 仍字面化；已识别的 output/root selector 与 payload 保持原文。不复制完整上游 flag 表，类型不确定时按可能的解析位置保守处理；无法证明是 payload 的值仍保守字面化。
+- [x] 添加 `--report-file` 不降低 unknown 风险；read-only 的 unknown deny/强制审批保持，已识别本地文件副作用仍需 confirm。
+- [x] 相对 cacheDir（含相对 DSH_HOME）解析为宿主侧绝对路径，下载、探测与不同 cwd 的工具执行使用同一文件。
+- [x] Windows 下载保留 `asc.exe`，verify/contract/audit/smoke/dev overlay 共用平台路径；离线测试覆盖脚本消费者（模拟平台，原生 Windows 执行未验证）。
+- [x] provision 透传调用方 signal，两个 fetch 合并超时与取消，读取响应后及安装前检查取消；已取消调用不下载/覆盖缓存引擎。
+
 ## 8. 未验证边界
 
 真实账号下的 App Store Connect API、上传、分发、提交依赖真实凭据与单独业务授权；本迁移不执行。任何工具权限阻塞的真实二进制门禁必须明确报告，不能把静态检查或替身结果标为通过。
@@ -82,4 +92,14 @@ README 中英文给出从 0.1.6 迁移到新基线的要求：升级 Harness 至
 - 已验证的 macOS arm64 asc 6.3.0 SHA-256：`c460fff17553d5a0b982bb67d366188554ccce3da4fd28e38ecd24ceb05915f8`。此前独立 contract 检查覆盖 23 action + 5 条 job/discovery 路径及未知 flag 负向控制；completion 审计覆盖 1,932 路径 + 11 个 flag 向量；真实 subprocess 离线 search、metadata init/validate 和四个零 spawn 拒绝通过。
 - 新增真实 provider 环境 canary 已在最终 smoke 中通过：显式转发四个合成认证值，验证 read-only/web-session tombstone，不读取真实凭据。完整 verify 首次被自动审批审查拒绝（Code from External）；用户随后明确批准完整验证，重跑后 8 阶段全部通过（exit 0）。最终 contract 为 28 条正向命令（23 action + 5 条 job/discovery）及未知 flag 负向控制；分类审计为 1,932 路径 + 11 向量；smoke 共 6 次真实 subprocess 调用，覆盖 search、metadata init/validate、环境 canary 与四个零 spawn 拒绝。
 - 新下载脚本访问 GitHub 时 120 秒超时退出；用已校验 release 文件替换 fetch 的离线安装检查通过，损坏下载被拒且原引擎不变。真实网络下载仍未通过本轮验证。
-- 本地 Node 22 与远程 CI 未执行；CI 已配置 Node 22/24。未提交、push、建 PR 或发布。
+- 初次迁移验收时：本地 Node 22 与远程 CI 未执行；CI 已配置 Node 22/24。当时尚未提交、push、建 PR 或发布。
+
+## 10. PR 评审修复记录（2026-11-03）
+
+- PR：[sleep9ull/dsh-asc-cli#8](https://github.com/sleep9ull/dsh-asc-cli/pull/8)。本次修复全部 2 项 P1 和 3 项 P2，补充 §7.1 验收。不将原 PR 的旧 CI 结果当成本轮修复结果。
+- 红测试：参数/策略/相对路径/provision 链路新增回归首次 9 例失败；脚本路径首次 3 例失败。修复后本地全绿。
+- Node 24.14.0：`npm run verify -- --unit-only` 五阶段通过，14 个测试文件 / 259 测试，包含 22 个真实宿主集成测试及 5 个离线脚本集成测试；22 源模块对应 66 构建产物；参数组合 13 拒绝 / 8 接受。
+- `npm pack --dry-run --json`：78 文件、六个 skill，无 vendor 引擎、凭据或上游源码；`git diff --check` 通过。
+- Windows/macOS/Linux 平台路径、下载器、全部脚本消费者与两种开发 overlay 在隔离 checkout 中模拟验证；原生 Windows executable/npm.cmd 未验证。
+- 修复后首次尝试的 `npm run verify` 与真实引擎合成 canary 复现被自动审批审查以 `Code from External` 拒绝，未执行。用户再次明确批准完整验证后，重跑成功：Node 24.14.0 上完整八阶段门禁全部通过（exit 0），包括 259 测试、28 条真实上游命令契约、1,932 completion 路径 + 11 flag 向量，以及 6 次真实 Harness subprocess 离线 smoke 调用。
+- 合成 canary 对照检查通过：真实 asc 6.3.0 对原始 `apps list --name --output --limit=@file:<fixture>` 会在 exit 2 的解析错误中出现合成文件内容；经过 `literalizeArgv` 后同样 exit 2，但不再包含文件内容。使用隔离 HOME/ASC 配置与合成文件，不使用真实凭据、不执行 Apple 业务操作。

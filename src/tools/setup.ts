@@ -108,7 +108,7 @@ export function registerSetupTool(ctx: Context, runtime: AscRuntime, engine: Asc
         return (await engine.diagnose({ signal: exec.signal })) as unknown as JsonValue
       }
       if (action === 'provision') {
-        return (await engine.provision()) as unknown as JsonValue
+        return (await engine.provision({ signal: exec.signal })) as unknown as JsonValue
       }
       return (await runtime.runAction('asc_setup', action, args as ToolArgs, exec)) as unknown as JsonValue
     },

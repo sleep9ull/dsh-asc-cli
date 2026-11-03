@@ -169,6 +169,40 @@ describe('exec protocol', () => {
 })
 
 describe('value expansion guard', () => {
+  it.each(['--output', '--'])('does not interpret a flag-shaped string value %s as syntax', (value) => {
+    const request = {
+      argv: ['apps', 'list', '--name', value, '--limit=@file:/synthetic-secret'],
+      cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096, appendOutput: false,
+    }
+    const spec = buildSpawnSpec(makeConfig(), request, new AbortController().signal)
+    expect(spec.argv).toContain('--limit=@@file:/synthetic-secret')
+  })
+
+  it('treats command-local version and provisioning profile as expandable string values', () => {
+    for (const argv of [
+      ['builds', 'list', '--version', '--output', '--limit=@env:SYNTHETIC'],
+      ['signing', 'run', '--profile', '@file:/synthetic-profile'],
+    ]) {
+      const spec = buildSpawnSpec(makeConfig(), {
+        argv, cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096, appendOutput: false,
+      }, new AbortController().signal)
+      expect(spec.argv.at(-1)).toBe(argv.at(-1)?.replace('@', '@@'))
+    }
+  })
+
+  it('preserves real payloads and excluded values after boolean or string options', () => {
+    for (const argv of [
+      ['apps', 'list', '--paginate', '--output', '@literal'],
+      ['apps', 'list', '--name', 'example', '--output=@literal'],
+      ['versions', 'phased-release', 'guard', '--dry-run', '--', '@payload', '--value=@env:PAYLOAD'],
+    ]) {
+      const spec = buildSpawnSpec(makeConfig(), {
+        argv, cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096, appendOutput: false,
+      }, new AbortController().signal)
+      expect(spec.argv.slice(2)).toEqual(argv)
+    }
+  })
+
   it('preserves selectors excluded from upstream expansion', () => {
     const request = { argv: ['--profile', '@literal', 'apps', 'list', '--output=@path'], cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096, appendOutput: false }
     const spec = buildSpawnSpec(makeConfig(), request, new AbortController().signal)

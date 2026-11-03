@@ -94,7 +94,7 @@
 ### 3.3 现状边界（有意保留，不是缺陷）
 
 1. **read-only 不是"零本地写"**：`metadata init/plan/pull`、`docs init`、`doctor --fix`、`builds dsyms/compile/package`、`install-skills`、`testflight config export`，以及写文件的 `download`/`export` 叶子（`analytics download`、`profiles download`、`certificates export` 等 9 条）在 read-only 下属于 `local-write`，需 confirm + 审批。
-2. **unknown 在 read-only 下只需审批、不需 confirm**：`asc --read-only` 已在 HTTP 层拦截写，剩下要防的是本地写。
+2. **unknown 在 read-only 下始终走 ask/deny**：没有已识别本地写副作用时不需 confirm；带 `--report-file` 仍保持 unknown，并额外要求 confirm。报告副作用不能降低未知命令的策略等级，也不能借 `approvedActions` 跳过默认本地写审批。
 3. **长尾 `--output` 不是能力表驱动**：根黑名单 + 文件输出路径跳过 + 已带 flag（含内联值）跳过；仅对确认是新增 output flag 被解析器拒绝的只读调用单次重试，不能因普通 exit 2 重放写操作。
 4. **额外本地写需审批**：全局 `--report-file`、`doctor --fix`（含布尔值形态）、`xcode-cloud doctor --save-logs`、`reviews digest --write-state`、`apps registry pull`、`analytics sales`、`notarization log --fetch --path` 不能借 flag 值中的 read 动词绕过门禁。
 5. **任意子程序不开放**：`versions phased-release guard` 的 `--dry-run` 仍执行健康检查程序，属于 forbidden。
@@ -164,3 +164,4 @@
 | 2026-10-24 | 0.1.5 | 拆分重组为 CONTRACT / COMMANDS / ARCHITECTURE / TESTING / CONTRIBUTING / ROADMAP / SPECS，并按上游仓库模式重写 AGENTS.md | 文档与代码对齐，减少单文件 sprawl |
 | 2026-10-25 | 0.1.6 | 分类器归一化前导全局 flag（I10）、文件写 `download/export` 改 local-write（I1）、审批前参数校验（I2/I3）；I5 增加 `ASC_WEB_SESSION` tombstone | 修复 0.1.5 评估的 2 个安全 P1 与 2 个写路径 P1；spec 003 |
 | 2026-11-03 | 0.2.0 | I8 升至 asc 6.3.0 / 6.x 支持线，宿主 rc.5；I1 本地写 flags、I2 真实批准收据与最终 guard、I10 phased-release guard 禁区；发布 IPA/MAC_OS 审批前拒绝 | 用户要求适配两个上游最新默认发布版本；spec 004，未来 6.x 由漂移门监测 |
+| 2026-11-03 | 0.2.0 | PR 评审修复：I4 按可能值位置字面化，I3 报告副作用不降低 unknown 风险；缓存绝对路径、Windows 后缀与 provision 取消 | 用户要求修复全部 P1/P2；spec 004 §7.1 |

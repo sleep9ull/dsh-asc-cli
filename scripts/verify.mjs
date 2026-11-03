@@ -12,15 +12,17 @@ import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { vendorAscPath } from './vendor-path.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const node = process.execPath
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const hasVendor = existsSync(resolve(root, 'vendor', 'asc'))
+const asc = vendorAscPath()
+const hasVendor = existsSync(asc)
 const unitOnly = process.argv.slice(2).includes('--unit-only')
 if (process.argv.slice(2).some((arg) => arg !== '--unit-only')) throw new Error('Usage: npm run verify -- [--unit-only]')
 if (!hasVendor && !unitOnly) {
-  console.error('verify: vendor/asc is required for full verification. Build, run node scripts/download-asc.mjs, or explicitly use --unit-only.')
+  console.error(`verify: ${asc} is required for full verification. Build, run node scripts/download-asc.mjs, or explicitly use --unit-only.`)
   process.exit(1)
 }
 
@@ -35,13 +37,13 @@ const steps = [
 
 if (!unitOnly) {
   steps.push(
-    { title: 'contract (registered commands accepted by asc)', argv: [node, 'scripts/contract.mjs', './vendor/asc'] },
+    { title: 'contract (registered commands accepted by asc)', argv: [node, 'scripts/contract.mjs', asc] },
     {
       title: 'classify audit (read/local-write drift)',
-      argv: [node, 'scripts/classify-audit.mjs', './vendor/asc'],
+      argv: [node, 'scripts/classify-audit.mjs', asc],
       requires: 'scripts/classify-audit.mjs',
     },
-    { title: 'smoke (runtime against the real binary)', argv: [node, 'scripts/smoke.mjs'] },
+    { title: 'smoke (runtime against the real binary)', argv: [node, 'scripts/smoke.mjs', asc] },
   )
 } else {
   console.log('verify: explicit --unit-only; engine contract, classify-audit and smoke are NOT verified')

@@ -2,7 +2,8 @@
 /** Offline engine smoke through the real Harness rc.5 subprocess provider. */
 import assert from 'node:assert/strict'
 import { existsSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
+import { resolveAscPath } from './vendor-path.mjs'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { createEngine } from '../lib/control/engine.js'
@@ -12,7 +13,7 @@ import { decideCall } from '../lib/approval.js'
 import { execAsc } from '../lib/exec.js'
 import { engineSandbox } from './engine-env.mjs'
 
-const asc = resolve(process.argv[2] ?? 'vendor/asc')
+const asc = resolveAscPath(process.argv[2])
 assert.ok(existsSync(asc), `Engine missing: ${asc}`)
 const sandbox = engineSandbox()
 const ctx = new Context()

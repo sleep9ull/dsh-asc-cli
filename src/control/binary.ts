@@ -1,7 +1,7 @@
 /** Shared, dynamic engine resolution for probes, tools and jobs. */
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { PINNED_ASC_VERSION } from '../compat.js'
 import type { Config } from '../config.js'
 
@@ -12,9 +12,9 @@ export interface AscResolution {
 }
 
 export function cacheRoot(config: Config): string {
-  if (config.cacheDir !== undefined) return config.cacheDir
+  if (config.cacheDir !== undefined) return resolve(config.cacheDir)
   const home = process.env.DSH_HOME?.trim()
-  return join(home === undefined || home.length === 0 ? join(homedir(), '.dsh') : home, 'cache', 'asc-cli')
+  return resolve(home === undefined || home.length === 0 ? join(homedir(), '.dsh') : home, 'cache', 'asc-cli')
 }
 
 export function cachedBinaryPath(config: Config, version: string = PINNED_ASC_VERSION): string {

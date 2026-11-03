@@ -27,6 +27,24 @@ describe('approval policy', () => {
     }
   })
 
+  it('keeps unknown policy and report confirmation when reports accompany unknown commands', () => {
+    const args = ['--report', 'junit', '--report-file', 'result.xml', 'signing', 'resign']
+    const denied = decideCall(makeConfig({ unknownCommands: 'deny', requireApproval: false }), 'asc', {
+      action: 'run', args, confirm: true,
+    })
+    expect(denied?.kind).toBe('deny')
+    if (denied?.kind === 'deny') expect(denied.info.code).toBe('ASC_UNKNOWN_COMMAND')
+    expect(decideCall(makeConfig({ requireApproval: false }), 'asc', {
+      action: 'run', args, confirm: true,
+    })?.kind).toBe('ask')
+    expect(decideCall(makeConfig({ mode: 'write', approvedActions: ['asc.run:*'] }), 'asc', {
+      action: 'run', args, confirm: true,
+    })?.kind).toBe('ask')
+    const unconfirmed = decideCall(makeConfig(), 'asc', { action: 'run', args })
+    expect(unconfirmed?.kind).toBe('deny')
+    if (unconfirmed?.kind === 'deny') expect(unconfirmed.info.code).toBe('ASC_CONFIRM_REQUIRED')
+  })
+
   it('ignores tools that are not ours', () => {
     expect(decideCall(makeConfig(), 'bash', {})).toBeUndefined()
   })

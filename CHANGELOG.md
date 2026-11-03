@@ -16,6 +16,8 @@ All notable changes to this plugin are documented here.
 - Reject publishing an IPA with `MAC_OS` before confirmation or approval.
 - Share dynamic executable resolution between diagnostics, actions and jobs. Respect failed authentication and propagate diagnostic cancellation.
 - Preserve inline output options and file output paths; retry only proven read commands that explicitly reject an injected output flag.
+- Keep value expansion blocked when string values resemble flags or `--`; keep unknown-command policy when report files are requested, including confirmation for the file side effect.
+- Resolve relative cache paths against the host directory, preserve `.exe` for Windows development engines, and cancel provisioning downloads before installing after caller cancellation.
 
 ### Verification and development
 

@@ -7,14 +7,14 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { resolve } from 'node:path'
+import { resolveAscPath } from './vendor-path.mjs'
 import { allSpecs } from '../lib/registry.js'
 import { engineSandbox } from './engine-env.mjs'
 
 const sandbox = engineSandbox()
 process.on('exit', sandbox.cleanup)
 const spawnOptions = { encoding: 'utf8', env: sandbox.env, cwd: sandbox.directory, timeout: 30_000 }
-const asc = resolve(process.argv[2] ?? 'vendor/asc')
+const asc = resolveAscPath(process.argv[2])
 
 const config = {
   ascPath: asc,

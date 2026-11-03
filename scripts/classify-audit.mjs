@@ -10,7 +10,7 @@
  *
  * Usage:
  *   npm run build                                   # the gate imports lib/, not src/
- *   node scripts/classify-audit.mjs [path/to/asc]   # default ./vendor/asc
+ *   node scripts/classify-audit.mjs [path/to/asc]   # default vendor/asc (.exe on Windows)
  *
  * Exit codes: 0 = clean, 1 = drift, missing engine or tooling error.
  * No third-party dependencies.
@@ -21,6 +21,7 @@ import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { engineSandbox } from './engine-env.mjs'
+import { resolveAscPath } from './vendor-path.mjs'
 
 const sandbox = engineSandbox()
 process.on('exit', sandbox.cleanup)
@@ -71,8 +72,7 @@ async function loadClassifier() {
 }
 
 async function main() {
-  const requested = process.argv[2]
-  const ascPath = requested === undefined ? resolve(ROOT, 'vendor/asc') : resolve(process.cwd(), requested)
+  const ascPath = resolveAscPath(process.argv[2])
   if (!existsSync(ascPath)) {
     console.error(`classify-audit: ${ascPath} not found; install the target engine first.`)
     return 1

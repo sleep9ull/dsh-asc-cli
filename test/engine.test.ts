@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { assetNameForTest, checksumsForTest } from './compat-helpers.js'
@@ -63,6 +63,22 @@ describe('engine resolution', () => {
   it('prefers an explicitly configured path', () => {
     const engine = createEngine(makeConfig({ ascPath: '/opt/asc' }), scriptedSpawn(['']).spawn)
     expect(engine.resolve()).toEqual({ path: '/opt/asc', source: 'configured' })
+  })
+
+  it('runs the same cached file when a relative cache and child cwd differ', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'asc-relative-cache-'))
+    const config = makeConfig({ cacheDir: relative(process.cwd(), directory), workdir: join(directory, 'app') })
+    const engine = createEngine(config, (spec) => {
+      expect(resolve(spec.cwd, spec.argv[0] as string)).toBe(engine.cachedBinaryPath())
+      return handle(PINNED_ASC_VERSION)
+    })
+    try {
+      const cached = engine.cachedBinaryPath()
+      mkdirSync(join(cached, '..'), { recursive: true })
+      writeFileSync(cached, 'fixture')
+      expect(await engine.version()).toBe(PINNED_ASC_VERSION)
+      expect(isAbsolute(engine.resolve().path)).toBe(true)
+    } finally { rmSync(directory, { recursive: true, force: true }) }
   })
 
   it('falls back to ASC_CLI_PATH, then the cache, then PATH', () => {
@@ -193,6 +209,44 @@ describe('provisioning', () => {
     expect(result.version).toBe(PINNED_ASC_VERSION)
     expect(result.bytes).toBe(bytes.length)
     expect(readFileSync(result.path as string)).toEqual(bytes)
+  })
+
+  it.each(['before-fetch', 'checksums', 'binary', 'body'])('does not install after cancellation during %s', async (phase) => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'asc-cancel-provision-'))
+    const controller = new AbortController()
+    const bytes = Buffer.from('replacement')
+    const asset = assetNameForTest()
+    const digest = createHash('sha256').update(bytes).digest('hex')
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      const checksums = String(url).endsWith('checksums.txt')
+      if ((phase === 'checksums' && checksums) || (phase === 'binary' && !checksums)) {
+        return await new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true })
+          controller.abort(new Error('cancelled fixture'))
+          // Do not hang the red test if caller cancellation was not forwarded.
+          if (!init?.signal?.aborted) reject(new Error('caller signal was not forwarded'))
+        })
+      }
+      if (checksums) return new Response(checksumsForTest(asset, digest))
+      return {
+        ok: true,
+        arrayBuffer: async () => { controller.abort(new Error('cancelled fixture')); return bytes },
+      } as unknown as Response
+    })
+    const engine = createEngine(makeConfig({ allowProvision: true, cacheDir }), scriptedSpawn(['']).spawn)
+    const destination = engine.cachedBinaryPath()
+    mkdirSync(join(destination, '..'), { recursive: true })
+    writeFileSync(destination, 'existing-engine')
+    if (phase === 'before-fetch') controller.abort(new Error('cancelled fixture'))
+    try {
+      const result = await engine.provision({ fetch: fetchImpl, signal: controller.signal })
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('cancelled fixture')
+      expect(readFileSync(destination, 'utf8')).toBe('existing-engine')
+      expect(existsSync(`${destination}.download`)).toBe(false)
+      if (phase === 'before-fetch') expect(fetchImpl).not.toHaveBeenCalled()
+      if (phase === 'checksums') expect(fetchImpl).toHaveBeenCalledTimes(1)
+    } finally { rmSync(cacheDir, { recursive: true, force: true }) }
   })
 
   it('rejects a checksum mismatch', async () => {

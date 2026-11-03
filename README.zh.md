@@ -156,7 +156,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 - **默认只读**：每次调用带 `--read-only` + `ASC_READ_ONLY=1`，写操作在启动子进程前就被拒绝。
 - **写模式**：需要 `confirm: true` 且默认弹出宿主审批；插件只在模型传入 `confirm: true` 时给底层命令加 `--confirm`，不会自行确认。
-- **未知命令不静默**：无法确认只读的命令转人工审批（`ask`），或按配置直接拒绝（`unknownCommands: deny`）；写模式还额外要求 `confirm`。前导全局 flag 无法把禁区命令藏成 unknown。
+- **未知命令不静默**：无法确认只读的命令转人工审批（`ask`），或按配置直接拒绝（`unknownCommands: deny`）；写模式还额外要求 `confirm`。添加 `--report-file` 保留该策略，并额外要求确认本地文件写入。前导全局 flag 无法把禁区命令藏成 unknown。
 - **非法参数在审批前失败**：已注册 action/job 会先校验互斥 flag、metadata 来源、包类型要求等组合，不会先弹审批再被上游 exit 2。
 - **本地写需确认 + 审批**：`metadata init/plan/pull`、`docs init`、`doctor --fix`、`builds dsyms`、`install-skills`，以及所有写文件的 `download`/`export` 叶子（`screenshots download`、`profiles download`、`certificates export` 等）。
 - **默认关闭值展开**：`asc` 会展开 flag 值里的 `@env:` / `@file:`；插件默认把行首 `@` 转义，除非显式开启 `allowValueExpansion`。
@@ -208,7 +208,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 | `allowValueExpansion` | `false` | 允许 `asc` 的 `@env:` / `@file:` 展开 |
 | `unknownCommands` | `"ask"` | 无法确认只读时：`ask` 或 `deny` |
 | `allowProvision` | `false` | 允许 `asc_setup` 的 `provision` |
-| `cacheDir` | — | 覆盖 provision 缓存目录 |
+| `cacheDir` | — | 覆盖 provision 缓存目录；相对路径按宿主进程工作目录解析 |
 | `bypassKeychain` | `false` | 设置 `ASC_BYPASS_KEYCHAIN=1`（CI / 无头环境） |
 | `telemetryDisabled` | `true` | 设置 `ASC_TELEMETRY_DISABLED=1` |
 | `auditLog` | — | 每次调用追加一行 JSONL 审计 |

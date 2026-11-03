@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { vendorAscPath } from './vendor-path.mjs'
 import {
   PINNED_ASC_VERSION, UPSTREAM_LATEST_URL,
   checksumsUrl, parseChecksums, releaseAsset, releaseUrl,
@@ -43,7 +44,7 @@ try {
   const binary = join(staging, asset)
   await writeFile(binary, bytes, { mode: 0o600 })
   await chmod(binary, 0o755)
-  const target = join(vendor, 'asc')
+  const target = vendorAscPath()
   // Read an existing target before replacing it; matching contents need no write.
   const existing = await readFile(target).catch((error) => {
     if (error.code !== 'ENOENT') throw error

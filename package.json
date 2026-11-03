@@ -71,7 +71,7 @@
     "test:watch": "vitest",
     "prepare": "npm run build",
     "verify": "node scripts/verify.mjs",
-    "contract": "node scripts/contract.mjs ./vendor/asc",
+    "contract": "node scripts/contract.mjs",
     "smoke": "node scripts/smoke.mjs"
   },
   "keywords": [

@@ -277,6 +277,13 @@ const LOCAL_BOOLEAN_FLAGS = new Set([
   '--fetch', '--overwrite', '--paginate', '--confirm', '--dry-run',
 ])
 
+/** Known booleans without command-local string variants in the supported engine. */
+export function isUnambiguousBooleanFlag(token: string): boolean {
+  const name = flagName(token)
+  // --version is also a version string; --confirm is a string on apps delete.
+  return LOCAL_BOOLEAN_FLAGS.has(name) && name !== '--version' && name !== '--confirm'
+}
+
 /** Option lookup consumes values and stops at the payload boundary. */
 function option(argv: readonly string[], name: string): string | undefined {
   let value: string | undefined
@@ -342,6 +349,11 @@ export function isFileWriteArgv(argv: readonly string[]): boolean {
   return matchesLeaf(commandWords(normalized.argv))
 }
 
+/** Report artifacts are a side effect, never evidence about the command risk. */
+export function writesReportFile(argv: readonly string[]): boolean {
+  return option(argv, '--report-file') !== undefined
+}
+
 /** Classify one arbitrary `asc` invocation. */
 export function classifyArgv(argv: readonly string[]): ActionKind {
   const normalized = normalizeArgv(argv)
@@ -357,7 +369,7 @@ export function classifyArgv(argv: readonly string[]): ActionKind {
 
   // Global report output writes even for some usage failures. Keep forbidden
   // commands above this check, and preserve ASC-write denial below.
-  const writesReport = option(argv, '--report-file') !== undefined
+  const writesReport = writesReportFile(argv)
   const readKind = writesReport ? 'local-write' : 'read'
 
   if (root === 'auth') {
@@ -427,7 +439,7 @@ export function classifyArgv(argv: readonly string[]): ActionKind {
   if (words.length === 0 && DEFAULT_READ_ROOTS.has(root)) return readKind
   if (STRUCTURED_ROOTS.has(root) && words.some((word) => READ_VERBS.has(word))) return readKind
 
-  return writesReport ? 'local-write' : 'unknown'
+  return 'unknown'
 }
 
 /** Human-readable explanation used in refusals. */

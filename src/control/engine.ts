@@ -111,6 +111,7 @@ export interface ProvisionResult {
 /** Injectable pieces used by tests. */
 export interface ProvisionDeps {
   readonly fetch?: typeof fetch
+  readonly signal?: AbortSignal
 }
 
 export interface ProbeOptions {
@@ -413,21 +414,28 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     const destination = cachedBinaryPath()
     const temporary = `${destination}.download`
     try {
-      const listing = await fetchImpl(checksumsUrl(PINNED_ASC_VERSION), { signal: AbortSignal.timeout(20_000) })
+      deps.signal?.throwIfAborted()
+      const signal = (timeoutMs: number) => AbortSignal.any([
+        ...(deps.signal === undefined ? [] : [deps.signal]), AbortSignal.timeout(timeoutMs),
+      ])
+      const listing = await fetchImpl(checksumsUrl(PINNED_ASC_VERSION), { signal: signal(20_000) })
       if (!listing.ok) return { ok: false, error: `checksum list download failed (HTTP ${listing.status})` }
       const expected = parseChecksums(await listing.text()).get(asset)
       if (expected === undefined) return { ok: false, error: `checksum list does not contain ${asset}` }
 
-      const download = await fetchImpl(releaseUrl(asset, PINNED_ASC_VERSION), { signal: AbortSignal.timeout(180_000) })
+      deps.signal?.throwIfAborted()
+      const download = await fetchImpl(releaseUrl(asset, PINNED_ASC_VERSION), { signal: signal(180_000) })
       if (!download.ok) return { ok: false, error: `binary download failed (HTTP ${download.status})` }
       const bytes = Buffer.from(await download.arrayBuffer())
       const actual = createHash('sha256').update(bytes).digest('hex')
       if (actual !== expected) {
         return { ok: false, error: `checksum mismatch for ${asset}: expected ${expected}, got ${actual}` }
       }
+      deps.signal?.throwIfAborted()
       mkdirSync(dirname(destination), { recursive: true })
       writeFileSync(temporary, bytes, { mode: 0o755 })
       chmodSync(temporary, 0o755)
+      deps.signal?.throwIfAborted()
       renameSync(temporary, destination)
       versionProbe = undefined
       return { ok: true, path: destination, version: PINNED_ASC_VERSION, bytes: bytes.length }

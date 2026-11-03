@@ -27,7 +27,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-user-approval'
-import { classifyArgv, kindLabel } from './classify.js'
+import { classifyArgv, kindLabel, writesReportFile } from './classify.js'
 import type { Config } from './config.js'
 import { jobSpecFor, validateJobArgs, type JobArgs } from './jobs.js'
 import { specFor, type ActionKind, type ToolArgs } from './registry.js'
@@ -47,6 +47,7 @@ export type AscDecision =
 export interface CallFacts {
   readonly kind: ActionKind
   readonly needsConfirm: boolean
+  readonly localWrite?: boolean
   readonly label: string
   /**
    * Actionable argument problem for a registered action/job, discovered before
@@ -97,6 +98,7 @@ export function inspectCall(name: string, args: unknown, config?: Config): CallF
       return {
         kind,
         needsConfirm: kind === 'write' || kind === 'unknown' || kind === 'local-write',
+        localWrite: writesReportFile(argv),
         label: `asc.run: asc ${argv.join(' ')}`,
       }
     }
@@ -227,7 +229,7 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
         reason: `${facts.label} mutates state and needs an explicit \`confirm: true\` argument. Explain the intended change to the user and retry with \`confirm: true\` only after they agree.`,
       }
     }
-    if (config.requireApproval && !approved(config, facts)) {
+    if (config.requireApproval && (facts.localWrite || !approved(config, facts))) {
       return askAbout(facts, 'mutates App Store Connect', {
         en: `Allow ${facts.label} to modify App Store Connect?`,
         zh: `允许 ${facts.label} 修改 App Store Connect 吗？`,
@@ -245,6 +247,13 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
         reason: `${facts.label} cannot be proven read-only and \`unknownCommands\` is set to \`deny\`. Use a known command, or set \`unknownCommands: ask\` to approve it interactively.`,
       }
     }
+    if (facts.localWrite && !confirmed) {
+      return {
+        kind: 'deny',
+        info: INFO.confirm,
+        reason: `${facts.label} writes a report and needs an explicit \`confirm: true\` argument.`,
+      }
+    }
     return askAbout(facts, 'cannot be proven read-only', {
       en: `Run ${facts.label}? It is not recognized as read-only; App Store Connect writes are still blocked by asc --read-only, but it may write local files.`,
       zh: `执行 ${facts.label} 吗？该命令无法确认为只读；App Store Connect 的写操作仍会被 asc --read-only 拦截，但它可能写入本地文件。`,
@@ -258,7 +267,7 @@ export function decideCall(config: Config, name: string, args: unknown): AscDeci
       reason: `${facts.label} may mutate state and needs an explicit \`confirm: true\` argument. Confirm with the user first.`,
     }
   }
-  if (config.requireApproval && !approved(config, facts)) {
+  if (config.requireApproval && (facts.localWrite || !approved(config, facts))) {
     return askAbout(facts, 'may mutate App Store Connect', {
       en: `Allow ${facts.label}? It is not recognized as read-only.`,
       zh: `允许 ${facts.label} 吗？该命令无法确认为只读。`,

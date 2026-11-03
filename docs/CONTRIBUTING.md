@@ -15,6 +15,8 @@ npm run build          # tsc -> lib/（gitignored）
 node scripts/download-asc.mjs    # src/compat.ts 的基线版本，验证 SHA-256 后安装
 ```
 
+下载器及开发脚本共用平台路径：Windows 为 `vendor/asc.exe`，其它平台为 `vendor/asc`。跨平台运行使用脚本默认路径（如 `npm run contract`），传显式路径时保留对应后缀。
+
 独立开发实例（不污染日常 profile）：
 
 ```bash

@@ -53,7 +53,7 @@
 - `asc.run`：argv 由模型给，分类器决定 kind（先归一化前导全局 flag）；**写本地文件的 `download`/`export` 叶子是 `local-write`**，两种模式都要 confirm + 审批；write/unknown 需要 confirm（read-only 下 write 拒绝、unknown 审批）。
 - 参数组合由 registry 在 confirm/审批**之前**校验，非法组合直接 `ASC_INVALID_ARGUMENTS` 拒绝（见 §3 与 `scripts/contract-combos.mjs`）。
 - `asc.discover`：把关键词交给 `asc search`，`kind: read`。
-- `run` 的 `--report-file`、doctor `--fix`、Xcode Cloud `--save-logs`、review digest `--write-state` 等本地产物写入需要 confirm + 默认审批；flag 值不参与命令动词判断。`versions phased-release guard` 可执行任意程序，即使 dry-run 也 forbidden。
+- `run` 的 `--report-file`、doctor `--fix`、Xcode Cloud `--save-logs`、review digest `--write-state` 等本地产物写入需要 confirm + 默认审批；`--report-file` 不降低 unknown 风险，仍走原有 ask/deny；flag 值不参与命令动词判断。`versions phased-release guard` 可执行任意程序，即使 dry-run 也 forbidden。
 
 ---
 
@@ -120,7 +120,7 @@
 | `allowValueExpansion` | `false` | 允许 `@env:` / `@file:` 展开 |
 | `unknownCommands` | `ask` | 无法证明只读时 `ask` / `deny` |
 | `allowProvision` | `false` | 允许下载固定版本 asc |
-| `cacheDir` | — | provision 缓存目录 |
+| `cacheDir` | — | provision 缓存目录；相对路径按宿主进程 cwd 解析为绝对路径，不随工具 cwd 改变 |
 | `auditLog` | — | JSONL 审计路径 |
 | `approvedActions` | `[]` | 写模式跳过审批的 action glob |
 | `checkUpdates` | `true` | `/asc-doctor` 检查上游新版本 |
@@ -148,7 +148,7 @@
 |---|---|
 | 定位 | `ascPath` → `ASC_CLI_PATH` → 插件缓存 → `PATH` |
 | 版本 | pin `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`src/compat.ts`）；实际验证基线为 6.3.0，未来 minor 由漂移门监测 |
-| provision | 默认关；pin 版本 + SHA-256；缓存到 `cacheDir` |
+| provision | 默认关；pin 版本 + SHA-256；缓存到 `cacheDir`；下载透传取消信号，安装前再次检查取消 |
 | 更新检查 | GitHub latest，24h 缓存，只建议，永不自动升级 |
 
 ---

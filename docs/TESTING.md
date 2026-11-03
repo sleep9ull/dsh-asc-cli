@@ -27,11 +27,12 @@
 | `test/runtime.test.ts` | `--output` 决策、文件写叶子不追加 `--output`、重试边界、审计 `appId`、forbidden 在 spawn 前拒绝 |
 | `test/format.test.ts` | summary / errorClass / hint / projector / `maxDataBytes`（UTF-8 字节）/ `dataOmitted` 文案 |
 | `test/jobs.test.ts` | 5 个 job 的步骤顺序、写闸门二次复核、read-only 守卫、dryRun、metadata 二选一、triage 解耦 |
-| `test/engine.test.ts` | 定位顺序、版本区间、provision 校验（含篡改校验和）、更新检查缓存 |
+| `test/engine.test.ts` | 定位顺序、相对缓存与子进程 cwd 一致性、版本区间、provision 校验与取消后不覆盖、更新检查缓存 |
 | `test/commands.test.ts` | `/asc`、`/asc-doctor` 的渲染与只读性 |
 | `test/skills.test.ts` | frontmatter、rank 600、provider list/get、非法目录 |
 | `test/audit.test.ts` | 脱敏（独立/内联 flag）、8 KB 按字节、`0o600`、失败不影响调用 |
 | `test/harness.test.ts` | rc.5 真实 Tools/ApprovalService/Skills/Commands；五工具、六技能、两命令；审批拒绝/取消/缺失、listener 绕过、参数替换与并发隔离 |
+| `test/scripts.test.ts` | 隔离 checkout 中运行实际下载/验证/overlay 脚本，模拟 Windows/macOS/Linux 路径、损坏下载与显式路径；不启动原生 Windows 引擎 |
 | `test/helpers.ts` / `test/compat-helpers.ts` | `makeConfig`、spawn 替身等共用夹具 |
 
 ---
@@ -59,7 +60,7 @@ const spawn = (spec: SubprocessSpawnSpec) => {
 ### 3.3 注入时间与网络
 
 - 超时/重试：注入时钟或直接构造 `AscExecOutcome`，不用 `setTimeout` 等待。
-- 引擎：`provision({ fetch })` / `latestVersion({ fetch, now })`，用假的 `Response`；篡改校验和的用例必须保留。
+- 引擎：`provision({ fetch, signal })` / `latestVersion({ fetch, now })`，用假的 `Response`；篡改校验和的用例必须保留。取消用例覆盖 fetch 前、checksum/binary 下载中、响应 body 读取后，断言原文件不变。
 
 ### 3.4 表驱动
 

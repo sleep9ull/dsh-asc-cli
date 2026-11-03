@@ -29,7 +29,7 @@
 
 1. **只读默认**：read-only 模式注入 `--read-only` + `ASC_READ_ONLY=1`；ASC 写只在 `mode: write` 放行。本地写（含 `download`/`export` 文件写）在两种模式都要 `confirm`，默认还需审批。
 2. **写路径三件套**：`mode: write` + `confirm: true` + 宿主审批；模型自证不算批准；`approvedActions` 只放松写模式的 write/unknown。
-3. **unknown 不静默**：`unknownCommands` 默认 `ask`，可 `deny`；read-only 下也走审批。
+3. **unknown 不静默**：`unknownCommands` 默认 `ask`，可 `deny`；read-only 下也走审批。`--report-file` 不降低 unknown 风险，已识别的报告文件副作用额外要求 confirm 和默认本地写审批。
 4. **值字面化**：上游可展开的模型值前导 `@` → `@@`（含 `--flag=@…`）；上游明确按原文处理的 output / root selectors 与 `--` 后负载保留字面值；`allowValueExpansion` 默认 false。
 5. **单一执行点**：只经 `ctx.subprocess` 传 argv 数组，无 shell；显式转发 4 个 `ASC_*` 认证变量并 tombstone `ASC_WEB_SESSION`；凭据不进模型、不落审计。
 6. **工具面固定 5 个**：`asc` / `asc_plan` / `asc_apply` / `asc_job` / `asc_setup`；新能力扩 action 或 job，不新增命令型工具。
@@ -48,7 +48,7 @@
 ```bash
 ./vendor/asc <command> --help          # 上游权威行为
 sed -n '1,80p' src/registry.ts         # action → kind / argv 构造
-npm test                               # 当前契约的断言（0.2.0：242 tests）
+npm test                               # 当前契约的断言（0.2.0：259 tests）
 node scripts/contract.mjs ./vendor/asc # 23 条注册命令 vs 上游
 ```
 

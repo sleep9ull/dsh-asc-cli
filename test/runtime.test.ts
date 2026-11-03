@@ -98,6 +98,16 @@ describe('generic command policy', () => {
     expect(mutation.calls).toHaveLength(1)
   })
 
+  it('keeps unknown report commands denied and requires confirmation for their file side effect', async () => {
+    const args = ['--report', 'junit', '--report-file', 'result.xml', 'signing', 'resign']
+    const { spawn, calls } = queuedSpawn([{ exitCode: 0 }])
+    const denied = createRuntime(fakeCtx(), makeConfig({ unknownCommands: 'deny' }), spawn)
+    await expect(denied.runArgv(args, { confirm: true }, execContext())).rejects.toThrow(/cannot be proven read-only/)
+    const ask = createRuntime(fakeCtx(), makeConfig(), spawn)
+    await expect(ask.runArgv(args, { confirm: false }, execContext())).rejects.toThrow(/confirm: true/)
+    expect(calls).toHaveLength(0)
+  })
+
   it('refuses forbidden commands before spawning', async () => {
     const { spawn, calls } = queuedSpawn([{ exitCode: 0 }])
     const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)

@@ -8,7 +8,7 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { AuditFn } from './audit.js'
 import type { Config } from './config.js'
 import { resolveAscBinary } from './control/binary.js'
-import { classifyArgv, isFileWriteArgv, normalizeArgv } from './classify.js'
+import { classifyArgv, isFileWriteArgv, normalizeArgv, writesReportFile } from './classify.js'
 import { execAsc, globalFlags, type AscExecOutcome, type SpawnFn } from './exec.js'
 import { formatResult, type AscToolResult } from './format.js'
 import { specFor, type ToolArgs } from './registry.js'
@@ -132,7 +132,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
         `asc.run refuses \`asc ${argv.join(' ')}\`: it may mutate state and needs an explicit \`confirm: true\` after the user agrees.`,
       )
     }
-    if (kind === 'local-write' && !options.confirm) {
+    if ((kind === 'local-write' || writesReportFile(argv)) && !options.confirm) {
       throw new Error(
         `asc.run refuses \`asc ${argv.join(' ')}\`: it writes local files and needs an explicit \`confirm: true\` after the user agrees.`,
       )

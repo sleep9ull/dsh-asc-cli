@@ -156,7 +156,7 @@ They cover first-run choices, authentication and CI, release readiness, TestFlig
 
 - **Read-only mode (default).** Every call gets `--read-only` and `ASC_READ_ONLY=1`; mutations are refused before a child process starts.
 - **Write mode.** Mutations require `confirm: true` **and** (by default) a host approval prompt. The plugin adds `--confirm` to the underlying command only when the model passes `confirm: true`; it never invents confirmation.
-- **Unknown commands are never silent.** Commands that cannot be proven read-only are escalated to a human (`ask`) or refused (`unknownCommands: deny`); write mode additionally requires `confirm`. Global flags before the command cannot hide a forbidden command.
+- **Unknown commands are never silent.** Commands that cannot be proven read-only are escalated to a human (`ask`) or refused (`unknownCommands: deny`); write mode additionally requires `confirm`. Adding `--report-file` keeps that policy and also requires confirmation for the file write. Global flags before the command cannot hide a forbidden command.
 - **Invalid arguments fail before approval.** Registered actions/jobs validate their flag combinations (exclusive flags, required metadata source, package requirements) before a confirm prompt or a human approval, so a bad call never costs an approval round-trip.
 - **Local writes need confirmation and approval.** `metadata init/plan/pull`, `docs init`, `doctor --fix`, `builds dsyms`, `install-skills`, and every file-writing `download`/`export` leaf (`screenshots download`, `profiles download`, `certificates export`, ...).
 - **No value expansion by default.** `asc` expands `@env:` / `@file:` in flag values; the plugin escapes a leading `@` unless `allowValueExpansion: true`.
@@ -208,7 +208,7 @@ Override the `asc-tools` row in `~/.dsh/profiles/<profile>/cordis.patch.yml`. A 
 | `allowValueExpansion` | `false` | Allow `asc`'s `@env:` / `@file:` expansion |
 | `unknownCommands` | `"ask"` | `ask` or `deny` for commands that cannot be proven read-only |
 | `allowProvision` | `false` | Allow `asc_setup` action `provision` |
-| `cacheDir` | — | Override the provisioned-binary cache |
+| `cacheDir` | — | Override the provisioned-binary cache; relative paths resolve against the host process directory |
 | `bypassKeychain` | `false` | Set `ASC_BYPASS_KEYCHAIN=1` (CI / headless) |
 | `telemetryDisabled` | `true` | Set `ASC_TELEMETRY_DISABLED=1` |
 | `auditLog` | — | Append one JSONL audit line per executed invocation |
