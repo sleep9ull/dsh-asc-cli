@@ -103,3 +103,4 @@ README 中英文给出从 0.1.6 迁移到新基线的要求：升级 Harness 至
 - Windows/macOS/Linux 平台路径、下载器、全部脚本消费者与两种开发 overlay 在隔离 checkout 中模拟验证；原生 Windows executable/npm.cmd 未验证。
 - 修复后首次尝试的 `npm run verify` 与真实引擎合成 canary 复现被自动审批审查以 `Code from External` 拒绝，未执行。用户再次明确批准完整验证后，重跑成功：Node 24.14.0 上完整八阶段门禁全部通过（exit 0），包括 259 测试、28 条真实上游命令契约、1,932 completion 路径 + 11 flag 向量，以及 6 次真实 Harness subprocess 离线 smoke 调用。
 - 合成 canary 对照检查通过：真实 asc 6.3.0 对原始 `apps list --name --output --limit=@file:<fixture>` 会在 exit 2 的解析错误中出现合成文件内容；经过 `literalizeArgv` 后同样 exit 2，但不再包含文件内容。使用隔离 HOME/ASC 配置与合成文件，不使用真实凭据、不执行 Apple 业务操作。
+- 修复提交后的远程 CI 首次运行：Node 24 和引擎 job 通过；Node 22.23.4 的两项 Windows 模拟测试失败，原因是 Linux runner 没有 `TEMP/TMP`，Node 22 按模拟 win32 平台将临时目录解析为 `undefined\\temp`。测试夹具补齐指向真实临时目录的变量后，Node 24 上该套件 5/5 和类型检查通过；原断言及 CI 门禁不变，无产品行为变更，无需新 spec。本地按需运行 Node 22 的尝试被自动审批以 `Code from External` 拒绝，Node 22 结果由既有 CI 复验。

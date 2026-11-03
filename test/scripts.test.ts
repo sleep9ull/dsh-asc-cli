@@ -81,7 +81,10 @@ globalThis.fetch = async (url) => {
       return execFileSync(process.execPath, ['--import', join(directory, 'preload.mjs'), join(directory, 'scripts', script), ...args], {
         // Deliberately outside the checkout: default vendor paths belong to the script.
         cwd: temporaryRoot, encoding: 'utf8', timeout: 20_000,
-        env: { ...process.env, ASC_SCRIPT_PROBE: script, ASC_SCRIPT_CORRUPT: '', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'],
+        // Node 22's tmpdir follows the simulated Windows platform and needs a
+        // valid TEMP/TMP, which Linux CI does not normally provide.
+        env: { ...process.env, TEMP: temporaryRoot, TMP: temporaryRoot, ASC_SCRIPT_PROBE: script, ASC_SCRIPT_CORRUPT: '', ...extraEnv },
+        stdio: ['ignore', 'pipe', 'pipe'],
       })
     },
   }
