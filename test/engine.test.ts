@@ -39,12 +39,16 @@ describe('compatibility helpers', () => {
     expect(compareVersions('5.16.0', '5.16.0')).toBe(0)
     expect(compareVersions('5.15.9', '5.16.0')).toBe(-1)
     expect(compareVersions('6.0.0', '5.16.0')).toBe(1)
-    expect(compatStatus('5.16.0')).toBe('supported')
-    expect(compatStatus('5.15.0')).toBe('older')
-    expect(compatStatus('6.0.0')).toBe('newer')
+    expect(compatStatus('6.3.0')).toBe('supported')
+    expect(compatStatus('6.2.9')).toBe('older')
+    expect(compatStatus('6.99.0')).toBe('supported')
+    expect(compatStatus('7.0.0')).toBe('newer')
     expect(compatStatus(undefined)).toBe('unknown')
-    expect(pinDrift('5.16.0')).toBe('none')
-    expect(pinDrift('6.0.0')).toBe('newer')
+    expect(compatStatus('not-a-version')).toBe('unknown')
+    expect(compatStatus('6.3.0oops')).toBe('unknown')
+    expect(pinDrift(PINNED_ASC_VERSION)).toBe('none')
+    expect(pinDrift('7.0.0')).toBe('newer')
+    expect(pinDrift('bad')).toBe('unknown')
   })
 
   it('parses release checksum files', () => {
@@ -83,6 +87,44 @@ describe('engine resolution', () => {
 })
 
 describe('engine probes', () => {
+  it('cancels diagnostic probes without poisoning the next version probe', async () => {
+    const controller = new AbortController()
+    const calls: SubprocessSpawnSpec[] = []
+    const spawn: SpawnFn = (spec) => {
+      calls.push(spec)
+      if (calls.length === 1) {
+        const pending = handle('')
+        return {
+          ...pending,
+          done: new Promise((resolve) => {
+            spec.signal?.addEventListener('abort', () => resolve({ exitCode: null, signal: 'SIGTERM' }), { once: true })
+          }),
+        } as unknown as SubprocessHandle
+      }
+      return handle(`${PINNED_ASC_VERSION} (commit: fixture)`)
+    }
+    const engine = createEngine(makeConfig({ ascPath: '/opt/asc' }), spawn)
+    const diagnostic = engine.diagnose({ signal: controller.signal, checkUpdates: false })
+    controller.abort()
+    await expect(diagnostic).rejects.toThrow()
+    expect(calls[0]?.signal?.aborted).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(await engine.version()).toBe(PINNED_ASC_VERSION)
+    expect(calls).toHaveLength(2)
+  })
+
+  it('does not report authentication success from a failed status probe', async () => {
+    let calls = 0
+    const spawn: SpawnFn = () => ++calls === 1
+      ? handle(PINNED_ASC_VERSION)
+      : handle(JSON.stringify({ credentials: [{}], environmentCredentialsProvided: true }), 3)
+    const engine = createEngine(makeConfig({ ascPath: '/opt/asc', defaultAppId: '111' }), spawn)
+    const report = await engine.diagnose({ checkUpdates: false })
+    expect(report.authenticated).toBe(false)
+    expect(report.checks.find((check) => check.name === 'auth')?.ok).toBe(false)
+    expect(report.next?.title).not.toBe('Ready')
+  })
+
   it('reads and caches the version', async () => {
     const { spawn, calls } = scriptedSpawn(['5.16.0 (commit: 744cce8, date: 2026-10-19T18:46:54-04:00)'])
     const engine = createEngine(makeConfig({ ascPath: '/opt/asc' }), spawn)
@@ -110,14 +152,14 @@ describe('engine probes', () => {
   })
 
   it('reports ready when version, auth and default app are set', async () => {
-    const version = '5.16.0 (commit: abc)'
+    const version = `${PINNED_ASC_VERSION} (commit: abc)`
     const auth = JSON.stringify({ credentials: [{}], storageBackend: 'System Keychain', environmentCredentialsProvided: false })
     const engine = createEngine(
       makeConfig({ ascPath: '/opt/asc', defaultAppId: '111' }),
       scriptedSpawn([version, auth]).spawn,
     )
     const report = await engine.diagnose()
-    expect(report.version).toBe('5.16.0')
+    expect(report.version).toBe(PINNED_ASC_VERSION)
     expect(report.compat).toBe('supported')
     expect(report.authenticated).toBe(true)
     expect(report.next?.title).toBe('Ready')

@@ -169,6 +169,13 @@ describe('exec protocol', () => {
 })
 
 describe('value expansion guard', () => {
+  it('preserves selectors excluded from upstream expansion', () => {
+    const request = { argv: ['--profile', '@literal', 'apps', 'list', '--output=@path'], cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096, appendOutput: false }
+    const spec = buildSpawnSpec(makeConfig(), request, new AbortController().signal)
+    expect(spec.argv).toContain('@literal')
+    expect(spec.argv).toContain('--output=@path')
+  })
+
   it('escapes asc @env:/@file: expansion by default', () => {
     const config = makeConfig()
     const request = { argv: ['metadata', 'validate', '--dir', '@file:/etc/hosts'], cwd: '/tmp', timeoutMs: 1_000, maxBytes: 4_096 }

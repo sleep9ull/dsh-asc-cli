@@ -42,6 +42,7 @@ const WRITE_VERBS = new Set([
   'remove',
   'rename',
   'replace',
+  'reorder',
   'restore',
   'revoke',
   'rotate',
@@ -106,6 +107,11 @@ const FILE_WRITE_LEAVES: readonly (readonly string[])[] = [
   ['xcode-cloud', 'artifacts', 'download'],
   ['testflight', 'testers', 'export'],
   ['certificates', 'export'],
+  ['analytics', 'sales'],
+  ['finance', 'reports'],
+  ['apps', 'registry', 'pull'],
+  ['testflight', 'sync', 'pull'],
+  ['testflight', 'config', 'export'],
 ]
 
 /** Root commands that never mutate App Store Connect. */
@@ -237,9 +243,10 @@ export function normalizeArgv(argv: readonly string[]): NormalizedArgv {
     }
     if (!isFlag(token)) break
     const separator = token.indexOf('=')
-    const name = separator > 0 ? token.slice(0, separator) : token
+    const name = flagName(token)
     if (BOOLEAN_GLOBAL_FLAGS.has(name)) {
       index += 1
+      if (separator < 0 && booleanValue(argv[index]) !== undefined) index += 1
       continue
     }
     if (VALUE_GLOBAL_FLAGS.has(name)) {
@@ -255,13 +262,66 @@ function isFlag(token: string): boolean {
   return token.startsWith('-')
 }
 
-function hasFlag(argv: readonly string[], flag: string): boolean {
-  return argv.includes(flag)
+function flagName(token: string): string {
+  return `--${token.replace(/^-+/, '').split('=')[0]}`
 }
 
-/** The leading non-flag words of a normalized argv (`['apps','list','123']`). */
+function booleanValue(value: string | undefined): boolean | undefined {
+  if (value === '1' || value === 't' || value === 'T' || value === 'true' || value === 'TRUE' || value === 'True') return true
+  if (value === '0' || value === 'f' || value === 'F' || value === 'false' || value === 'FALSE' || value === 'False') return false
+  return undefined
+}
+
+const LOCAL_BOOLEAN_FLAGS = new Set([
+  ...BOOLEAN_GLOBAL_FLAGS, '--fix', '--write-state', '--wait', '--skip-logs',
+  '--fetch', '--overwrite', '--paginate', '--confirm', '--dry-run',
+])
+
+/** Option lookup consumes values and stops at the payload boundary. */
+function option(argv: readonly string[], name: string): string | undefined {
+  let value: string | undefined
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] as string
+    if (token === '--') break
+    if (!isFlag(token)) continue
+    const current = flagName(token)
+    const separator = token.indexOf('=')
+    let parsed: string
+    if (separator >= 0) parsed = token.slice(separator + 1)
+    else if (LOCAL_BOOLEAN_FLAGS.has(current)) {
+      if (booleanValue(argv[index + 1]) !== undefined) parsed = argv[++index] as string
+      else parsed = 'true'
+    } else parsed = argv[++index] ?? ''
+    if (current === name) value = parsed
+  }
+  return value
+}
+
+function enabled(argv: readonly string[], name: string): boolean {
+  const value = option(argv, name)
+  return value !== undefined && booleanValue(value) !== false
+}
+
+/**
+ * Only command words before the first option can prove a read. ASC hoists its
+ * root profile selector, so allow it between command words too. Values and
+ * everything after -- are never verbs. Unknown option layouts stay unknown.
+ */
 function commandWords(argv: readonly string[]): string[] {
-  return argv.filter((token) => !isFlag(token))
+  const words: string[] = []
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] as string
+    if (token === '--') break
+    if (isFlag(token)) {
+      if (flagName(token) === '--profile' && argv[0] !== 'signing') {
+        if (!token.includes('=')) index += 1
+        continue
+      }
+      break
+    }
+    words.push(token)
+  }
+  return words
 }
 
 function matchesLeaf(words: readonly string[]): boolean {
@@ -290,53 +350,63 @@ export function classifyArgv(argv: readonly string[]): ActionKind {
   const root = tokens[0]
   // Normalization stops at the first non-flag token; this is defensive only.
   if (root === undefined || isFlag(root)) return 'unknown'
+  const allWords = commandWords(tokens)
   if (FORBIDDEN_ROOTS.has(root)) return 'forbidden'
+  if (root === 'versions' && allWords[1] === 'phased-release' && allWords[2] === 'guard') return 'forbidden'
+  if (root === 'auth' && allWords[1] !== 'status' && allWords[1] !== 'doctor') return 'forbidden'
+
+  // Global report output writes even for some usage failures. Keep forbidden
+  // commands above this check, and preserve ASC-write denial below.
+  const writesReport = option(argv, '--report-file') !== undefined
+  const readKind = writesReport ? 'local-write' : 'read'
 
   if (root === 'auth') {
-    const sub = tokens[1]
-    if (sub === 'status') return 'read'
-    // `auth doctor` only inspects; `--fix` rewrites local credential config.
-    if (sub === 'doctor') return hasFlag(tokens, '--fix') ? 'local-write' : 'read'
-    return 'forbidden'
+    return allWords[1] === 'doctor' && enabled(tokens, '--fix') ? 'local-write' : readKind
   }
 
   if (root === 'doctor') {
-    // `asc doctor --fix` repairs local keychain/config state.
-    return hasFlag(tokens, '--fix') ? 'local-write' : 'read'
+    return enabled(tokens, '--fix') ? 'local-write' : readKind
+  }
+  if (root === 'xcode-cloud' && allWords[1] === 'doctor' && option(tokens, '--save-logs')) return 'local-write'
+  if (root === 'reviews' && allWords[1] === 'digest') {
+    return enabled(tokens, '--write-state') ? 'local-write' : readKind
+  }
+  if (root === 'notarization' && allWords[1] === 'log') {
+    return option(tokens, '--path') !== undefined ? 'local-write' : readKind
   }
 
   if (root === 'docs') {
     // `docs init` writes ASC.md and may update AGENTS.md/CLAUDE.md.
-    return tokens[1] === 'init' ? 'local-write' : 'read'
+    return allWords[1] === 'init' ? 'local-write' : readKind
   }
 
   if (root === 'api') {
-    const method = tokens[1]?.toUpperCase()
-    if (method === 'GET') return 'read'
+    const method = allWords[1]?.toUpperCase()
+    if (method === 'GET') return readKind
     if (method === undefined || isFlag(tokens[1] ?? '')) return 'unknown'
     return 'write'
   }
 
   if (root === 'telemetry') {
-    return tokens[1] === 'status' ? 'read' : 'write'
+    return allWords[1] === 'status' ? readKind : 'write'
   }
 
   if (root === 'workflow') {
-    const sub = tokens[1]
-    if (sub === 'validate' || sub === 'list') return 'read'
+    const sub = allWords[1]
+    if (sub === 'validate' || sub === 'list') return readKind
     return 'write'
   }
 
   if (root === 'metadata') {
-    const sub = tokens[1]
+    const sub = allWords[1]
     // `plan` is read-only against App Store Connect but writes a review artifact.
     if (sub === 'init' || sub === 'pull' || sub === 'plan') return 'local-write'
-    if (sub === 'validate' || sub === 'status') return 'read'
+    if (sub === 'validate' || sub === 'status') return readKind
     return 'write'
   }
 
   if (root === 'builds') {
-    const sub = tokens[1]
+    const sub = allWords[1]
     if (sub === 'dsyms') return 'local-write'
     if (sub === 'compile' || sub === 'package') return 'local-write'
   }
@@ -345,7 +415,6 @@ export function classifyArgv(argv: readonly string[]): ActionKind {
 
   if (root === 'init' || root === 'install-skills') return 'local-write'
 
-  const allWords = commandWords(tokens)
   if (matchesLeaf(allWords)) return 'local-write'
   const words = allWords.slice(1)
   for (const word of words) {
@@ -354,11 +423,11 @@ export function classifyArgv(argv: readonly string[]): ActionKind {
     if (WRITE_VERBS.has(word) || WRITE_VERBS.has(head)) return 'write'
   }
   if (WRITE_ROOTS.has(root)) return 'write'
-  if (READ_ROOTS.has(root)) return 'read'
-  if (words.length === 0 && DEFAULT_READ_ROOTS.has(root)) return 'read'
-  if (STRUCTURED_ROOTS.has(root) && words.some((word) => READ_VERBS.has(word))) return 'read'
+  if (READ_ROOTS.has(root)) return readKind
+  if (words.length === 0 && DEFAULT_READ_ROOTS.has(root)) return readKind
+  if (STRUCTURED_ROOTS.has(root) && words.some((word) => READ_VERBS.has(word))) return readKind
 
-  return 'unknown'
+  return writesReport ? 'local-write' : 'unknown'
 }
 
 /** Human-readable explanation used in refusals. */

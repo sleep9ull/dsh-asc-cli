@@ -1,7 +1,7 @@
-# Local development overlay: insert the built plugin from this checkout.
+# Template: run `node scripts/dev-patch.mjs` before using the generated overlay.
 - insert:
     - id: asc-tools-dev
-      name: /Users/jinchunxu/dev/dsh-asc-cli/lib/index.js
+      name: __ASC_PLUGIN_ENTRY__
       config:
         mode: read-only
-        ascPath: /Users/jinchunxu/dev/dsh-asc-cli/vendor/asc
+        ascPath: __ASC_ENGINE_PATH__

@@ -328,6 +328,13 @@ describe('pre-approval argument guards', () => {
     ])
   })
 
+  it('rejects macOS IPA publishing before approval and in the builder', () => {
+    const args = { ipa: 'a.ipa', platform: 'MAC_OS' }
+    expect(specFor('asc_apply', 'publish')?.validate?.(args)).toMatch(/--ipa.*MAC_OS.*--pkg/)
+    expect(() => build('asc_apply', 'publish', args)).toThrow(/MAC_OS/)
+    expect(build('asc_apply', 'publish', { ipa: 'a.ipa', platform: 'IOS' })).toContain('a.ipa')
+  })
+
   it('exposes the same context-free validator to the approval layer', () => {
     const spec = specFor('asc_apply', 'publish')
     expect(spec?.validate?.({})).toMatch(/--ipa.*--pkg/)

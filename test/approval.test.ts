@@ -3,6 +3,30 @@ import { decideCall, inspectCall, matchesApprovedAction } from '../src/approval.
 import { makeConfig } from './helpers.js'
 
 describe('approval policy', () => {
+  it('validates the macOS publish source before confirmation or approval', () => {
+    for (const config of [makeConfig(), makeConfig({ mode: 'write' })]) {
+      const decision = decideCall(config, 'asc_apply', { action: 'publish', ipa: 'a.ipa', platform: 'MAC_OS' })
+      expect(decision?.kind).toBe('deny')
+      if (decision?.kind === 'deny') expect(decision.info.code).toBe('ASC_INVALID_ARGUMENTS')
+    }
+  })
+
+  it('requires confirmation and approval for newly identified local writes in both modes', () => {
+    for (const config of [makeConfig(), makeConfig({ mode: 'write' })]) {
+      for (const args of [
+        ['--report', 'junit', '--report-file=report.xml', 'apps', 'list'],
+        ['doctor', '--fix=true'],
+        ['xcode-cloud', 'doctor', '--save-logs=logs'],
+        ['reviews', 'digest', '--state-file', 'status', '--write-state'],
+      ]) {
+        const missing = decideCall(config, 'asc', { action: 'run', args })
+        expect(missing?.kind).toBe('deny')
+        if (missing?.kind === 'deny') expect(missing.info.code).toBe('ASC_CONFIRM_REQUIRED')
+        expect(decideCall(config, 'asc', { action: 'run', args, confirm: true })?.kind).toBe('ask')
+      }
+    }
+  })
+
   it('ignores tools that are not ours', () => {
     expect(decideCall(makeConfig(), 'bash', {})).toBeUndefined()
   })

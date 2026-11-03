@@ -16,7 +16,7 @@ This plugin wraps `asc` for App Store Connect; it does not build or sign apps. A
 4. Resolve the app id with `asc action:"apps-list"`, then set `defaultAppId`.
 5. Prefer a job; raw commands last.
 
-`/asc-doctor` (`checkUpdates`, default true) shows the latest release and upgrade hint; never auto-upgrades. Tested `>=5.16.0 <6.0.0`.
+`/asc-doctor` (`checkUpdates`, default true) shows the latest release and upgrade hint; never auto-upgrades. Tested `>=6.3.0 <7.0.0`.
 
 ## Choose the surface
 
@@ -44,7 +44,7 @@ Read-only is the default; writes need `mode: write`, `confirm` and approval, dry
 
 `auditLog` writes one JSONL line per tool-initiated asc invocation (tool, action, argv, exit, duration, errorClass, appId when known); engine probes and approval outcomes are not in this file.
 
-Read-only classification covers recognized read subcommands under age-rating, encryption, accessibility, pricing, users, devices, actors, account, analytics, finance, performance, insights, ads, game-center, xcode-cloud, product-pages, asset-library, categories, eula and app-tags; write verbs still win, and file-writing `download`/`export` leaves are local-write. Leading global flags are stripped before the root is judged, so `--debug auth login` is still forbidden. Unprovable `run` commands go to human approval, or are refused with `unknownCommands: "deny"`. A leading `@` is escaped; `@env:`/`@file:` expansion is off. `asc --read-only` blocks App Store Connect writes, not local files.
+Read-only classification covers recognized read subcommands under age-rating, encryption, accessibility, pricing, users, devices, actors, account, analytics, finance, performance, insights, ads, game-center, xcode-cloud, product-pages, asset-library, categories, eula and app-tags; write verbs still win, and file-writing `download`/`export` leaves are local-write. Leading global flags are stripped before the root is judged, so `--debug auth login` is still forbidden. Unprovable `run` commands go to human approval, or are refused with `unknownCommands: "deny"`. A leading `@` is escaped; `@env:`/`@file:` expansion is off. File-producing `--report-file`, `doctor --fix`, `xcode-cloud doctor --save-logs`, `reviews digest --write-state`, `apps registry pull` and `analytics sales` also require confirm + approval. Flag values such as `status` never prove a command read-only. `asc --read-only` blocks App Store Connect writes, not local files.
 
 ## Stop and ask
 
@@ -55,7 +55,7 @@ Read-only classification covers recognized read subcommands under age-rating, en
 
 ## Do not
 
-- Run `asc auth login`/`logout` or `web` commands; never handle `.p8` material.
+- Run `asc auth login`/`logout`, `web`, or `versions phased-release guard`; the latter executes an arbitrary local program even with `--dry-run`. Never handle `.p8` material.
 - Use `asc action:"run"` to bypass a job or a refusal — `run` is still classified, so write and unknown calls keep needing `confirm` and approval.
 - Retry a mutation after a timeout before checking state.
 - Paste raw `data`; summarize and link `spillPath`.

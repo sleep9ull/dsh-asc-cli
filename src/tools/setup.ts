@@ -105,7 +105,7 @@ export function registerSetupTool(ctx: Context, runtime: AscRuntime, engine: Asc
     async execute(args, exec: ToolRunContext) {
       const action = typeof args.action === 'string' ? args.action : ''
       if (action === 'diagnose') {
-        return (await engine.diagnose()) as unknown as JsonValue
+        return (await engine.diagnose({ signal: exec.signal })) as unknown as JsonValue
       }
       if (action === 'provision') {
         return (await engine.provision()) as unknown as JsonValue

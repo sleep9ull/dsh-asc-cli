@@ -1,4 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createHash } from 'node:crypto'
+import { createEngine } from '../src/control/engine.js'
+import { assetNameForTest, checksumsForTest } from './compat-helpers.js'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
@@ -52,10 +58,54 @@ function queuedSpawn(outcomes: Array<{ exitCode: number; stdout?: string; stderr
 }
 
 describe('generic command policy', () => {
+  it('resolves the engine dynamically after provisioning for actions and generic calls', async () => {
+    const config = makeConfig({ cacheDir: mkdtempSync(join(tmpdir(), 'asc-runtime-')), allowProvision: true })
+    const { spawn, calls } = queuedSpawn([{ exitCode: 0, stdout: '{"data":[]}' }])
+    const runtime = createRuntime(fakeCtx(), config, spawn)
+    const engine = createEngine(config, spawn)
+    await runtime.runArgv(['apps', 'list'], { confirm: false }, execContext())
+    expect(calls[0]?.[0]).toBe('asc')
+    const bytes = Buffer.from('fixture-binary')
+    const digest = createHash('sha256').update(bytes).digest('hex')
+    const asset = assetNameForTest()
+    const result = await engine.provision({ fetch: (async (url) => String(url).endsWith('checksums.txt')
+      ? new Response(checksumsForTest(asset, digest))
+      : new Response(bytes)) as typeof fetch })
+    expect(result.ok).toBe(true)
+    await runtime.runAction('asc', 'apps-list', {}, execContext())
+    await runtime.runArgv(['apps', 'list'], { confirm: false }, execContext())
+    expect(calls.slice(1).map((call) => call[0])).toEqual([engine.resolve().path, engine.resolve().path])
+    vi.stubEnv('ASC_CLI_PATH', '/env/new-asc')
+    try {
+      await runtime.runArgv(['version'], { confirm: false }, execContext())
+      expect(calls.at(-1)?.[0]).toBe('/env/new-asc')
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  it('preserves inline output options and never retries ordinary usage failures', async () => {
+    const { spawn, calls } = queuedSpawn([{ exitCode: 2, stderr: '--version is required' }])
+    const runtime = createRuntime(fakeCtx(), makeConfig(), spawn)
+    await runtime.runArgv(['apps', 'list', '--output=table'], { confirm: false }, execContext())
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).not.toContain('--output')
+    await runtime.runArgv(['apps', 'list', '--pretty=false'], { confirm: false }, execContext())
+    expect(calls[1]).not.toContain('--output')
+    await runtime.runArgv(['analytics', 'sales'], { confirm: true }, execContext())
+    expect(calls[2]).not.toContain('--output')
+    const mutation = queuedSpawn([{ exitCode: 2, stderr: 'unknown flag: --output' }])
+    const writeRuntime = createRuntime(fakeCtx(), makeConfig({ mode: 'write' }), mutation.spawn)
+    await writeRuntime.runArgv(['builds', 'upload', '--app', '1', '--ipa', 'a.ipa'], { confirm: true }, execContext())
+    expect(mutation.calls).toHaveLength(1)
+  })
+
   it('refuses forbidden commands before spawning', async () => {
     const { spawn, calls } = queuedSpawn([{ exitCode: 0 }])
     const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)
-    await expect(runtime.runArgv(['auth', 'login'], { confirm: true }, execContext())).rejects.toThrow(/not exposed/)
+    for (const argv of [
+      ['auth', 'login'],
+      ['--debug', 'false', 'web', 'apps', 'create'],
+      ['versions', 'phased-release', 'guard', '--dry-run', '--', '/usr/bin/touch', 'status'],
+    ]) await expect(runtime.runArgv(argv, { confirm: true }, execContext())).rejects.toThrow(/not exposed/)
     expect(calls).toHaveLength(0)
   })
 
@@ -104,7 +154,7 @@ describe('generic command policy', () => {
 
   it('retries an exit-2 failure once without --output', async () => {
     const { spawn, calls } = queuedSpawn([
-      { exitCode: 2, stderr: 'accepts exactly one guide name' },
+      { exitCode: 2, stderr: 'flag provided but not defined: -output' },
       { exitCode: 0, stdout: 'guide text' },
     ])
     const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)
@@ -149,7 +199,7 @@ describe('file-writing leaves and audit context', () => {
 
   it('labels the command with the argv that actually ran after a retry', async () => {
     const { spawn } = queuedSpawn([
-      { exitCode: 2, stderr: 'accepts exactly one guide name' },
+      { exitCode: 2, stderr: 'flag provided but not defined: -output' },
       { exitCode: 0, stdout: 'guide text' },
     ])
     const runtime = createRuntime(fakeCtx(), makeConfig({ workdir: '/tmp' }), spawn)
@@ -204,8 +254,11 @@ describe('shouldRetryWithoutOutput', () => {
       ...overrides,
     }) as Parameters<typeof shouldRetryWithoutOutput>[1]
 
-  it('only retries when output was attempted and the exit is a usage failure', () => {
-    expect(shouldRetryWithoutOutput(true, outcome())).toBe(true)
+  it('only retries a specific output-flag parse refusal with no result', () => {
+    expect(shouldRetryWithoutOutput(true, outcome())).toBe(false)
+    expect(shouldRetryWithoutOutput(true, outcome({ stderr: 'unknown flag: --output' }))).toBe(true)
+    expect(shouldRetryWithoutOutput(true, outcome({ stderr: 'unknown flag: --output-dir' }))).toBe(false)
+    expect(shouldRetryWithoutOutput(true, outcome({ stderr: 'unknown flag: --output', stdout: '{"applied":1}' }))).toBe(false)
     expect(shouldRetryWithoutOutput(false, outcome())).toBe(false)
     expect(shouldRetryWithoutOutput(true, outcome({ ok: true }))).toBe(false)
     expect(shouldRetryWithoutOutput(true, outcome({ exitCode: 1 }))).toBe(false)

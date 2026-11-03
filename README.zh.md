@@ -6,7 +6,7 @@
 
 [![npm](https://img.shields.io/npm/v/@sleep9ull/dsh-asc-cli?label=npm&color=cb3837)](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.2-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
 App Store Connect 是 iOS 发布流程的核心，也是团队最耗时间的地方：命令行参数、大段 JSON、状态机、审批与合规检查。这个插件把它搬进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：安装一次，用自然语言提出需求，Agent 会选对流程、先给出计划，并在真正改动线上之前停下来等你审批。
 
@@ -70,7 +70,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 把 ./build/Focus.ipa 作为 1.2.3 build 42 传到内部测试组。
 ```
 
-第三条会走 `ship-testflight` 作业；想先看计划就加 `dryRun: true`，不会触碰 App Store Connect。
+第三条会走 `ship-testflight` 作业。`dryRun: true` 预览上传并跳过处理等待与加组，但上游可能联系 App Store Connect 预留上传操作，仍须走写操作确认与审批。
 
 ---
 
@@ -123,7 +123,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 |---|---|
 | 定位 | `ascPath` → `ASC_CLI_PATH` → 插件缓存 → `PATH` |
 | 诊断 | 版本、测试范围、认证、默认 app、provision 状态，给一个下一步 |
-| Provision | 可选：固定 `asc 5.16.0`、SHA-256 校验、按平台缓存 |
+| Provision | 可选：固定 `asc 6.3.0`、SHA-256 校验、按平台缓存 |
 | 更新 | `/asc-doctor` 对比 GitHub 最新 release（24h 缓存），提示 `brew upgrade asc`，从不自动升级 |
 
 ---
@@ -161,7 +161,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 - **本地写需确认 + 审批**：`metadata init/plan/pull`、`docs init`、`doctor --fix`、`builds dsyms`、`install-skills`，以及所有写文件的 `download`/`export` 叶子（`screenshots download`、`profiles download`、`certificates export` 等）。
 - **默认关闭值展开**：`asc` 会展开 flag 值里的 `@env:` / `@file:`；插件默认把行首 `@` 转义，除非显式开启 `allowValueExpansion`。
 - **凭据不进模型**：宿主会清洗 `*KEY*` 变量，插件因此显式转发 `ASC_KEY_ID`、`ASC_ISSUER_ID`、`ASC_PRIVATE_KEY_PATH`、`ASC_PRIVATE_KEY`，从不读取、保存或打印密钥内容，并对 `ASC_WEB_SESSION` 做 tombstone，避免 web 会话 cookie 进入子进程。
-- **永久拒绝**：`auth login/logout` 与 `asc web`；分类器无法确认只读的命令转人工审批（`unknownCommands: ask`）或直接拒绝（`deny`）。
+- **永久拒绝**：`auth login/logout`、`asc web` 与 `versions phased-release guard`；分类器无法确认只读的命令转人工审批（`unknownCommands: ask`）或直接拒绝（`deny`）。
 - **无 shell**：argv 数组直传；诊断信息脱敏；默认关闭 telemetry。
 - **可选治理**：`auditLog` 记录执行内容；`approvedActions` 仅在写模式对已知动作跳过提示。
 
@@ -171,9 +171,9 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 | 依赖 | 版本 |
 |---|---|
-| DeepSeek Harness | `0.2.1-rc.2` 线（`engines.dsh: >=0.2.1-rc.2 <0.3.0`） |
-| Node.js | ≥ 22.19（推荐 24） |
-| `asc` | 固定 `5.16.0`；测试范围 `>=5.16.0 <6.0.0`（`/asc-doctor` 会提示漂移） |
+| DeepSeek Harness | `0.2.1-rc.5` 线（`engines.dsh: >=0.2.1-rc.5 <0.2.2-0`） |
+| Node.js | `^22.19.0 \|\| >=24.0.0`（推荐 24） |
+| `asc` | 已验证基线 `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`/asc-doctor` 会提示漂移） |
 | App Store Connect API Key | 团队或个人 key，在 Agent 之外完成认证 |
 
 ---
@@ -232,6 +232,14 @@ DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`�
 
 ---
 
+## 从 0.1.6 升级
+
+0.2.0 适配两个上游当前默认发布渠道：DeepSeek Harness `0.2.1-rc.5` 和 asc `6.3.0`。请升级宿主与引擎，或开启 `allowProvision` 后显式安装新引擎。工具与作业名称不变。asc 支持线为 `>=6.3.0 <7.0.0`；本次实际验证版本为 `6.3.0`，每日上游检查发现后续漂移。独立 alpha 与未发布分支不属于本次兼容基线。
+
+`--report-file`、`--save-logs`、`--write-state` 等产物写入需要确认和审批。`publish` 的 `.ipa` + `MAC_OS` 在审批前拒绝；macOS 使用 `.pkg`。`versions phased-release guard` 即使 dry-run 也执行调用方指定的本地程序，因此一律拒绝。
+
+审批门使用宿主最终 guard 与真实人工批准收据，其他 pre-execute listener 不能静默免除插件策略。引擎诊断、普通工具与作业使用同一个已配置或缓存的二进制。
+
 ## 从 0.1.3 升级
 
 0.1.4 收敛了工具面，旧工具已移除：
@@ -274,19 +282,22 @@ npm install
 npm run build        # clean + tsc -> lib/
 npm run typecheck
 npm test             # vitest
-npm run verify       # 全质量门：typecheck/test/build/pack/contract/classify/smoke
+node scripts/download-asc.mjs  # 下载基线版本并验证 SHA-256
+npm run verify       # typecheck/test/build/pack/combos/contract/classify/smoke
+npm run verify -- --unit-only  # 显式不运行引擎门禁
 
 node scripts/contract.mjs ./vendor/asc   # 对真实 asc 跑契约测试
-node scripts/smoke.mjs                   # 编译产物冒烟
+node scripts/smoke.mjs                   # 真实 Harness subprocess、隔离环境的离线引擎冒烟
 
 # 把本地构建装进 profile
 npm pack && dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-*.tgz
 
 # 用本仓库起一个独立开发实例
-dsh web --patch ./dev/cordis.patch.yml --no-open --port 3199
+node scripts/dev-patch.mjs
+dsh web --patch ./vendor/cordis.dev.patch.yml --no-open --port 3199
 ```
 
-`vendor/asc` 已被 gitignore；契约与冒烟测试需要把真实二进制放在这里。CI 每晚会对上游最新 release 跑一次契约测试。
+`vendor/asc` 已被 gitignore。完整验证需要校验过 SHA-256 的基线二进制；`--unit-only` 明确表示引擎门禁未经验证。普通 CI 检查固定基线，每日任务对最新 release 跑 contract、分类审计与离线 smoke。开发 overlay 从当前 checkout 生成绝对路径。
 
 ## License
 

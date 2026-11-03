@@ -7,6 +7,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { AuditFn } from './audit.js'
 import type { Config } from './config.js'
+import { resolveAscBinary } from './control/binary.js'
 import { classifyArgv, isFileWriteArgv, normalizeArgv } from './classify.js'
 import { execAsc, globalFlags, type AscExecOutcome, type SpawnFn } from './exec.js'
 import { formatResult, type AscToolResult } from './format.js'
@@ -114,7 +115,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
   ): Promise<AscToolResult> {
     const kind = classifyArgv(argv)
     if (kind === 'forbidden') {
-      throw new Error(`asc.run refuses \`asc ${argv.join(' ')}\`: authentication and web-session commands are not exposed.`)
+      throw new Error(`asc.run refuses \`asc ${argv.join(' ')}\`: this command is not exposed by the plugin safety policy.`)
     }
     if (kind === 'write' && config.mode === 'read-only') {
       throw new Error(
@@ -139,7 +140,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
     const timeoutMs = options.timeoutMs ?? (kind === 'read' ? config.timeoutMs : config.longTimeoutMs)
     // File-writing leaves must not receive `--output json`: several interpret the
     // value as an output file name (`analytics download` would create `./json`).
-    const appendOutput = !argv.includes('--output') && !argv.includes('--pretty')
+    const appendOutput = !argv.some((token) => /^--?(?:output|pretty)(?:=|$)/.test(token)) && !argv.includes('--')
     const root = normalizeArgv(argv).argv[0] ?? ''
     let attemptedOutput = appendOutput && !NO_OUTPUT_COMMANDS.has(root) && !isFileWriteArgv(argv)
     let outcome = await execAsc(
@@ -154,9 +155,9 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
       },
       spawnFn,
     )
-    // Some leaf commands reject `--output`; `exit 2` means the flags were parsed
-    // before any work started, so a retry without it cannot duplicate a mutation.
-    if (shouldRetryWithoutOutput(attemptedOutput, outcome)) {
+    // Only replay a proven read when ASC specifically rejects our injected flag.
+    // Usage failures can occur after local writes (including CI reports).
+    if (kind === 'read' && shouldRetryWithoutOutput(attemptedOutput, outcome)) {
       attemptedOutput = false
       outcome = await execAsc(
         config,
@@ -234,16 +235,17 @@ const NO_OUTPUT_COMMANDS = new Set(['version', 'install-skills', 'completion', '
 /**
  * Whether to retry a failed generic invocation without `--output`.
  *
- * An `exit 2` from `asc` happens while parsing flags, before any request or
- * local write, so retrying without the flag cannot duplicate a mutation. This
- * covers leaf commands that reject `--output` (and whose message may not name
- * the flag).
+ * Exit 2 alone is insufficient: commands also use it for domain validation.
+ * Require the exact unknown-output-flag parse diagnostic and no result. The
+ * caller additionally restricts retries to reads without local artifacts.
  */
 export function shouldRetryWithoutOutput(attempted: boolean, outcome: AscExecOutcome): boolean {
-  return attempted && !outcome.ok && outcome.exitCode === 2 && !outcome.timedOut && !outcome.aborted
+  return attempted && !outcome.ok && outcome.exitCode === 2 && !outcome.timedOut && !outcome.aborted &&
+    outcome.stdout.trim() === '' && outcome.data === undefined &&
+    /(?:unknown flag|flag provided but not defined)\s*:?\s*['"`]?--?output(?:['"`]?(?:\s|$))/i.test(outcome.stderr)
 }
 
 /** Human-readable command label shown to the model and the UI. */
 export function describeCommand(config: Config, argv: readonly string[], withOutput = true): string {
-  return [config.ascPath, ...globalFlags(config), ...argv, ...(withOutput ? ['--output', 'json'] : [])].join(' ')
+  return [resolveAscBinary(config).path, ...globalFlags(config), ...argv, ...(withOutput ? ['--output', 'json'] : [])].join(' ')
 }

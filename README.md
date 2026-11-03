@@ -6,7 +6,7 @@ English | [中文](README.zh.md)
 
 [![npm](https://img.shields.io/npm/v/@sleep9ull/dsh-asc-cli?label=npm&color=cb3837)](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.2-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
 App Store Connect is where iOS releases happen — and where teams lose hours to CLI flags, JSON blobs, half-documented states and approval rituals. This plugin puts it inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): install once, ask in plain language, and the agent runs the right workflow, showing a plan and stopping for approval before anything ships.
 
@@ -70,7 +70,7 @@ Is 1.2.3 ready to submit? Show the blockers in priority order.
 Upload ./build/Focus.ipa as 1.2.3 build 42 to the Internal Testers group.
 ```
 
-The third request runs the `ship-testflight` job; pass `dryRun: true` first if you want to see the plan without touching App Store Connect.
+The third request runs the `ship-testflight` job. `dryRun: true` previews the upload and skips processing/group assignment, but upstream may contact App Store Connect to reserve upload operations; the write approval gate still applies.
 
 ---
 
@@ -123,7 +123,7 @@ They cover first-run choices, authentication and CI, release readiness, TestFlig
 |---|---|
 | Locate | `ascPath` → `ASC_CLI_PATH` → plugin cache → `PATH` |
 | Diagnose | version, tested range, auth, default app, provisioning — one next step |
-| Provision | optional: pinned `asc 5.16.0`, SHA-256 verified, cached per platform |
+| Provision | optional: pinned `asc 6.3.0`, SHA-256 verified, cached per platform |
 | Update | `/asc-doctor` compares with the latest GitHub release (24h cache); suggests `brew upgrade asc`, never upgrades itself |
 
 ---
@@ -161,7 +161,7 @@ They cover first-run choices, authentication and CI, release readiness, TestFlig
 - **Local writes need confirmation and approval.** `metadata init/plan/pull`, `docs init`, `doctor --fix`, `builds dsyms`, `install-skills`, and every file-writing `download`/`export` leaf (`screenshots download`, `profiles download`, `certificates export`, ...).
 - **No value expansion by default.** `asc` expands `@env:` / `@file:` in flag values; the plugin escapes a leading `@` unless `allowValueExpansion: true`.
 - **Credentials stay outside the model.** The plugin forwards `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY_PATH`, `ASC_PRIVATE_KEY` because the harness scrubs credential-shaped variables, never reads, stores or prints key material, and tombstones `ASC_WEB_SESSION` so a web-session cookie never reaches the child.
-- **Always refused:** `auth login/logout` and `asc web`; commands the classifier cannot prove read-only are escalated to a human (`unknownCommands: ask`) or refused (`deny`).
+- **Always refused:** `auth login/logout`, `asc web`, and `versions phased-release guard`; commands the classifier cannot prove read-only are escalated to a human (`unknownCommands: ask`) or refused (`deny`).
 - **No shell.** argv is passed as an array; diagnostics are redacted; telemetry is off by default.
 - **Opt-in governance.** `auditLog` records what ran; `approvedActions` can skip the prompt for known actions in write mode only.
 
@@ -171,9 +171,9 @@ They cover first-run choices, authentication and CI, release readiness, TestFlig
 
 | Requirement | Version |
 |---|---|
-| DeepSeek Harness | `0.2.1-rc.2` line (`engines.dsh: >=0.2.1-rc.2 <0.3.0`) |
-| Node.js | ≥ 22.19 (24 recommended) |
-| `asc` | pinned `5.16.0`; tested range `>=5.16.0 <6.0.0` (`/asc-doctor` reports drift) |
+| DeepSeek Harness | `0.2.1-rc.5` line (`engines.dsh: >=0.2.1-rc.5 <0.2.2-0`) |
+| Node.js | `^22.19.0 \|\| >=24.0.0` (24 recommended) |
+| `asc` | verified baseline `6.3.0`; support line `>=6.3.0 <7.0.0` (`/asc-doctor` reports drift) |
 | App Store Connect API key | team or individual key, authenticated **outside** the agent |
 
 ---
@@ -232,6 +232,14 @@ DeepSeek Harness scans `<project>/.dsh/skills`, `<project>/.agents/skills`, `cus
 
 ---
 
+## Upgrading from 0.1.6
+
+0.2.0 targets the current default upstream releases: DeepSeek Harness `0.2.1-rc.5` and asc `6.3.0`. Upgrade the harness and engine, or explicitly provision the new engine after enabling `allowProvision`. Tool and job names stay the same. The supported asc line is `>=6.3.0 <7.0.0`; `6.3.0` is the version verified for this release, and daily upstream checks detect later drift. Independent alpha releases and unpublished upstream branches are outside this baseline.
+
+File-producing flags such as `--report-file`, `--save-logs` and `--write-state` require confirmation and approval. `publish` rejects `.ipa` with `MAC_OS` before approval; use `.pkg` for macOS. `versions phased-release guard` is refused because it executes a caller-selected local program, including in dry-run mode.
+
+The approval gate uses the host's final guard and a receipt from actual human approval, so another pre-execute listener cannot silently waive the plugin policy. Engine diagnostics, ordinary tools and jobs now resolve the same configured or cached binary.
+
 ## Upgrading from 0.1.3
 
 0.1.4 consolidated the tool surface. Old tools are gone; use this mapping:
@@ -274,19 +282,22 @@ npm install
 npm run build        # clean + tsc -> lib/
 npm run typecheck
 npm test             # vitest
-npm run verify       # all gates: typecheck, test, build, pack-manifest, contract, classify-audit, smoke
+node scripts/download-asc.mjs  # download the baseline and verify SHA-256
+npm run verify       # typecheck, tests, build, pack, combos, contract, classify, smoke
+npm run verify -- --unit-only  # explicitly omit engine gates
 
 node scripts/contract.mjs ./vendor/asc   # contract test against a real asc binary
-node scripts/smoke.mjs                   # compiled runtime smoke test
+node scripts/smoke.mjs                   # real Harness subprocess; isolated offline engine smoke
 
 # install a local build into a profile
 npm pack && dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-*.tgz
 
 # separate dev instance with this checkout mounted
-dsh web --patch ./dev/cordis.patch.yml --no-open --port 3199
+node scripts/dev-patch.mjs
+dsh web --patch ./vendor/cordis.dev.patch.yml --no-open --port 3199
 ```
 
-`vendor/asc` is git-ignored; put a real binary there for the contract and smoke tests. CI runs the contract test against the latest upstream release nightly.
+`vendor/asc` is git-ignored. Full verification requires the checksum-verified baseline binary; `--unit-only` explicitly leaves engine gates unverified. Ordinary CI checks the pinned baseline; nightly monitoring checks the latest release with contract, classification and offline smoke gates. Development overlays use absolute paths from the current checkout.
 
 ## License
 

@@ -1,7 +1,8 @@
-# Local development overlay: write mode, for exercising the approval gate.
+# Template: run `node scripts/dev-patch.mjs --write` for an explicit write overlay.
 - insert:
     - id: asc-tools-dev
-      name: /Users/jinchunxu/dev/dsh-asc-cli/lib/index.js
+      name: __ASC_PLUGIN_ENTRY__
       config:
         mode: write
-        ascPath: /Users/jinchunxu/dev/dsh-asc-cli/vendor/asc
+        requireApproval: true
+        ascPath: __ASC_ENGINE_PATH__

@@ -11,6 +11,8 @@
 
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type { Config } from './config.js'
+import { normalizeArgv } from './classify.js'
+import { resolveAscBinary } from './control/binary.js'
 
 /** Minimal spawn surface, injectable for tests. */
 export type SpawnFn = (spec: SubprocessSpawnSpec) => SubprocessHandle
@@ -97,15 +99,37 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647
 /**
  * Neutralize `asc`'s `@env:NAME` / `@file:PATH` value expansion.
  *
- * `asc` expands these anywhere a flag takes a value, which would let a
- * model-supplied argument read an arbitrary local file into the result. The
+ * `asc` expands these in value-taking flags except output/root selectors and
+ * the payload after `--`. Expansion could read arbitrary files into results. The
  * harness does not sandbox `ctx.subprocess`, so the plugin escapes a leading
  * `@` (as documented by `asc`: a literal `@` is written `@@`) unless the user
  * opted into expansion.
  */
 export function literalizeArgv(argv: readonly string[], allowExpansion: boolean): string[] {
   if (allowExpansion) return [...argv]
-  return argv.map((token) => {
+  const normalized = normalizeArgv(argv)
+  const rootIndex = argv.length - normalized.argv.length
+  let literalNext = false
+  let payload = false
+  return argv.map((token, index) => {
+    if (payload) return token
+    if (token === '--') {
+      payload = true
+      return token
+    }
+    if (literalNext) {
+      literalNext = false
+      return token
+    }
+    if (token.startsWith('-')) {
+      const name = token.replace(/^-+/, '').split('=')[0]
+      const excluded = name === 'output' || (name === 'profile' && (index < rootIndex || normalized.argv[0] !== 'signing')) ||
+        (index < rootIndex && (name === 'report' || name === 'report-file'))
+      if (excluded) {
+        literalNext = !token.includes('=')
+        return token
+      }
+    }
     if (token.startsWith('@@')) return token
     if (token.startsWith('@')) return `@${token}`
     // Support `--flag=@file:...` as well as `--flag @file:...`.
@@ -124,7 +148,7 @@ export function literalizeArgv(argv: readonly string[], allowExpansion: boolean)
 export function buildSpawnSpec(config: Config, request: AscExecRequest, signal: AbortSignal): SubprocessSpawnSpec {
   const output = request.appendOutput === false ? [] : ['--output', 'json']
   const argv = [
-    config.ascPath,
+    resolveAscBinary(config).path,
     ...globalFlags(config),
     ...literalizeArgv(request.argv, config.allowValueExpansion),
     ...output,
@@ -177,6 +201,7 @@ export async function execAsc(
 
   let handle: SubprocessHandle | undefined
   try {
+    combined.throwIfAborted()
     handle = spawn(buildSpawnSpec(config, request, combined))
     const outcome = await handle.done
     const stdoutRead = handle.collected.stdout?.readFrom(0)

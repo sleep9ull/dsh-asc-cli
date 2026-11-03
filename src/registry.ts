@@ -171,6 +171,9 @@ function validatePublish(args: ToolArgs): string | undefined {
   if (ipa === undefined && pkg === undefined) {
     return 'asc_apply.publish needs a build source: pass `--ipa` (version optional; asc extracts it from the IPA) or `--pkg` (requires `--version` and `--build-number`).'
   }
+  if (ipa !== undefined && str(args, 'platform')?.trim().toUpperCase() === 'MAC_OS') {
+    return 'asc_apply.publish: `--ipa` is not supported with `--platform MAC_OS`; use `--pkg` with `--version` and `--build-number` for macOS.'
+  }
   if (pkg === undefined) return undefined
   const missing = [
     ...(str(args, 'version') === undefined ? ['--version'] : []),

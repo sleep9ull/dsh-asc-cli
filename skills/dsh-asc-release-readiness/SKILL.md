@@ -47,6 +47,8 @@ Re-run `release-check` after each material fix. An earlier pass does not certify
 - Submitting is `asc_apply action:"publish"` with `submit: true` (underlying `asc publish appstore --submit --confirm`). It creates the App Review submission; needs write mode, `confirm` and approval. `approvedActions` can waive the prompt, never `confirm`.
 - `asc submit status`/`cancel` manage a submission; `asc submit` alone is not shipping; use `asc action:"run"` for them.
 
+For `publish`, `.ipa` with `platform: "MAC_OS"` is rejected before approval; macOS uses `.pkg` with `version` and `buildNumber`. `versions phased-release guard` is unavailable because it executes a caller-selected local program, including during dry runs.
+
 Stage prepares; submit is irreversible. Quote version, build, audience; get agreement.
 
 ## Do not

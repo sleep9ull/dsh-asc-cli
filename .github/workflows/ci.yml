@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -19,11 +22,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
-      - name: Pack manifest (lib/ is exactly the build of src/)
-        run: node scripts/pack-manifest.mjs
+      - name: Types, unit and real Harness integration, build, package and guards
+        run: npm run verify -- --unit-only
 
   contract:
     runs-on: ubuntu-latest
@@ -34,19 +34,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run build
-      - name: Download latest asc
-        run: |
-          mkdir -p vendor
-          url=$(curl -fsSL https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/latest \
-            | grep -o '"browser_download_url": "[^"]*linux_amd64"' | head -1 | cut -d'"' -f4)
-          test -n "$url"
-          curl -fsSL -o vendor/asc "$url"
-          chmod +x vendor/asc
-          ./vendor/asc version
-      - name: Contract test (every command still accepted)
+      - name: Download compatibility baseline and verify SHA-256
+        run: node scripts/download-asc.mjs
+      - name: Command and flag contract
         run: node scripts/contract.mjs ./vendor/asc
-      - name: Classify audit (no read-classified local-file write leaf)
+      - name: Completion and side-effect flag audit
         run: node scripts/classify-audit.mjs ./vendor/asc
-      - name: Contract combinations (illegal argv rejected before spawn)
-        run: node scripts/contract-combos.mjs
+      - name: Offline smoke through real Harness subprocess
+        run: node scripts/smoke.mjs ./vendor/asc

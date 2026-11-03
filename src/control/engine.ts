@@ -22,8 +22,10 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { cacheRoot, cachedBinaryPath as binaryPath, resolveAscBinary, type AscResolution } from './binary.js'
+export { cacheRoot } from './binary.js'
+export type { AscSource, AscResolution } from './binary.js'
 import {
   checksumsUrl,
   compatMessage,
@@ -38,15 +40,6 @@ import {
 } from '../compat.js'
 import type { Config } from '../config.js'
 import { execAsc, type SpawnFn } from '../exec.js'
-
-/** Where a resolved binary came from. */
-export type AscSource = 'configured' | 'env' | 'cache' | 'path'
-
-/** One resolved executable. */
-export interface AscResolution {
-  readonly path: string
-  readonly source: AscSource
-}
 
 /** A tiny result wrapper for engine probes. */
 export interface EngineFact<T> {
@@ -120,31 +113,30 @@ export interface ProvisionDeps {
   readonly fetch?: typeof fetch
 }
 
+export interface ProbeOptions {
+  readonly signal?: AbortSignal
+}
+
+export interface DiagnoseOptions extends ProbeOptions {
+  readonly validateAuth?: boolean
+  readonly checkUpdates?: boolean
+}
+
 /** Asc engine surface used by commands, setup and tools. */
 export interface AscEngine {
   resolve(): AscResolution
   cachedBinaryPath(version?: string): string
-  version(): Promise<string | undefined>
-  authStatus(validate: boolean): Promise<EngineFact<AuthStatus>>
-  listApps(limit: number): Promise<EngineFact<readonly AppSummary[]>>
-  diagnose(options?: { validateAuth?: boolean; checkUpdates?: boolean }): Promise<DiagnoseReport>
-  latestVersion(deps?: { fetch?: typeof fetch; now?: () => number }): Promise<UpdateInfo | undefined>
+  version(options?: ProbeOptions): Promise<string | undefined>
+  authStatus(validate: boolean, options?: ProbeOptions): Promise<EngineFact<AuthStatus>>
+  listApps(limit: number, options?: ProbeOptions): Promise<EngineFact<readonly AppSummary[]>>
+  diagnose(options?: DiagnoseOptions): Promise<DiagnoseReport>
+  latestVersion(deps?: { fetch?: typeof fetch; now?: () => number; signal?: AbortSignal }): Promise<UpdateInfo | undefined>
   provision(deps?: ProvisionDeps): Promise<ProvisionResult>
 }
 
-/** `$DSH_HOME/cache/asc-cli` (or `cacheDir`). */
-export function cacheRoot(config: Config): string {
-  if (config.cacheDir !== undefined) return config.cacheDir
-  const home = process.env.DSH_HOME?.trim()
-  return join(home === undefined || home.length === 0 ? join(homedir(), '.dsh') : home, 'cache', 'asc-cli')
-}
-
-function executableName(): string {
-  return process.platform === 'win32' ? 'asc.exe' : 'asc'
-}
-
 function firstSemver(text: string): string | undefined {
-  return /(\d+\.\d+\.\d+)/.exec(text)?.[1]
+  const version = /^v?(\S+)/.exec(text.trim())?.[1]
+  return compatStatus(version) === 'unknown' ? undefined : version
 }
 
 function recordOf(value: unknown): Record<string, unknown> {
@@ -154,23 +146,19 @@ function recordOf(value: unknown): Record<string, unknown> {
 /** Build the engine around the plugin config and one spawn seam. */
 export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
   let versionProbe: Promise<string | undefined> | undefined
+  let versionProbePath: string | undefined
 
   function cachedBinaryPath(version: string = PINNED_ASC_VERSION): string {
-    return join(cacheRoot(config), version, `${process.platform}-${process.arch}`, executableName())
+    return binaryPath(config, version)
   }
 
   function resolve(): AscResolution {
-    if (config.ascPath !== 'asc') return { path: config.ascPath, source: 'configured' }
-    const fromEnv = process.env.ASC_CLI_PATH?.trim()
-    if (fromEnv !== undefined && fromEnv.length > 0) return { path: fromEnv, source: 'env' }
-    const cached = cachedBinaryPath()
-    if (existsSync(cached)) return { path: cached, source: 'cache' }
-    return { path: config.ascPath, source: 'path' }
+    return resolveAscBinary(config)
   }
 
   async function run(
     argv: readonly string[],
-    options: { timeoutMs?: number; output?: boolean } = {},
+    options: ProbeOptions & { timeoutMs?: number; output?: boolean } = {},
   ): Promise<{ ok: boolean; data?: unknown; stdout: string; stderr: string; missing: boolean }> {
     const resolution = resolve()
     const outcome = await execAsc(
@@ -181,6 +169,7 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
         timeoutMs: options.timeoutMs ?? config.timeoutMs,
         maxBytes: config.maxOutputBytes,
         appendOutput: options.output !== false,
+        signal: options.signal,
       },
       spawn,
     )
@@ -193,15 +182,25 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     }
   }
 
-  async function version(): Promise<string | undefined> {
-    versionProbe ??= run(['version'], { timeoutMs: 15_000, output: false }).then((result) =>
+  async function version(options: ProbeOptions = {}): Promise<string | undefined> {
+    options.signal?.throwIfAborted()
+    const probe = () => run(['version'], { timeoutMs: 15_000, output: false, signal: options.signal }).then((result) =>
       result.ok ? firstSemver(result.stdout) : undefined,
     )
-    return versionProbe
+    // A cancellable invocation owns its child; do not share its cancellation or
+    // cache its failed result with later invocations.
+    if (options.signal !== undefined) return probe()
+    const path = resolve().path
+    if (path !== versionProbePath) versionProbe = undefined
+    versionProbePath = path
+    const pending = versionProbe ??= probe()
+    const found = await pending
+    if (found === undefined && versionProbe === pending) versionProbe = undefined
+    return found
   }
 
-  async function authStatus(validate: boolean): Promise<EngineFact<AuthStatus>> {
-    const result = await run(['auth', 'status', ...(validate ? ['--validate'] : [])], { timeoutMs: 20_000 })
+  async function authStatus(validate: boolean, options: ProbeOptions = {}): Promise<EngineFact<AuthStatus>> {
+    const result = await run(['auth', 'status', ...(validate ? ['--validate'] : [])], { timeoutMs: 20_000, signal: options.signal })
     if (result.missing) return { ok: false, error: 'asc binary not found' }
     const data = recordOf(result.data)
     const credentials = Array.isArray(data.credentials) ? data.credentials : []
@@ -210,7 +209,8 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
       stored: credentials.length,
       ...(typeof data.storageBackend === 'string' ? { storage: data.storageBackend } : {}),
       environmentProvided,
-      authenticated: credentials.length > 0 || environmentProvided,
+      authenticated: result.ok && !(typeof data.validationFailures === 'number' && data.validationFailures > 0) &&
+        (credentials.length > 0 || (environmentProvided && data.environmentCredentialsComplete !== false)),
     }
     if (!result.ok) {
       return { ok: false, value: status, error: result.stderr.trim() || `auth status exited with an error` }
@@ -218,8 +218,8 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     return { ok: true, value: status }
   }
 
-  async function listApps(limit: number): Promise<EngineFact<readonly AppSummary[]>> {
-    const result = await run(['apps', 'list', '--limit', String(limit)], { timeoutMs: 20_000 })
+  async function listApps(limit: number, options: ProbeOptions = {}): Promise<EngineFact<readonly AppSummary[]>> {
+    const result = await run(['apps', 'list', '--limit', String(limit)], { timeoutMs: 20_000, signal: options.signal })
     if (!result.ok) return { ok: false, error: result.stderr.trim() || 'apps list failed' }
     const data = recordOf(result.data)
     const rows = Array.isArray(data.data) ? data.data : []
@@ -235,10 +235,12 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     return { ok: true, value: apps }
   }
 
-  async function diagnose(options: { validateAuth?: boolean; checkUpdates?: boolean } = {}): Promise<DiagnoseReport> {
+  async function diagnose(options: DiagnoseOptions = {}): Promise<DiagnoseReport> {
+    options.signal?.throwIfAborted()
     const resolution = resolve()
     const checks: DiagnoseCheck[] = []
-    const found = await version()
+    const found = await version(options)
+    options.signal?.throwIfAborted()
     checks.push({
       name: 'binary',
       ok: found !== undefined,
@@ -250,8 +252,9 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     const compat = compatStatus(found)
     checks.push({ name: 'version', ok: compat === 'supported', detail: compatMessage(compat, found) })
 
-    const auth = await authStatus(options.validateAuth !== false)
-    const authenticated = auth.value?.authenticated === true
+    const auth = await authStatus(options.validateAuth !== false, options)
+    options.signal?.throwIfAborted()
+    const authenticated = auth.ok && auth.value?.authenticated === true
     checks.push({
       name: 'auth',
       ok: authenticated,
@@ -271,7 +274,8 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
 
     let firstApp: AppSummary | undefined
     if (authenticated && config.defaultAppId === undefined) {
-      const apps = await listApps(1)
+      const apps = await listApps(1, options)
+      options.signal?.throwIfAborted()
       if (apps.ok && apps.value?.[0] !== undefined) firstApp = apps.value[0]
     }
 
@@ -284,7 +288,8 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     let latest: UpdateInfo | undefined
     let updateAvailable = false
     if (config.checkUpdates && options.checkUpdates !== false && found !== undefined) {
-      latest = await latestVersion()
+      latest = await latestVersion({ signal: options.signal })
+      options.signal?.throwIfAborted()
       updateAvailable = latest !== undefined && compareVersions(found, latest.latest) < 0
       checks.push({
         name: 'upstream',
@@ -350,8 +355,9 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
   const UPDATE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
   async function latestVersion(
-    deps: { fetch?: typeof fetch; now?: () => number } = {},
+    deps: { fetch?: typeof fetch; now?: () => number; signal?: AbortSignal } = {},
   ): Promise<UpdateInfo | undefined> {
+    deps.signal?.throwIfAborted()
     const cachePath = join(cacheRoot(config), 'update-check.json')
     const now = deps.now ?? Date.now
     try {
@@ -370,13 +376,14 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     try {
       const response = await fetchImpl(UPSTREAM_LATEST_URL, {
         headers: { accept: 'application/vnd.github+json' },
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.any([AbortSignal.timeout(5_000), ...(deps.signal === undefined ? [] : [deps.signal])]),
       })
       if (!response.ok) return undefined
       const payload = (await response.json()) as { tag_name?: unknown }
       const tag = typeof payload.tag_name === 'string' ? payload.tag_name : ''
       const latest = firstSemver(tag)
       if (latest === undefined) return undefined
+      deps.signal?.throwIfAborted()
       const checkedAt = new Date(now()).toISOString()
       try {
         mkdirSync(cacheRoot(config), { recursive: true })
@@ -439,7 +446,7 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
 
 /** Compare the provisioned pin with a discovered version (doctor detail). */
 export function pinDrift(version: string | undefined): 'none' | 'older' | 'newer' | 'unknown' {
-  if (version === undefined) return 'unknown'
+  if (compatStatus(version) === 'unknown' || version === undefined) return 'unknown'
   const comparison = compareVersions(version, PINNED_ASC_VERSION)
   if (comparison === 0) return 'none'
   return comparison < 0 ? 'older' : 'newer'

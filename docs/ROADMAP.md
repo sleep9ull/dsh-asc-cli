@@ -1,7 +1,7 @@
 # 路线图（ROADMAP）
 
 > 契约级的范围见 [`CONTRACT.md`](./CONTRACT.md) §2；本文是**可变**的版本计划与退出条件。
-> 基线：`0.1.6`｜更新：2026-10-25
+> 基线：`0.2.0` 迁移实现｜更新：2026-11-03；最终验收状态见 spec 004
 
 ---
 
@@ -17,21 +17,23 @@
 
 ---
 
-## 1. v0.2.0「Prove」—— 补证据
+## 1. 0.2.0 迁移与后续「Prove」
+
+0.2.0 适配 Harness rc.5 / asc 6.3.0，加入真实审批收据、最终 guard、动态引擎路径及本地写 flag 防护。13 文件 / 242 测试通过；完整 verify 的 8 阶段全部通过，包含真实 6.3.0 引擎契约、分类审计和离线 smoke（[spec 004](specs/004-upstream-compatibility.md)）。以下保留未包含在本次迁移中的后续工作。
 
 **主题**：让"它可靠"可验证，而不是加功能。
 
 | 工作项 | 状态 | 退出条件 / 剩余 |
 |---|---|---|
-| 参数守卫（7 组）+ 审批前校验 | ✅ 0.1.6 | `contract-combos.mjs` 12 组拒绝 / 8 组接受 |
+| 参数守卫 + 审批前校验 | ✅ 0.2.0 | `contract-combos.mjs` 13 组拒绝 / 8 组接受，含 IPA/MAC_OS |
 | `upload` pkg、`publish` 来源、`stage` metadata 二选一 | ✅ 0.1.6 | 已批准调用不再用法报错 |
 | 分类器/本地写/禁区归一化 | ✅ 0.1.6 | `classify-audit.mjs` 无 read 写文件叶子 |
-| 工具端到端（`defineTool → execute`，stub） | ⚠️ 部分 | 仍缺真实 runtime/spawn 集成与覆盖率门槛 |
+| 工具端到端 | ✅ 0.2.0 实现 | rc.5 真实宿主 dispatch、审批与取消；离线 smoke 使用真实 subprocess；覆盖率门槛仍待补 |
 | 结果：`dataBytes` 真字节、`dataOmitted` 文案 | ✅ 0.1.6 | — |
 | 结果：`search`/`system-status` projector、`output.schema` 顶层类型化 | ⏳ | 典型调用 token 再降 |
-| smoke 断言：退出码 + 关键输出；真实 scrubbed env | ⏳ | 回归能被发现 |
+| smoke 断言：退出码 + 关键输出；真实 scrubbed env | ✅ 0.2.0 实现 | 隔离 HOME、无真实凭据；真实 provider 的环境 canary 与最终组合引擎 smoke 全部通过 |
 | 错误/脱敏：`pending`(exit 7)/`validation-failed`；`data`/`summary` 深度脱敏 | ⏳ | 错误可路由、不泄露 |
-| 引擎：`compatStatus` 从 `SUPPORTED_ASC_RANGE` 派生；解析失败返回 `unknown` | ⏳ | 区间事实单源、畸形版本不误判 |
+| 引擎：compat 区间事实单源；解析失败返回 `unknown` | ✅ 0.2.0 | 共享上下界产生范围与状态，畸形版本不误判 |
 | 审计：engine 探针（version/auth/doctor/diagnose/provision）写入审计或声明为稳定例外 | ⏳ | `auditLog` 覆盖所有调用 |
 | CI：lint、覆盖率门槛、smoke 断言；`upstream-watch` 用 token 并区分限流 | ⏳ | 发布物与回归可持续守护 |
 | 文档：COMMANDS/ARCHITECTURE/TESTING/README 与实现一致性 | ✅ 0.1.6 | 无已知失真（engine 探针审计为声明例外） |
