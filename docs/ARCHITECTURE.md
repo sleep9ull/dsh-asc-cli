@@ -26,6 +26,10 @@
 
 ## 2. 模块地图
 
+spec 005/006 已于 2026-11-04 获准实施：新增 `scripts/maintenance/` 属于开发维护层，负责上游发现、git common dir 中的互斥/恢复状态、PR 证据与指定 checkout 的保守快进同步，不进入 npm 插件运行路径。维护 skill 位于 `.claude/skills/upstream-maintenance/`，不改变六个发布 skill。部署与运行授权独立于代码实现。发现脚本借助 Node 22.19+/24 的原生类型擦除直接导入 `src/compat.ts` 的上游仓库与 `releaseAsset`，无需 build 或复制平台映射。`state.withLockOwner` 以 ownership.guard 包住所有权检查与最终写操作，锁交接也使用同一 guard。目标 v2 键包含相关包独立版本；恢复时保留修复预算，未知历史先阻塞。
+
+版本提示由 `src/control/version-notice.ts` 协调：engine 提供同一执行快照下的版本事实和有界内存缓存，compat 提供版本判断，format 定义及渲染可选 `versionNotice`。runtime 绑定实际执行快照，顶层工具/命令统一装饰结果，job 内部不重复提示。取消等待者不取消共享检查；插件卸载清理检查。查询不再读写磁盘更新缓存。
+
 | 文件 | 职责 | 关键约束 |
 |---|---|---|
 | `src/index.ts` | 组合根：注册 policy、工具、skills、commands | 只注入所需服务；可选表面缺失时降级 |
@@ -39,7 +43,8 @@
 | `src/config.ts` | Schema 与默认值 | 默认值即安全边界 |
 | `src/compat.ts` | asc pin / 兼容区间 / release 资源 | 版本事实的 SSOT |
 | `src/control/binary.ts` | engine/runtime 共用的动态二进制与缓存路径解析 | 缓存解析为宿主侧绝对路径，诊断、普通工具、job 使用同一路径；provision 后重新解析 |
-| `src/control/engine.ts` | 引擎管理：locate / diagnose / provision / update check | provision 默认关、校验 SHA-256；取消信号透传 |
+| `src/control/engine.ts` | 引擎管理：locate / diagnose / provision / update check；本地和远端内存缓存 | provision 默认关、校验 SHA-256；共享检查有 deadline，单个等待者取消不污染其他调用 |
+| `src/control/version-notice.ts` | 来源相关的提示与顶层调用协调、会话去重 | 审批后启动、最多额外等待 1s，不改业务 outcome；无缓存文件 |
 | `src/capabilities.ts` | 能力卡数据：JOBS / TOOLS / BUNDLED_SKILLS | 与 registry / skills 保持一致 |
 | `src/jobs.ts` | 5 个工作流实现 | 嵌套调用走同一 runtime；runner 二次闸门 |
 | `src/skills.ts` | 随包 skill 的 provider（rank 600） | 不落用户目录 |

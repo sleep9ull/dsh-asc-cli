@@ -27,6 +27,8 @@ export interface AscExecRequest {
   readonly signal?: AbortSignal | undefined
   /** Append `--output json`; set false for commands that reject the flag. */
   readonly appendOutput?: boolean
+  /** Freeze the executable selected for this invocation and its version probe. */
+  readonly binaryPath?: string
 }
 
 /** Structured outcome of one `asc` invocation. */
@@ -150,7 +152,7 @@ export function literalizeArgv(argv: readonly string[], allowExpansion: boolean)
 export function buildSpawnSpec(config: Config, request: AscExecRequest, signal: AbortSignal): SubprocessSpawnSpec {
   const output = request.appendOutput === false ? [] : ['--output', 'json']
   const argv = [
-    resolveAscBinary(config).path,
+    request.binaryPath ?? resolveAscBinary(config).path,
     ...globalFlags(config),
     ...literalizeArgv(request.argv, config.allowValueExpansion),
     ...output,

@@ -5,7 +5,7 @@
  * owns the *experience* of installing and upgrading it:
  *
  * 1. resolve a binary (configured path → `ASC_CLI_PATH` → plugin cache → PATH),
- * 2. probe its version and compare it with the tested range,
+ * 2. probe its version and compare it with the declared range and tested pin,
  * 3. report one actionable next step,
  * 4. optionally download a pinned, checksum-verified build into the DSH cache.
  *
@@ -17,21 +17,21 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  readFileSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { cacheRoot, cachedBinaryPath as binaryPath, resolveAscBinary, type AscResolution } from './binary.js'
+import { dirname } from 'node:path'
+import { cachedBinaryPath as binaryPath, resolveAscBinary, snapshotAscBinary, type AscResolution, type EngineSnapshot } from './binary.js'
 export { cacheRoot } from './binary.js'
-export type { AscSource, AscResolution } from './binary.js'
+export type { AscSource, AscResolution, EngineSnapshot } from './binary.js'
 import {
   checksumsUrl,
   compatMessage,
   compatStatus,
   compareVersions,
   parseChecksums,
+  parseVersion,
   PINNED_ASC_VERSION,
   releaseAsset,
   releaseUrl,
@@ -39,6 +39,8 @@ import {
   type CompatStatus,
 } from '../compat.js'
 import type { Config } from '../config.js'
+import type { AscVersionNotice } from '../format.js'
+import { versionNotice } from './version-notice.js'
 import { execAsc, type SpawnFn } from '../exec.js'
 
 /** A tiny result wrapper for engine probes. */
@@ -79,6 +81,7 @@ export interface DiagnoseNext {
 
 /** Everything `/asc-doctor` and `asc_setup diagnose` report. */
 export interface DiagnoseReport {
+  readonly versionNotice?: AscVersionNotice
   readonly resolution: AscResolution
   readonly version?: string
   readonly compat: CompatStatus
@@ -101,6 +104,7 @@ export interface UpdateInfo {
 
 /** Result of one provisioning attempt. */
 export interface ProvisionResult {
+  readonly versionNotice?: AscVersionNotice
   readonly ok: boolean
   readonly path?: string
   readonly version?: string
@@ -116,6 +120,18 @@ export interface ProvisionDeps {
 
 export interface ProbeOptions {
   readonly signal?: AbortSignal
+  readonly snapshot?: EngineSnapshot
+  readonly refresh?: boolean
+}
+
+export interface EngineDeps {
+  readonly fetch?: typeof fetch
+  readonly now?: () => number
+}
+
+export interface VersionFact {
+  readonly version?: string
+  readonly missing: boolean
 }
 
 export interface DiagnoseOptions extends ProbeOptions {
@@ -126,6 +142,10 @@ export interface DiagnoseOptions extends ProbeOptions {
 /** Asc engine surface used by commands, setup and tools. */
 export interface AscEngine {
   resolve(): AscResolution
+  snapshot(cwd?: string): EngineSnapshot
+  inspectVersion(snapshot: EngineSnapshot, options?: ProbeOptions): Promise<VersionFact>
+  rememberVersion(snapshot: EngineSnapshot, version: string | undefined): void
+  dispose(): void
   cachedBinaryPath(version?: string): string
   version(options?: ProbeOptions): Promise<string | undefined>
   authStatus(validate: boolean, options?: ProbeOptions): Promise<EngineFact<AuthStatus>>
@@ -135,9 +155,23 @@ export interface AscEngine {
   provision(deps?: ProvisionDeps): Promise<ProvisionResult>
 }
 
-function firstSemver(text: string): string | undefined {
-  const version = /^v?(\S+)/.exec(text.trim())?.[1]
-  return compatStatus(version) === 'unknown' ? undefined : version
+/** Cancellation belongs to each waiter; the shared operation has its own lifetime. */
+function waitFor<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (signal === undefined) return pending
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => { cleanup(); reject(signal.reason) }
+    const cleanup = () => signal.removeEventListener('abort', abort)
+    signal.addEventListener('abort', abort, { once: true })
+    pending.then((value) => { cleanup(); resolve(value) }, (error: unknown) => { cleanup(); reject(error) })
+  })
+}
+
+interface LocalVersionEntry {
+  readonly controller: AbortController
+  pending?: Promise<VersionFact>
+  fact?: VersionFact
+  checkedAt: number
 }
 
 function recordOf(value: unknown): Record<string, unknown> {
@@ -145,9 +179,49 @@ function recordOf(value: unknown): Record<string, unknown> {
 }
 
 /** Build the engine around the plugin config and one spawn seam. */
-export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
-  let versionProbe: Promise<string | undefined> | undefined
-  let versionProbePath: string | undefined
+export function createEngine(config: Config, spawn: SpawnFn, dependencies: EngineDeps = {}): AscEngine {
+  const now = dependencies.now ?? Date.now
+  const lifetime = new AbortController()
+  const versions = new Map<string, LocalVersionEntry>()
+  // Remembering an explicit result can detach a probe that still has waiters.
+  const pendingVersions = new Set<AbortController>()
+  let lastLocalClock = now()
+  let updateCache: { checkedAt: number; value?: UpdateInfo } | undefined
+  let updatePending: Promise<UpdateInfo | undefined> | undefined
+  let lastUpdateClock: number | undefined
+
+  function snapshot(cwd?: string): EngineSnapshot { return snapshotAscBinary(config, cwd) }
+
+  function invalidateVersions(): void {
+    for (const controller of pendingVersions) controller.abort()
+    pendingVersions.clear()
+    versions.clear()
+  }
+
+  function dispose(): void {
+    lifetime.abort()
+    invalidateVersions()
+    updateCache = undefined
+  }
+
+  function trimVersions(): void {
+    while (versions.size > 128) {
+      const oldest = versions.keys().next().value!
+      versions.get(oldest)?.controller.abort()
+      versions.delete(oldest)
+    }
+  }
+
+  function rememberVersion(identity: EngineSnapshot, version: string | undefined): void {
+    if (!identity.resolved || lifetime.signal.aborted) return
+    const valid = version !== undefined && compatStatus(version) !== 'unknown' ? version : undefined
+    versions.delete(identity.identity)
+    versions.set(identity.identity, {
+      controller: new AbortController(), checkedAt: now(),
+      fact: { ...(valid === undefined ? {} : { version: valid }), missing: false },
+    })
+    trimVersions()
+  }
 
   function cachedBinaryPath(version: string = PINNED_ASC_VERSION): string {
     return binaryPath(config, version)
@@ -161,12 +235,13 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     argv: readonly string[],
     options: ProbeOptions & { timeoutMs?: number; output?: boolean } = {},
   ): Promise<{ ok: boolean; data?: unknown; stdout: string; stderr: string; missing: boolean }> {
-    const resolution = resolve()
+    const selected = options.snapshot ?? snapshot()
     const outcome = await execAsc(
-      { ...config, ascPath: resolution.path },
+      config,
       {
         argv,
-        cwd: config.workdir ?? process.cwd(),
+        binaryPath: selected.resolution.path,
+        cwd: selected.cwd,
         timeoutMs: options.timeoutMs ?? config.timeoutMs,
         maxBytes: config.maxOutputBytes,
         appendOutput: options.output !== false,
@@ -183,25 +258,52 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     }
   }
 
-  async function version(options: ProbeOptions = {}): Promise<string | undefined> {
+  async function inspectVersion(selected: EngineSnapshot, options: ProbeOptions = {}): Promise<VersionFact> {
     options.signal?.throwIfAborted()
-    const probe = () => run(['version'], { timeoutMs: 15_000, output: false, signal: options.signal }).then((result) =>
-      result.ok ? firstSemver(result.stdout) : undefined,
-    )
-    // A cancellable invocation owns its child; do not share its cancellation or
-    // cache its failed result with later invocations.
-    if (options.signal !== undefined) return probe()
-    const path = resolve().path
-    if (path !== versionProbePath) versionProbe = undefined
-    versionProbePath = path
-    const pending = versionProbe ??= probe()
-    const found = await pending
-    if (found === undefined && versionProbe === pending) versionProbe = undefined
-    return found
+    if (lifetime.signal.aborted || !selected.resolved) return { missing: selected.missing }
+    const current = now()
+    if (current < lastLocalClock) invalidateVersions()
+    lastLocalClock = current
+    let entry = versions.get(selected.identity)
+    if (entry?.pending !== undefined) return waitFor(entry.pending, options.signal)
+    if (!options.refresh && entry?.fact !== undefined) {
+      const age = current - entry.checkedAt
+      const ttl = entry.fact.version === undefined ? 15_000 : 300_000
+      if (age >= 0 && age < ttl) return entry.fact
+    }
+    entry = { controller: new AbortController(), checkedAt: current }
+    versions.delete(selected.identity)
+    versions.set(selected.identity, entry)
+    trimVersions()
+    const owned = entry
+    pendingVersions.add(owned.controller)
+    const signal = AbortSignal.any([owned.controller.signal, lifetime.signal])
+    const timer = setTimeout(() => owned.controller.abort(), 5_000)
+    owned.pending = waitFor(run(['version'], { snapshot: selected, timeoutMs: 5_000, output: false, signal }), signal)
+      .then((result): VersionFact => {
+        const version = result.ok ? parseVersion(result.stdout) : undefined
+        const missing = result.missing && snapshotAscBinary({ ...config, ascPath: selected.resolution.path }, selected.cwd).missing
+        return { ...(version === undefined ? {} : { version }), missing }
+      }, (): VersionFact => ({ missing: false }))
+      .then((fact) => {
+        clearTimeout(timer)
+        pendingVersions.delete(owned.controller)
+        if (!lifetime.signal.aborted && versions.get(selected.identity) === owned) {
+          owned.fact = fact
+          owned.checkedAt = now()
+          delete owned.pending
+        }
+        return fact
+      })
+    return waitFor(owned.pending, options.signal)
+  }
+
+  async function version(options: ProbeOptions = {}): Promise<string | undefined> {
+    return (await inspectVersion(options.snapshot ?? snapshot(), options)).version
   }
 
   async function authStatus(validate: boolean, options: ProbeOptions = {}): Promise<EngineFact<AuthStatus>> {
-    const result = await run(['auth', 'status', ...(validate ? ['--validate'] : [])], { timeoutMs: 20_000, signal: options.signal })
+    const result = await run(['auth', 'status', ...(validate ? ['--validate'] : [])], { ...options, timeoutMs: 20_000 })
     if (result.missing) return { ok: false, error: 'asc binary not found' }
     const data = recordOf(result.data)
     const credentials = Array.isArray(data.credentials) ? data.credentials : []
@@ -220,7 +322,7 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
   }
 
   async function listApps(limit: number, options: ProbeOptions = {}): Promise<EngineFact<readonly AppSummary[]>> {
-    const result = await run(['apps', 'list', '--limit', String(limit)], { timeoutMs: 20_000, signal: options.signal })
+    const result = await run(['apps', 'list', '--limit', String(limit)], { ...options, timeoutMs: 20_000 })
     if (!result.ok) return { ok: false, error: result.stderr.trim() || 'apps list failed' }
     const data = recordOf(result.data)
     const rows = Array.isArray(data.data) ? data.data : []
@@ -238,22 +340,25 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
 
   async function diagnose(options: DiagnoseOptions = {}): Promise<DiagnoseReport> {
     options.signal?.throwIfAborted()
-    const resolution = resolve()
+    const selected = options.snapshot ?? snapshot()
+    const resolution = selected.resolution
     const checks: DiagnoseCheck[] = []
-    const found = await version(options)
+    const fact = await inspectVersion(selected, { ...options, refresh: true })
+    const found = fact.version
     options.signal?.throwIfAborted()
     checks.push({
       name: 'binary',
       ok: found !== undefined,
       detail:
         found === undefined
-          ? `not found (looked for ${resolution.path}; source ${resolution.source})`
+          ? `${fact.missing ? 'not found' : 'version unknown'} (looked for ${resolution.path}; source ${resolution.source})`
           : `${resolution.path} (source: ${resolution.source})`,
     })
     const compat = compatStatus(found)
     checks.push({ name: 'version', ok: compat === 'supported', detail: compatMessage(compat, found) })
 
-    const auth = await authStatus(options.validateAuth !== false, options)
+    const probeOptions = { ...options, snapshot: selected }
+    const auth = await authStatus(options.validateAuth !== false, probeOptions)
     options.signal?.throwIfAborted()
     const authenticated = auth.ok && auth.value?.authenticated === true
     checks.push({
@@ -275,7 +380,7 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
 
     let firstApp: AppSummary | undefined
     if (authenticated && config.defaultAppId === undefined) {
-      const apps = await listApps(1, options)
+      const apps = await listApps(1, probeOptions)
       options.signal?.throwIfAborted()
       if (apps.ok && apps.value?.[0] !== undefined) firstApp = apps.value[0]
     }
@@ -294,7 +399,7 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
       updateAvailable = latest !== undefined && compareVersions(found, latest.latest) < 0
       checks.push({
         name: 'upstream',
-        ok: !updateAvailable,
+        ok: latest !== undefined && !updateAvailable,
         detail:
           latest === undefined
             ? 'latest release unknown (offline or rate-limited)'
@@ -304,15 +409,10 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
       })
     }
 
+    const notice = versionNotice(selected, fact, latest?.latest)
     let next: DiagnoseNext | undefined
-    if (found === undefined) {
-      next = {
-        title: 'Install asc',
-        command: 'brew install asc',
-        detail: config.allowProvision
-          ? 'or ask the agent to run asc_setup with action provision'
-          : 'or set ascPath / enable allowProvision and run asc_setup action provision',
-      }
+    if (notice !== undefined && notice.code !== 'upstream-unverified') {
+      next = { title: fact.missing ? 'Install asc at the selected source' : notice.message, detail: notice.hint }
     } else if (!authenticated) {
       next = {
         title: 'Authenticate asc in your terminal',
@@ -328,18 +428,15 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
             ? 'ask for `asc action: "apps-list"` to find an app id'
             : `first available: ${firstApp.name ?? firstApp.id} (${firstApp.id})`,
       }
-    } else if (updateAvailable) {
-      next = {
-        title: 'Upgrade asc (optional)',
-        command: 'brew upgrade asc',
-        detail: `asc ${latest?.latest} is available; the prompt is advisory and never auto-upgrades`,
-      }
+    } else if (notice !== undefined) {
+      next = { title: notice.message, detail: notice.hint }
     } else {
       next = { title: 'Ready', detail: 'Try /asc for the capability card, or ask for a release check' }
     }
 
     return {
       resolution,
+      ...(notice === undefined ? {} : { versionNotice: notice }),
       ...(found === undefined ? {} : { version: found }),
       compat,
       checks,
@@ -353,49 +450,47 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     }
   }
 
-  const UPDATE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000
-
   async function latestVersion(
     deps: { fetch?: typeof fetch; now?: () => number; signal?: AbortSignal } = {},
   ): Promise<UpdateInfo | undefined> {
     deps.signal?.throwIfAborted()
-    const cachePath = join(cacheRoot(config), 'update-check.json')
-    const now = deps.now ?? Date.now
-    try {
-      const cached = JSON.parse(readFileSync(cachePath, 'utf8')) as { latest?: unknown; checkedAt?: unknown }
-      if (
-        typeof cached.latest === 'string' &&
-        typeof cached.checkedAt === 'string' &&
-        now() - Date.parse(cached.checkedAt) < UPDATE_CACHE_MAX_AGE_MS
-      ) {
-        return { latest: cached.latest, checkedAt: cached.checkedAt, cached: true }
+    if (!config.checkUpdates || lifetime.signal.aborted) return undefined
+    const clock = deps.now ?? now
+    const current = clock()
+    if (lastUpdateClock !== undefined && current < lastUpdateClock) updateCache = undefined
+    lastUpdateClock = current
+    if (updatePending !== undefined) return waitFor(updatePending, deps.signal)
+    if (updateCache !== undefined) {
+      const age = current - updateCache.checkedAt
+      const ttl = updateCache.value === undefined ? 900_000 : 86_400_000
+      if (age >= 0 && age < ttl) {
+        return updateCache.value === undefined ? undefined : { ...updateCache.value, cached: true }
       }
-    } catch {
-      // Missing or unreadable cache: fetch below.
     }
-    const fetchImpl = deps.fetch ?? fetch
-    try {
+    const controller = new AbortController()
+    const signal = AbortSignal.any([controller.signal, lifetime.signal])
+    const timer = setTimeout(() => controller.abort(), 5_000)
+    const fetchImpl = deps.fetch ?? dependencies.fetch ?? fetch
+    const request = async (): Promise<UpdateInfo | undefined> => {
       const response = await fetchImpl(UPSTREAM_LATEST_URL, {
-        headers: { accept: 'application/vnd.github+json' },
-        signal: AbortSignal.any([AbortSignal.timeout(5_000), ...(deps.signal === undefined ? [] : [deps.signal])]),
+        headers: { accept: 'application/vnd.github+json' }, signal,
       })
       if (!response.ok) return undefined
-      const payload = (await response.json()) as { tag_name?: unknown }
+      const payload = recordOf(await response.json())
       const tag = typeof payload.tag_name === 'string' ? payload.tag_name : ''
-      const latest = firstSemver(tag)
+      // Release API tags must be a complete version, not version-command prose.
+      if (compatStatus(tag) === 'unknown' || payload.draft === true || payload.prerelease === true) return undefined
+      const latest = parseVersion(tag)
       if (latest === undefined) return undefined
-      deps.signal?.throwIfAborted()
-      const checkedAt = new Date(now()).toISOString()
-      try {
-        mkdirSync(cacheRoot(config), { recursive: true })
-        writeFileSync(cachePath, `${JSON.stringify({ latest, checkedAt })}\n`)
-      } catch {
-        // Cache writes are best-effort.
-      }
-      return { latest, checkedAt, cached: false }
-    } catch {
-      return undefined
+      return { latest, checkedAt: new Date(clock()).toISOString(), cached: false }
     }
+    updatePending = waitFor(request(), signal).catch(() => undefined).then((value) => {
+      clearTimeout(timer)
+      if (!lifetime.signal.aborted) updateCache = { checkedAt: clock(), ...(value === undefined ? {} : { value }) }
+      updatePending = undefined
+      return value
+    })
+    return waitFor(updatePending, deps.signal)
   }
 
   async function provision(deps: ProvisionDeps = {}): Promise<ProvisionResult> {
@@ -437,7 +532,7 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
       chmodSync(temporary, 0o755)
       deps.signal?.throwIfAborted()
       renameSync(temporary, destination)
-      versionProbe = undefined
+      invalidateVersions()
       return { ok: true, path: destination, version: PINNED_ASC_VERSION, bytes: bytes.length }
     } catch (error) {
       try {
@@ -449,7 +544,7 @@ export function createEngine(config: Config, spawn: SpawnFn): AscEngine {
     }
   }
 
-  return { resolve, cachedBinaryPath, version, authStatus, listApps, diagnose, latestVersion, provision }
+  return { resolve, snapshot, inspectVersion, rememberVersion, dispose, cachedBinaryPath, version, authStatus, listApps, diagnose, latestVersion, provision }
 }
 
 /** Compare the provisioned pin with a discovered version (doctor detail). */

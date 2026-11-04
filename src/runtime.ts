@@ -8,6 +8,7 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { AuditFn } from './audit.js'
 import type { Config } from './config.js'
 import { resolveAscBinary } from './control/binary.js'
+import type { VersionNotices } from './control/version-notice.js'
 import { classifyArgv, isFileWriteArgv, normalizeArgv, writesReportFile } from './classify.js'
 import { execAsc, globalFlags, type AscExecOutcome, type SpawnFn } from './exec.js'
 import { formatResult, type AscToolResult } from './format.js'
@@ -18,6 +19,7 @@ export interface AscRuntime {
   readonly ctx: Context
   readonly config: Config
   readonly spawn: SpawnFn
+  versionNotices?: VersionNotices
   cwdFor(exec: ToolRunContext): string
   runAction(tool: string, action: string | undefined, args: ToolArgs, exec: ToolRunContext): Promise<AscToolResult>
   runArgv(argv: readonly string[], options: RunArgvOptions, exec: ToolRunContext): Promise<AscToolResult>
@@ -143,6 +145,9 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
     const appendOutput = !argv.some((token) => /^--?(?:output|pretty)(?:=|$)/.test(token)) && !argv.includes('--')
     const root = normalizeArgv(argv).argv[0] ?? ''
     let attemptedOutput = appendOutput && !NO_OUTPUT_COMMANDS.has(root) && !isFileWriteArgv(argv)
+    exec.signal.throwIfAborted()
+    const snapshot = runtime.versionNotices?.execution(options.cwd ?? cwdFor(exec), root === 'version')
+    const binary = snapshot === undefined ? {} : { binaryPath: snapshot.resolution.path }
     let outcome = await execAsc(
       config,
       {
@@ -152,6 +157,7 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
         maxBytes: config.maxOutputBytes,
         signal: exec.signal,
         appendOutput: attemptedOutput,
+        ...binary,
       },
       spawnFn,
     )
@@ -168,10 +174,12 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
           maxBytes: config.maxOutputBytes,
           signal: exec.signal,
           appendOutput: false,
+          ...binary,
         },
         spawnFn,
       )
     }
+    if (root === 'version') runtime.versionNotices?.observedVersion(snapshot, outcome.ok ? outcome.stdout : '')
     const formatted = formatResult(outcome, describeCommand(config, argv, attemptedOutput), {
       maxDataBytes: config.maxDataBytes,
     })
@@ -207,6 +215,9 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
     const argv = spec.build(args, { config, cwd })
     const requested = typeof args.timeoutMs === 'number' ? args.timeoutMs : undefined
     const timeoutMs = requested ?? (spec.long ? config.longTimeoutMs : config.timeoutMs)
+    exec.signal.throwIfAborted()
+    const isVersion = tool === 'asc_setup' && action === 'version'
+    const snapshot = runtime.versionNotices?.execution(cwd, isVersion)
     const outcome: AscExecOutcome = await execAsc(
       config,
       {
@@ -216,9 +227,11 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
         maxBytes: config.maxOutputBytes,
         signal: exec.signal,
         appendOutput: spec.output !== false,
+        ...(snapshot === undefined ? {} : { binaryPath: snapshot.resolution.path }),
       },
       spawnFn,
     )
+    if (isVersion) runtime.versionNotices?.observedVersion(snapshot, outcome.ok ? outcome.stdout : '')
     const formatted = formatResult(outcome, describeCommand(config, argv, spec.output !== false), {
       maxDataBytes: config.maxDataBytes,
     })
@@ -226,7 +239,8 @@ export function createRuntime(ctx: Context, config: Config, spawn?: SpawnFn, aud
     return formatted
   }
 
-  return { ctx, config, spawn: spawnFn, cwdFor, runAction, runArgv }
+  const runtime: AscRuntime = { ctx, config, spawn: spawnFn, cwdFor, runAction, runArgv }
+  return runtime
 }
 
 /** Roots that never accept `--output` (the generic path skips it up front). */

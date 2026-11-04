@@ -11,10 +11,10 @@ import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { renderDoctorCard } from '../commands.js'
 import type { AscEngine, DiagnoseReport, ProvisionResult } from '../control/engine.js'
-import { renderResult, type AscToolResult } from '../format.js'
+import { renderResult, renderVersionNotice, type AscToolResult } from '../format.js'
 import type { AscRuntime } from '../runtime.js'
 import type { ToolArgs } from '../registry.js'
-import { RESULT_SCHEMA } from './common.js'
+import { RESULT_SCHEMA, withVersionNotice } from './common.js'
 
 const DESCRIPTION = `Inspect and prepare the local asc environment. Actions:
 - version: print the installed asc version and commit (read-only).
@@ -45,9 +45,10 @@ function isProvision(value: unknown): value is ProvisionResult {
 function renderSetup(value: unknown): string {
   if (isReport(value)) return renderDoctorCard(value)
   if (isProvision(value)) {
-    return value.ok
+    const text = value.ok
       ? `provisioned asc ${value.version ?? ''} at ${value.path ?? '?'} (${value.bytes ?? 0} bytes, checksum verified)`
       : `provision failed: ${value.error ?? 'unknown error'}`
+    return [text, ...renderVersionNotice(value.versionNotice)].join('\n')
   }
   return renderResult(value as AscToolResult)
     .map((block) => (block.type === 'text' ? block.text : ''))
@@ -105,12 +106,16 @@ export function registerSetupTool(ctx: Context, runtime: AscRuntime, engine: Asc
     async execute(args, exec: ToolRunContext) {
       const action = typeof args.action === 'string' ? args.action : ''
       if (action === 'diagnose') {
-        return (await engine.diagnose({ signal: exec.signal })) as unknown as JsonValue
+        return (await engine.diagnose({ signal: exec.signal, ...(engine.snapshot === undefined ? {} : { snapshot: engine.snapshot(runtime.cwdFor(exec)) }) })) as unknown as JsonValue
       }
       if (action === 'provision') {
-        return (await engine.provision({ signal: exec.signal })) as unknown as JsonValue
+        return (await withVersionNotice(runtime, exec, async () => {
+          const result = await engine.provision({ signal: exec.signal })
+          if (result.ok && !exec.signal.aborted) runtime.versionNotices?.execution(runtime.cwdFor(exec))
+          return result
+        })) as unknown as JsonValue
       }
-      return (await runtime.runAction('asc_setup', action, args as ToolArgs, exec)) as unknown as JsonValue
+      return (await withVersionNotice(runtime, exec, () => runtime.runAction('asc_setup', action, args as ToolArgs, exec))) as unknown as JsonValue
     },
   })
   ctx.effect(() => ctx.tools.register(tool))

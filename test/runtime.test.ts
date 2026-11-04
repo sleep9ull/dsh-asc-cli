@@ -82,6 +82,22 @@ describe('generic command policy', () => {
     } finally { vi.unstubAllEnvs() }
   })
 
+  it('keeps an output-flag retry on the same selected executable', async () => {
+    const { spawn, calls } = queuedSpawn([
+      { exitCode: 2, stderr: 'unknown flag: --output' },
+      { exitCode: 0, stdout: '{"data":[]}' },
+    ])
+    const runtime = createRuntime(fakeCtx(), makeConfig({ ascPath: '/original/asc' }), spawn)
+    runtime.versionNotices = {
+      execution: cwd => ({ resolution: { path: '/selected/asc', source: 'configured' }, cwd, identity: 'selected', resolved: true, missing: false }),
+      observedVersion: () => {}, run: async (_exec, operation) => operation(), dispose: () => {},
+    }
+    const result = await runtime.runArgv(['apps', 'list'], { confirm: false }, execContext())
+    expect(result.ok).toBe(true)
+    expect(calls.map(call => call[0])).toEqual(['/selected/asc', '/selected/asc'])
+    expect(calls[1]).not.toContain('--output')
+  })
+
   it('preserves inline output options and never retries ordinary usage failures', async () => {
     const { spawn, calls } = queuedSpawn([{ exitCode: 2, stderr: '--version is required' }])
     const runtime = createRuntime(fakeCtx(), makeConfig(), spawn)

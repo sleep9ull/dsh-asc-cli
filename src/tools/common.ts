@@ -7,6 +7,12 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { renderResult, type AscToolResult } from '../format.js'
 import type { ToolArgs } from '../registry.js'
 import type { AscRuntime } from '../runtime.js'
+import type { NoticeInvocation } from '../control/version-notice.js'
+
+/** Decorate only a top-level result; nested job steps keep their business shape. */
+export function withVersionNotice<T extends object>(runtime: AscRuntime, exec: NoticeInvocation, operation: () => Promise<T>): Promise<T> {
+  return runtime.versionNotices?.run(exec, operation) ?? operation()
+}
 
 /**
  * Canonical output schema shared by every `asc_*` tool.
@@ -61,7 +67,7 @@ export function defineActionTool<S extends ParameterSchemaSpec>(
     async execute(args, exec) {
       const action = (args as { action?: unknown }).action
       const actionName = typeof action === 'string' ? action : undefined
-      return (await runtime.runAction(name, actionName, args as ToolArgs, exec)) as unknown as JsonValue
+      return (await withVersionNotice(runtime, exec, () => runtime.runAction(name, actionName, args as ToolArgs, exec))) as unknown as JsonValue
     },
   })
 }

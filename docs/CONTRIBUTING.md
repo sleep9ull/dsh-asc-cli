@@ -92,7 +92,15 @@ node scripts/classify-audit.mjs ./vendor/asc
 
 ---
 
-## 6. PR 检查清单
+## 6. 定期维护部署
+
+维护实现与部署分开：参见 [MAINTENANCE](MAINTENANCE.md) 和 [spec 005](specs/005-scheduled-upstream-maintenance.md)。任务初建为暂停，在独立 worktree 手动 Run now 验证后启用；Desktop 必须运行且电脑唤醒。每次先恢复未收口 PR，再发现双上游新版本。
+
+只有显式记录的持久授权允许 routine 自动执行范围内适配、提交/push/PR/Squash 和指定主工作副本快进同步；同一授权可覆盖每轮单次 spec 的实施，不免除写 spec、质量门或越界复核。GitHub ruleset/auto-merge 在部署阶段单独配置，不让日常任务自行降低门禁。PR head 更新后旧验证证据失效；不通过额外 loop/cron 轮询 CI。
+
+远端合并与本地同步分别记录；主副本 dirty/diverged/有其他写者时保留现场，不 stash/reset。维护流程不自动删除分支，也不自动发布 npm/tag；它是 §2 默认清理约定的限定例外。暂停 routine 不会取消已请求的 GitHub auto-merge，需显式取消。
+
+## 7. PR 检查清单
 
 - [ ] 关联 spec（或 PR 说明"无需 spec"及原因）
 - [ ] 一个逻辑变更；提交信息符合仓库风格

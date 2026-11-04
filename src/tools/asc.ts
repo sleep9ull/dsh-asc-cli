@@ -13,7 +13,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { renderResult, type AscToolResult } from '../format.js'
 import type { AscRuntime } from '../runtime.js'
 import type { ToolArgs } from '../registry.js'
-import { RESULT_SCHEMA } from './common.js'
+import { RESULT_SCHEMA, withVersionNotice } from './common.js'
 
 const READ_ACTIONS = [
   'apps-list',
@@ -106,27 +106,24 @@ export function registerAscTool(ctx: Context, runtime: AscRuntime): void {
       return { card: 'terminal', title: 'asc', output, exitCode }
     },
     async execute(args, exec: ToolRunContext) {
-      const action = typeof args.action === 'string' ? args.action : ''
-      if (action === 'run') {
-        const argv = (args.args ?? []).filter((item): item is string => typeof item === 'string' && item.length > 0)
-        if (argv.length === 0) throw new Error('asc: `args` must contain at least one token for action `run`')
-        return (await runtime.runArgv(
-          argv,
-          {
+      return (await withVersionNotice(runtime, exec, async () => {
+        const action = typeof args.action === 'string' ? args.action : ''
+        if (action === 'run') {
+          const argv = (args.args ?? []).filter((item): item is string => typeof item === 'string' && item.length > 0)
+          if (argv.length === 0) throw new Error('asc: `args` must contain at least one token for action `run`')
+          return runtime.runArgv(argv, {
             confirm: args.confirm === true,
             ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
             ...(args.cwd === undefined ? {} : { cwd: args.cwd }),
-          },
-          exec,
-        )) as unknown as JsonValue
-      }
-      if (action === 'discover') {
-        const query = typeof args.query === 'string' ? args.query : ''
-        if (query.length === 0) throw new Error('asc: `query` is required for action `discover`')
-        const argv = ['search', '--limit', String(args.limit ?? 10), query]
-        return (await runtime.runArgv(argv, { confirm: false }, exec)) as unknown as JsonValue
-      }
-      return (await runtime.runAction('asc', action, args as ToolArgs, exec)) as unknown as JsonValue
+          }, exec)
+        }
+        if (action === 'discover') {
+          const query = typeof args.query === 'string' ? args.query : ''
+          if (query.length === 0) throw new Error('asc: `query` is required for action `discover`')
+          return runtime.runArgv(['search', '--limit', String(args.limit ?? 10), query], { confirm: false }, exec)
+        }
+        return runtime.runAction('asc', action, args as ToolArgs, exec)
+      })) as unknown as JsonValue
     },
   })
   ctx.effect(() => ctx.tools.register(tool))

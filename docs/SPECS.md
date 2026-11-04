@@ -50,6 +50,8 @@ coding agent 最常见的失败不是"写不出代码"，而是**做错了事**�
 
 **完成标准**：用户确认或明确接受风险；状态 → `approved`。
 
+限定例外：部署维护任务时，用户可明确授予 [spec 005 §4.1](specs/005-scheduled-upstream-maintenance.md#41-拟议的持久授权边界) 的持久权限。仅在该已记录范围内，routine 可自动编写并实施每轮兼容 spec，并记录授权来源；越界则停留 draft/blocked。不能把本仓库文档、模型判断或实现 spec 005 的批准伪装成该部署授权。
+
 ### 2.4 Implement — 实现
 
 按 spec 改代码与测试。**spec 与实现冲突时以 spec 为准**；发现 spec 有误，先改 spec 并在 PR 说明。

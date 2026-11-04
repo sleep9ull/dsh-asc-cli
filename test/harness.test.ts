@@ -16,6 +16,7 @@ import { makeConfig } from './helpers.js'
 const contexts: Context[] = []
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map((ctx) => ctx.fiber.dispose()))
+  vi.unstubAllGlobals()
 })
 
 function agentForCall(): Agent {
@@ -28,6 +29,7 @@ async function harness(options: {
   config?: Partial<Config>
   approval?: ApprovalOutcome | 'missing'
   before?: (ctx: Context) => void
+  version?: string
 } = {}) {
   const ctx = new Context()
   contexts.push(ctx)
@@ -42,7 +44,7 @@ async function harness(options: {
   const spawn = vi.fn((_spec: SubprocessSpawnSpec): SubprocessHandle => {
     const read = (text: string) => ({ readFrom: () => ({ text, nextOffset: text.length, lossy: false }) })
     return {
-      collected: { stdout: read('{"data":[]}'), stderr: read('') },
+      collected: { stdout: read(_spec.argv.includes('version') && options.version !== undefined ? options.version : '{"data":[]}'), stderr: read('') },
       done: Promise.resolve({ exitCode: 0, signal: null }),
       terminate: () => undefined,
     } as unknown as SubprocessHandle
@@ -207,6 +209,51 @@ describe('real Harness tool pipeline', () => {
     expect(invalid.error?.info?.code).toBe('ASC_INVALID_ARGUMENTS')
     expect(h.answer).not.toHaveBeenCalled()
     expect(h.spawn).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['asc', { action: 'apps-list' }],
+    ['asc_plan', { action: 'status' }],
+    ['asc_apply', { action: 'metadata-init', dir: '/fixture/metadata', confirm: true }],
+    ['asc_job', { action: 'release-check' }],
+    ['asc_setup', { action: 'version' }],
+  ])('renders a version advisory through the real %s pipeline', async (name, args) => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ tag_name: '7.0.0' })))
+    vi.stubGlobal('fetch', fetch)
+    const h = await harness({ config: { ascPath: process.execPath, checkUpdates: true }, version: '6.2.0 (commit: fixture)' })
+    const invoke = (agent = h.agent) => h.ctx.tools.execute({
+      name: name as string, arguments: args, callId: ToolCallId('notice'), agent,
+      signal: new AbortController().signal,
+    })
+    const first = await invoke()
+    expect(first.isError).toBe(false)
+    expect(first.value).toMatchObject({ ok: true, versionNotice: { code: 'upgrade-required', installedVersion: '6.2.0' } })
+    expect(first.content.some((part) => part.type === 'text' && part.text.includes('Verified recommendation: 6.3.0'))).toBe(true)
+    expect((await invoke()).value).not.toHaveProperty('versionNotice')
+    expect((await invoke(agentForCall())).value).toHaveProperty('versionNotice')
+    expect(fetch).toHaveBeenCalledOnce()
+    const versionCalls = h.spawn.mock.calls.filter(([spec]) => spec.argv.includes('version'))
+    expect(versionCalls).toHaveLength(name === 'asc_setup' ? 3 : 1)
+  })
+
+  it('does not start automatic checks before approval or argument validation', async () => {
+    const fetch = vi.fn(async () => { throw new Error('unexpected network') })
+    vi.stubGlobal('fetch', fetch)
+    const h = await harness({ config: { ascPath: process.execPath, checkUpdates: true }, approval: 'rejected' })
+    expect((await h.call(unknown)).isError).toBe(true)
+    expect((await h.call({ action: 'run', args: ['auth', 'login'] })).isError).toBe(true)
+    expect((await h.call({ action: 'apps-list' }, { signal: AbortSignal.abort() })).isError).toBe(true)
+    expect(h.spawn).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('keeps the start card lightweight and shows the automatic version notice', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ tag_name: '7.0.0' }))))
+    const h = await harness({ config: { ascPath: process.execPath, checkUpdates: true }, version: '6.2.0' })
+    const card = await h.ctx.commands.execute(h.agent, '/asc', [], new AbortController().signal)
+    expect(card?.result).toMatchObject({ kind: 'success', text: expect.stringContaining('Verified recommendation: 6.3.0') })
+    expect(h.spawn).toHaveBeenCalledOnce()
+    expect(h.spawn.mock.calls[0]?.[0].argv).toContain('version')
   })
 
   it('keeps explicit approval exemptions and confirm requirements', async () => {

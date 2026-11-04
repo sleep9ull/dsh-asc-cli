@@ -18,7 +18,7 @@ The [asc CLI](https://github.com/rorkai/App-Store-Connect-CLI) (MIT, Go) remains
 dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 ```
 
-> After installing, run `/asc`. It reports the engine, authentication, default app and the one next step — no model involved.
+> The source tree includes **unreleased** version notices and maintenance tooling described below; npm `0.2.0` does not include these additions yet. `/asc` in this source version is a lightweight engine/capabilities card; use `/asc-doctor` for authentication diagnostics.
 
 ---
 
@@ -108,8 +108,8 @@ Write jobs need `mode: write`, `confirm: true` and a host approval.
 
 | Command | What it shows |
 |---|---|
-| `/asc` | Capability card: engine state, auth, default app, five jobs, next step |
-| `/asc-doctor` | Full diagnosis: binary and source, version vs tested range, auth, default app, provisioning, upstream update |
+| `/asc` | Lightweight card: engine/version notice, default app, five jobs; authentication is not checked |
+| `/asc-doctor` | Full diagnosis: binary/source, declared support range and verified pin, auth, default app, provisioning, upstream update |
 
 Commands run directly in the host and do not create model messages.
 
@@ -126,9 +126,15 @@ They cover first-run choices, authentication and CI, release readiness, TestFlig
 | Step | What happens |
 |---|---|
 | Locate | `ascPath` → `ASC_CLI_PATH` → plugin cache → `PATH` |
-| Diagnose | version, tested range, auth, default app, provisioning — one next step |
+| Diagnose | version, declared range and verified pin, auth, default app, provisioning — one next step |
 | Provision | optional: pinned `asc 6.3.0`, SHA-256 verified, cached per platform |
-| Update | `/asc-doctor` compares with the latest GitHub release (24h cache); suggests `brew upgrade asc`, never upgrades itself |
+| Update | ordinary calls and `/asc` show source-aware advisories; `/asc-doctor` shows full facts; never upgrades itself |
+
+With `checkUpdates: true` (the existing default), allowed calls can query the public GitHub release endpoint. Successful queries stay in memory for 24 hours; failures back off for 15 minutes. Ordinary calls wait at most one extra second, and checks have a five-second deadline. Notices preserve business success/failure and appear once per session/version combination; jobs show one top-level notice. Set `checkUpdates: false` to disable automatic checks and remote version queries; explicit local version/diagnostic commands still work.
+
+The verified recommendation is the plugin's pin, not an untested latest release. Guidance follows the executable actually selected: configured path, environment, plugin cache or PATH. A Homebrew upgrade may not affect a configured/cached binary. Update checks no longer read or write `update-check.json`; old files remain untouched, and restarting the plugin may query again.
+
+Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a local Desktop task plus repository scripts, GitHub gates and resumable main synchronization. Deployment and persistent write authorization are separate from installing the plugin; this does not publish npm releases automatically.
 
 ---
 
@@ -217,7 +223,7 @@ Override the `asc-tools` row in `~/.dsh/profiles/<profile>/cordis.patch.yml`. A 
 | `telemetryDisabled` | `true` | Set `ASC_TELEMETRY_DISABLED=1` |
 | `auditLog` | — | Append one JSONL audit line per executed invocation |
 | `approvedActions` | `[]` | Glob labels that skip the approval prompt in write mode |
-| `checkUpdates` | `true` | Show the latest release in `/asc-doctor` |
+| `checkUpdates` | `true` | Automatic version notices and public GitHub release queries; false retains explicit local diagnosis |
 | `env` | `{}` | Extra environment for `asc` |
 
 ---
@@ -280,7 +286,7 @@ The approval gate uses the host's final guard and a receipt from actual human ap
 | Auth error / exit 3 | `asc auth status --validate` in a terminal; check the key's role in App Store Connect |
 | Keychain prompt hangs | authenticate in a terminal first, or set `bypassKeychain: true` |
 | Write operation refused | still read-only: switch the `asc-tools` row to `mode: write`, then retry with `confirm: true` |
-| Version drift warning | `/asc-doctor` shows installed vs tested vs latest; upgrade with `brew upgrade asc` |
+| Version drift warning | `/asc-doctor` shows installed, verified pin, support range and upstream latest; follow guidance for the selected source. An unverified latest is informational. |
 | Large result | `dataOmitted`: the payload was dropped from the result — narrow the query. `spillPath` appears only when raw output was truncated and saved. |
 | Unknown command asks for approval | expected; set `unknownCommands: deny` to refuse instead |
 | pnpm peer warnings on install | expected: the harness provides `@deepseek-ai/*` peers at runtime |

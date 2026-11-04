@@ -8,6 +8,22 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { redact, type AscExecOutcome } from './exec.js'
 
+/** An advisory about the engine actually used, never an installation approval. */
+export interface AscVersionNotice {
+  readonly code: 'upgrade-required' | 'upgrade-recommended' | 'upstream-unverified' | 'outside-supported-range' | 'version-unknown' | 'engine-missing'
+  readonly installedVersion?: string
+  readonly recommendedVersion: string
+  readonly supportedRange: string
+  readonly latestVersion?: string
+  readonly source: 'configured' | 'env' | 'cache' | 'path'
+  readonly message: string
+  readonly hint: string
+}
+
+export function renderVersionNotice(notice: AscVersionNotice | undefined): string[] {
+  return notice === undefined ? [] : [`asc version: ${notice.message}`, `upgrade guidance: ${notice.hint}`]
+}
+
 /** Canonical tool value; also the `output.schema` contract. */
 export type AscToolResult = {
   ok: boolean
@@ -28,6 +44,7 @@ export type AscToolResult = {
   spillPath?: string
   timedOut?: boolean
   aborted?: boolean
+  versionNotice?: AscVersionNotice
 }
 
 /** Error taxonomy surfaced to the model and the UI. */
@@ -374,5 +391,6 @@ export function renderResult(value: AscToolResult): ContentBlock[] {
   if (value.stderrTail) lines.push(`stderr (tail):\n${value.stderrTail}`)
   if (value.hint) lines.push(`next: ${value.hint}`)
   if (value.spillPath) lines.push(`full output: ${value.spillPath}`)
+  lines.push(...renderVersionNotice(value.versionNotice))
   return [{ type: 'text', text: lines.join('\n') }]
 }

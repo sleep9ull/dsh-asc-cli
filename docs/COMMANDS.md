@@ -81,8 +81,8 @@
 
 | command | 内容 | 约束 |
 |---|---|---|
-| `/asc` | 能力卡：engine、auth、默认 app、5 个 job、下一步 | 只读，不产生模型消息 |
-| `/asc-doctor` | 二进制/来源/版本 vs 区间/认证/默认 app/provision/更新 | 只读（会 best-effort 更新 24h 检查缓存） |
+| `/asc` | 轻量能力卡：engine、版本提示、默认 app、5 个 job；认证标为未检查 | 只读，不产生模型消息，不查询 Apple |
+| `/asc-doctor` | 二进制/来源/版本 vs 区间/认证/默认 app/provision/更新 | 只读；版本更新缓存仅内存，不写文件 |
 
 ---
 
@@ -93,8 +93,10 @@
 ```ts
 { ok, exitCode, command, durationMs, summary, errorClass?, hint?, data?,
   dataOmitted?, dataBytes?, text?, stderrTail?, truncated?, spillPath?,
-  timedOut?, aborted? }
+  timedOut?, aborted?, versionNotice? }
 ```
+
+`versionNotice` 也可出现在 job、diagnose、provision 顶层结果。字段为 `code, installedVersion?, recommendedVersion, supportedRange, latestVersion?, source, message, hint`。code 为 `upgrade-required / upgrade-recommended / upstream-unverified / outside-supported-range / version-unknown / engine-missing`。source 为 `configured / env / cache / path`。提示仅是建议，不改变 `ok`、业务 `hint` 或审批；在普通文本结果中显示，同会话同版本组合去重，job 内层步骤不重复。手动诊断不受展示去重限制。
 
 - **错误分类**（10 类）：`auth` `state-conflict` `rate-limit` `usage` `missing-binary` `network` `timeout` `cancelled` `parse` `unknown`。
 - **projector**：`validate`（readiness）、`status`（dashboard）、`metadata`（counters）有专用摘要。
@@ -123,7 +125,7 @@
 | `cacheDir` | — | provision 缓存目录；相对路径按宿主进程 cwd 解析为绝对路径，不随工具 cwd 改变 |
 | `auditLog` | — | JSONL 审计路径 |
 | `approvedActions` | `[]` | 写模式跳过审批的 action glob |
-| `checkUpdates` | `true` | `/asc-doctor` 检查上游新版本 |
+| `checkUpdates` | `true` | 普通使用时检查版本并查询公共 GitHub release；false 禁用自动检查及所有远端版本查询，保留显式本地诊断 |
 | `bypassKeychain` | `false` | `ASC_BYPASS_KEYCHAIN=1` |
 | `telemetryDisabled` | `true` | `ASC_TELEMETRY_DISABLED=1` |
 | `env` | `{}` | 额外环境变量 |
@@ -149,7 +151,10 @@
 | 定位 | `ascPath` → `ASC_CLI_PATH` → 插件缓存 → `PATH` |
 | 版本 | pin `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`src/compat.ts`）；实际验证基线为 6.3.0，未来 minor 由漂移门监测 |
 | provision | 默认关；pin 版本 + SHA-256；缓存到 `cacheDir`；下载透传取消信号，安装前再次检查取消 |
-| 更新检查 | GitHub latest，24h 缓存，只建议，永不自动升级 |
+| 更新检查 | GitHub latest 成功缓存 24h、失败 15min，均在实例内存；重启可重查；旧 update-check.json 不读写/删除 |
+| 普通提示 | 审批/参数校验后与业务执行并行，最多额外等待 1s；检查自身 5s 上限；业务 outcome 不变 |
+| 本地版本 | 依实际执行快照、cwd/PATH 和文件指纹隔离；成功 5min、失败 15s；手动诊断和 provision 刷新 |
+| 推荐 | 只推荐已验证 pin；未验证 latest 仅告知，prerelease 不当正式版；来源对应人工升级方式，不自动安装 |
 
 ---
 

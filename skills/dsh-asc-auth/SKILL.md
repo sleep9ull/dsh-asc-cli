@@ -30,7 +30,7 @@ asc_setup { action: "auth-status" }   # auth status --validate
 asc_setup { action: "doctor" }        # keychain, config, key files
 ```
 
-`auth-status` is the network truth; `doctor` diagnoses local storage. With `checkUpdates` (default true), `/asc-doctor` also reports the latest upstream release and an upgrade hint; the plugin never upgrades itself.
+`auth-status` is the network truth; `doctor` diagnoses local storage. `/asc` only checks the engine and shows capabilities; use `/asc-doctor` for authentication. With `checkUpdates` (default true), tools can return a `versionNotice` and `/asc-doctor` reports upstream facts. Relay the source-specific hint, preserving the distinction between the verified pin and an unverified latest release. A notice is never installation approval and must not replace the business error's auth hint. Configured/env/cache binaries may be unaffected by a Homebrew update; the plugin never upgrades itself.
 
 ## Failure branches
 
