@@ -2,6 +2,14 @@
 
 All notable changes to this plugin are documented here.
 
+## Unreleased
+
+- Add advisory `versionNotice` results during normal tool use and on `/asc`, with per-session deduplication, a one-second extra wait budget, and source-aware upgrade guidance. Preserve business outcomes and all approval gates. `/asc` is now a lightweight engine/capabilities card; use `/asc-doctor` for authentication diagnostics.
+- Distinguish the declared stable support range, verified provisioning pin and unverified upstream releases; compare prereleases correctly. Freeze the executable for each business call and its version probe.
+- Replace disk update-check caching with bounded in-memory positive/negative caches; ignore existing `update-check.json` files without deleting them. `checkUpdates: false` disables automatic probes and remote update queries.
+- Add developer-only maintenance scripts, a repository skill and deployment instructions for dual-upstream discovery, recovery/locking, final-head merge checks and conservative local-main synchronization. Extend upstream-watch with Harness default-channel monitoring. Desktop task activation, GitHub rules and npm publication remain explicit deployment steps.
+- Specifications: [005](docs/specs/005-scheduled-upstream-maintenance.md), [006](docs/specs/006-asc-version-notices.md).
+
 ## 0.2.0 — 2026-11-03 (upstream compatibility)
 
 ### Changed

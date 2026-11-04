@@ -38,6 +38,13 @@ describe('capability card', () => {
     expect(card).toContain('skills 5')
   })
 
+  it('does not call an unparseable version a missing binary', () => {
+    const { version: _version, ...unknown } = report({ compat: 'unknown' })
+    const card = renderStartCard(unknown)
+    expect(card).toContain('asc version unknown')
+    expect(card).not.toContain('asc not found')
+  })
+
   it('shows the next step from the report', () => {
     const card = renderStartCard(
       report({ next: { title: 'Authenticate asc in your terminal', command: 'asc auth login' } }),

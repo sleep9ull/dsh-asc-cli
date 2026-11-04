@@ -56,7 +56,7 @@ export interface Config {
   auditLog?: string
   /** Approval-exemption patterns (glob labels such as `asc_apply.upload`). */
   approvedActions: string[]
-  /** Check GitHub for a newer asc release in /asc-doctor (cached for 24h). */
+  /** Show advisory version notices during use; GitHub results stay in memory for 24h. */
   checkUpdates: boolean
   /** Extra environment entries layered onto the scrubbed parent environment. */
   env: Record<string, string>

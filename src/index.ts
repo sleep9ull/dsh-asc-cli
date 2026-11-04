@@ -24,6 +24,7 @@ import { createAudit } from './audit.js'
 import { registerCommands } from './commands.js'
 import { Config, type Config as AscConfig } from './config.js'
 import { createEngine } from './control/engine.js'
+import { createVersionNotices } from './control/version-notice.js'
 import { createRuntime } from './runtime.js'
 import { registerSkills } from './skills.js'
 import { registerApplyTool } from './tools/apply.js'
@@ -47,6 +48,9 @@ export function apply(ctx: Context, config: AscConfig): void {
   const audit = createAudit(config)
   const runtime = createRuntime(ctx, config, undefined, audit)
   const engine = createEngine(config, runtime.spawn)
+  const notices = createVersionNotices(config, engine)
+  runtime.versionNotices = notices
+  ctx.effect(() => () => { notices.dispose(); engine.dispose() })
 
   registerApproval(ctx, config)
   registerSetupTool(ctx, runtime, engine)
@@ -57,7 +61,7 @@ export function apply(ctx: Context, config: AscConfig): void {
 
   // Optional surfaces: no-ops when the composition lacks the service.
   registerSkills(ctx)
-  registerCommands(ctx, engine)
+  registerCommands(ctx, engine, runtime)
 }
 
 export { Config }

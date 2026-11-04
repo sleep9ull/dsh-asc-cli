@@ -19,7 +19,7 @@ import { jobCapability, JOBS } from './capabilities.js'
 import type { Config } from './config.js'
 import type { AscEngine } from './control/engine.js'
 import type { AscRuntime } from './runtime.js'
-import type { AscToolResult } from './format.js'
+import type { AscToolResult, AscVersionNotice } from './format.js'
 
 /** Parameters accepted by `asc_job` (superset of every job's inputs). */
 export interface JobArgs {
@@ -43,7 +43,7 @@ export interface JobArgs {
 export interface JobContext {
   readonly config: Config
   readonly exec: ToolRunContext
-  readonly runtime: Pick<AscRuntime, 'runAction' | 'runArgv'>
+  readonly runtime: Pick<AscRuntime, 'runAction' | 'runArgv' | 'versionNotices'>
   readonly engine: AscEngine
 }
 
@@ -71,6 +71,7 @@ export interface JobResult {
   readonly errorClass?: string
   readonly hint?: string
   readonly ascVersion?: string
+  readonly versionNotice?: AscVersionNotice
 }
 
 /** One job definition. */
@@ -510,6 +511,8 @@ export async function runJob(id: string, args: JobArgs, context: JobContext): Pr
     )
   }
   const result = await spec.run(args, context)
+  // The top-level decorator uses the execution snapshot and a bounded wait.
+  if (context.runtime.versionNotices !== undefined) return result
   const version = await context.engine.version()
   return version === undefined ? result : { ...result, ascVersion: version }
 }

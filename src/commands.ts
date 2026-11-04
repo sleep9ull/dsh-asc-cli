@@ -14,7 +14,12 @@ export type { CommandDefinition, CommandInvocation } from '@deepseek-ai/dsh-comm
 export type { CommandResult } from '@deepseek-ai/dsh-commands/types'
 import { BUNDLED_SKILLS } from './capabilities.js'
 import { JOBS } from './capabilities.js'
-import { SUPPORTED_ASC_RANGE, PINNED_ASC_VERSION } from './compat.js'
+import { SUPPORTED_ASC_RANGE, PINNED_ASC_VERSION, compatStatus, compatMessage } from './compat.js'
+import { existsSync } from 'node:fs'
+import { renderVersionNotice } from './format.js'
+import type { AscRuntime } from './runtime.js'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { withVersionNotice } from './tools/common.js'
 import type { AscEngine, DiagnoseReport } from './control/engine.js'
 
 function mark(ok: boolean): string {
@@ -22,12 +27,13 @@ function mark(ok: boolean): string {
 }
 
 function versionLabel(report: DiagnoseReport): string {
-  if (report.version === undefined) return 'asc not found'
+  if (report.version === undefined) return report.versionNotice?.code === 'engine-missing' ? 'asc not found' : 'asc version unknown'
   const suffix = report.compat === 'supported' ? '' : ` (${report.compat} vs ${SUPPORTED_ASC_RANGE})`
   return `asc ${report.version}${suffix}`
 }
 
 function authLabel(report: DiagnoseReport): string {
+  if (!report.checks.some((check) => check.name === 'auth')) return 'auth not checked'
   return report.authenticated ? 'auth ✓' : 'auth missing'
 }
 
@@ -54,6 +60,7 @@ export function renderStartCard(report: DiagnoseReport, options: { skills: numbe
   }
   lines.push('', 'Low-level: asc · asc_plan · asc_apply · asc_setup · asc.run (escape hatch)')
   lines.push('Write jobs need mode: write, confirm: true and host approval. Read jobs run directly.')
+  lines.push(...renderVersionNotice(report.versionNotice))
   const next = nextLines(report)
   if (next.length > 0) lines.push('', ...next)
   lines.push('', 'Details: /asc-doctor · Skills: dsh-asc-quickstart (bundled)')
@@ -76,13 +83,14 @@ export function renderDoctorCard(report: DiagnoseReport): string {
     }`,
   )
   if (report.resolution.source === 'cache') lines.push(`binary     using plugin cache at ${report.resolution.path}`)
+  lines.push(...renderVersionNotice(report.versionNotice))
   const next = nextLines(report)
   if (next.length > 0) lines.push('', ...next)
   return lines.join('\n')
 }
 
 /** Register `/asc` and `/asc-doctor` when the host provides commands. */
-export function registerCommands(ctx: Context, engine: AscEngine): void {
+export function registerCommands(ctx: Context, engine: AscEngine, runtime?: AscRuntime): void {
   ctx.inject(['commands'], (scope) => {
     scope.effect(() =>
       scope.commands.register({
@@ -90,7 +98,22 @@ export function registerCommands(ctx: Context, engine: AscEngine): void {
         description: 'App Store Connect: status, capabilities and the next step',
         handler: async (invocation) => {
           try {
-            const report = await engine.diagnose({ validateAuth: false, checkUpdates: false, signal: invocation.signal })
+            const report = runtime === undefined
+              ? await engine.diagnose({ validateAuth: false, checkUpdates: false, signal: invocation.signal })
+              : await withVersionNotice(runtime, invocation, async (): Promise<DiagnoseReport> => {
+                const cwd = runtime.cwdFor(invocation as unknown as ToolRunContext)
+                const snapshot = runtime.versionNotices?.execution(cwd) ?? engine.snapshot(cwd)
+                const fact = await engine.inspectVersion(snapshot, { signal: invocation.signal })
+                const compat = compatStatus(fact.version)
+                return {
+                  resolution: snapshot.resolution, compat, authenticated: false,
+                  ...(fact.version === undefined ? {} : { version: fact.version }),
+                  ...(runtime.config.defaultAppId === undefined ? {} : { defaultAppId: runtime.config.defaultAppId }),
+                  checks: [{ name: 'version', ok: compat === 'supported', detail: compatMessage(compat, fact.version) }],
+                  provision: { available: runtime.config.allowProvision, pinned: PINNED_ASC_VERSION, cached: existsSync(engine.cachedBinaryPath()) },
+                  next: { title: 'Inspect authentication and setup', detail: 'Run /asc-doctor for the full diagnostic report.' },
+                }
+              })
             return { kind: 'success', text: renderStartCard(report, { skills: BUNDLED_SKILLS.length }) }
           } catch (error) {
             return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
@@ -104,7 +127,10 @@ export function registerCommands(ctx: Context, engine: AscEngine): void {
         description: 'Diagnose asc binary, version, authentication, default app and provisioning',
         handler: async (invocation) => {
           try {
-            const report = await engine.diagnose({ validateAuth: true, checkUpdates: true, signal: invocation.signal })
+            const report = await engine.diagnose({
+              validateAuth: true, checkUpdates: true, signal: invocation.signal,
+              ...(runtime === undefined ? {} : { snapshot: engine.snapshot(runtime.cwdFor(invocation as unknown as ToolRunContext)) }),
+            })
             return { kind: 'success', text: renderDoctorCard(report) }
           } catch (error) {
             return { kind: 'error', text: error instanceof Error ? error.message : String(error) }

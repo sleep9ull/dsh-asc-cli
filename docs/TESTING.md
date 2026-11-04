@@ -33,6 +33,9 @@
 | `test/audit.test.ts` | 脱敏（独立/内联 flag）、8 KB 按字节、`0o600`、失败不影响调用 |
 | `test/harness.test.ts` | rc.5 真实 Tools/ApprovalService/Skills/Commands；五工具、六技能、两命令；审批拒绝/取消/缺失、listener 绕过、参数替换与并发隔离 |
 | `test/scripts.test.ts` | 隔离 checkout 中运行实际下载/验证/overlay 脚本，模拟 Windows/macOS/Linux 路径、损坏下载与显式路径；不启动原生 Windows 引擎 |
+| `test/version-notice.test.ts` | 业务 outcome 保持、版本/来源建议、会话与嵌套去重、1s 等待上限、显式版本复用 |
+| `test/binary.test.ts` | cwd/PATH/文件指纹快照，避免不同实际引擎混用版本 |
+| `test/maintenance.test.ts` | 注入的上游发现、状态恢复/锁、最终 head 门禁，以及临时 bare remote/worktree 的安全快进 |
 | `test/helpers.ts` / `test/compat-helpers.ts` | `makeConfig`、spawn 替身等共用夹具 |
 
 ---
@@ -98,14 +101,14 @@ npm run verify               # 完整：typecheck → test → build → pack-ma
 npm run verify -- --unit-only # 显式仅本地检查，不代表已通过引擎门禁
 # 或分开跑
 npm run typecheck
-npm test                     # 13 个 suite；保留 0.1.6 的 208 测试基线并增加迁移回归
+npm test                     # 17 个 suite；当前源码 321 tests，含维护和版本提示回归
 npm run build                # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc
 node scripts/contract-combos.mjs
 node scripts/classify-audit.mjs ./vendor/asc
 ```
 
-CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contract-combos；独立引擎 job 校验下载的固定基线 SHA-256 后跑 contract + classify-audit + offline smoke。每日 `upstream-watch` 对 latest release 执行相同引擎门禁，漂移时自动开 issue。完整 verify 缺少 vendor/asc 时失败，不再静默跳过。
+CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contract-combos；独立引擎 job 校验下载的固定基线 SHA-256 后跑 contract + classify-audit + offline smoke。每日 `upstream-watch` 对 asc latest release 执行相同引擎门禁，并比较 Harness npm 默认渠道；漂移时自动开 issue。维护脚本测试通过 Vitest 自动进入 `npm test` 和 CI，不需要真实 GitHub。部署验收（Desktop Run now、GitHub ruleset/auto-merge、真实主副本同步）与这些本地模拟测试分别记录。完整 verify 缺少 vendor/asc 时失败，不再静默跳过。
 
 ---
 

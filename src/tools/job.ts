@@ -9,10 +9,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { AscEngine } from '../control/engine.js'
-import { renderResult, type AscToolResult } from '../format.js'
+import { renderResult, renderVersionNotice, type AscToolResult } from '../format.js'
 import { jobIds, runJob, type JobArgs, type JobResult } from '../jobs.js'
 import type { AscRuntime } from '../runtime.js'
-import { RESULT_SCHEMA } from './common.js'
+import { RESULT_SCHEMA, withVersionNotice } from './common.js'
 
 const DESCRIPTION = `Run one delivery job end to end. Prefer a job over assembling asc commands yourself.
 
@@ -32,6 +32,7 @@ function renderJob(value: JobResult): string {
   if (value.errorClass !== undefined) lines.push(`error class: ${value.errorClass}`)
   if (value.hint !== undefined) lines.push(`next: ${value.hint}`)
   if (value.ascVersion !== undefined) lines.push(`asc: ${value.ascVersion}`)
+  lines.push(...renderVersionNotice(value.versionNotice))
   return lines.join('\n')
 }
 
@@ -110,12 +111,12 @@ export function registerJobTool(ctx: Context, runtime: AscRuntime, engine: AscEn
         ...(args.submit === undefined ? {} : { submit: args.submit }),
         ...(args.confirm === undefined ? {} : { confirm: args.confirm }),
       }
-      const result = await runJob(action, jobArgs, {
+      const result = await withVersionNotice(runtime, exec, () => runJob(action, jobArgs, {
         config: runtime.config,
         exec,
         runtime,
         engine,
-      })
+      }))
       return result as unknown as JsonValue
     },
   })

@@ -18,7 +18,7 @@ App Store Connect 是 iOS 发布流程的核心，也是团队最耗时间的地
 dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 ```
 
-> 安装后运行 `/asc`：它会告诉你引擎、认证、默认 app 以及**下一步该做什么**（不经过模型）。
+> 当前源码包含下述**尚未发布**的版本提示和维护工具；npm `0.2.0` 尚未包含这些新增能力。源码版 `/asc` 是轻量引擎/能力卡；认证检查请运行 `/asc-doctor`。
 
 ---
 
@@ -108,8 +108,8 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 | 命令 | 作用 |
 |---|---|
-| `/asc` | 能力卡：引擎状态、认证、默认 app、5 个作业、下一步 |
-| `/asc-doctor` | 完整诊断：二进制与来源、版本与测试范围、认证、默认 app、provision、远端更新 |
+| `/asc` | 轻量能力卡：引擎/版本提示、默认 app、5 个作业；不检查认证 |
+| `/asc-doctor` | 完整诊断：二进制/来源、声明支持范围与已验证 pin、认证、默认 app、provision、远端更新 |
 
 命令直接对宿主执行，不产生模型消息。
 
@@ -126,9 +126,15 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 | 环节 | 行为 |
 |---|---|
 | 定位 | `ascPath` → `ASC_CLI_PATH` → 插件缓存 → `PATH` |
-| 诊断 | 版本、测试范围、认证、默认 app、provision 状态，给一个下一步 |
+| 诊断 | 版本、声明支持范围和验证 pin、认证、默认 app、provision 状态，给一个下一步 |
 | Provision | 可选：固定 `asc 6.3.0`、SHA-256 校验、按平台缓存 |
-| 更新 | `/asc-doctor` 对比 GitHub 最新 release（24h 缓存），提示 `brew upgrade asc`，从不自动升级 |
+| 更新 | 普通调用和 `/asc` 显示来源相关的版本提示；`/asc-doctor` 展示完整事实；从不自动升级 |
+
+`checkUpdates: true` 沿用已有默认值，允许的普通调用现在也可查询公共 GitHub release。成功结果内存缓存 24 小时，失败退避 15 分钟；普通调用最多额外等 1 秒，检查自身上限 5 秒。提示不改变业务成功/失败，同会话同版本组合只提示一次，job 只在顶层显示。设置 `checkUpdates: false` 关闭自动检查与远端版本查询；显式本地版本/诊断仍可用。
+
+推荐目标是插件已验证 pin，未验证的 latest 仅告知。提示针对实际执行的配置路径、环境变量、插件缓存或 PATH；Homebrew 升级可能不会改变配置/缓存中的二进制。更新查询不再读写 `update-check.json`，旧文件保留不动；插件重启后可能重新查询。
+
+开发维护机制见 [MAINTENANCE](docs/MAINTENANCE.md)：本地 Desktop 定时任务、仓库脚本、GitHub 门禁及可恢复的 main 同步。部署和持久写授权独立于插件安装，不自动发布 npm。
 
 ---
 
@@ -217,7 +223,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 | `telemetryDisabled` | `true` | 设置 `ASC_TELEMETRY_DISABLED=1` |
 | `auditLog` | — | 每次调用追加一行 JSONL 审计 |
 | `approvedActions` | `[]` | 写模式下跳过审批的 glob 标签 |
-| `checkUpdates` | `true` | 在 `/asc-doctor` 显示最新版本 |
+| `checkUpdates` | `true` | 自动版本提示与公共 GitHub release 查询；false 保留显式本地诊断 |
 | `env` | `{}` | 传给 `asc` 的额外环境变量 |
 
 ---
@@ -280,7 +286,7 @@ dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 | 鉴权失败 / exit 3 | 终端执行 `asc auth status --validate`；检查 key 在 App Store Connect 的角色 |
 | Keychain 卡住 | 先在终端登录一次；或设置 `bypassKeychain: true` |
 | 写操作被拒 | 仍是只读模式：把 `asc-tools` 行改成 `mode: write`，再带 `confirm: true` 重试 |
-| 版本漂移提示 | `/asc-doctor` 会显示已装 / 测试范围 / 最新版本；按提示 `brew upgrade asc` |
+| 版本漂移提示 | `/asc-doctor` 显示已装版本、验证 pin、支持范围和上游 latest；按实际来源处理，未验证 latest 仅告知。 |
 | 结果太大 | `dataOmitted`：payload 在进入结果前被省略，缩小查询即可；只有原始输出被截断并落盘时才会出现 `spillPath`。 |
 | 未知命令要求审批 | 预期行为；可设 `unknownCommands: deny` 改为直接拒绝 |
 | 安装时 pnpm 报 peer 警告 | 正常：DSH 运行时提供 `@deepseek-ai/*` peer |

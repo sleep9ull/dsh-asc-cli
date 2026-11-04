@@ -1,7 +1,7 @@
 /**
  * Compatibility facts for the `asc` engine this plugin targets.
  *
- * The plugin ships a pinned engine version and a tested range. A version
+ * The plugin declares a supported range and one tested, provisionable pin. A version
  * outside the range is reported by `/asc-doctor` and never blocks read-only
  * work outright: `asc` evolves weekly, and a hard failure would be worse than a
  * clear warning.
@@ -11,8 +11,8 @@
 export const PINNED_ASC_VERSION = '6.3.0'
 
 /** Compatibility bounds; future minors are monitored, not individually certified. */
-const MIN_ASC_VERSION = PINNED_ASC_VERSION
-const NEXT_ASC_MAJOR = '7.0.0'
+export const MIN_ASC_VERSION = '6.3.0'
+export const NEXT_ASC_MAJOR = '7.0.0'
 export const SUPPORTED_ASC_RANGE = `>=${MIN_ASC_VERSION} <${NEXT_ASC_MAJOR}`
 
 /** Release download root for the upstream GitHub project. */
@@ -63,29 +63,56 @@ export function parseChecksums(text: string): Map<string, string> {
   return digests
 }
 
-export type CompatStatus = 'supported' | 'older' | 'newer' | 'unknown'
+export type CompatStatus = 'supported' | 'older' | 'newer' | 'prerelease' | 'unknown'
 
-function semver(text: string): [number, number, number] | undefined {
-  const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(text.trim())
+function semver(text: string): { core: string[]; pre: string[] } | undefined {
+  const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(text)
   if (!match) return undefined
-  return [Number(match[1]), Number(match[2]), Number(match[3])]
+  const pre = match[4]?.split('.') ?? []
+  if (pre.some((part) => /^0\d+$/.test(part))) return undefined
+  return { core: [match[1]!, match[2]!, match[3]!], pre }
 }
 
-/** Compare two dotted versions; returns -1, 0 or 1. */
+/** Parse only the first token of `asc version` output, never a later incidental version. */
+export function parseVersion(text: string): string | undefined {
+  const token = text.trim().split(/\s+/, 1)[0]
+  return token !== undefined && semver(token) !== undefined ? token.replace(/^v/, '') : undefined
+}
+
+function compareIdentifier(a: string, b: string): number {
+  if (a === b) return 0
+  const aNumeric = /^\d+$/.test(a), bNumeric = /^\d+$/.test(b)
+  if (aNumeric && bNumeric && a.length !== b.length) return a.length < b.length ? -1 : 1
+  if (aNumeric !== bNumeric) return aNumeric ? -1 : 1
+  return a < b ? -1 : 1
+}
+
+/** SemVer precedence, ignoring build metadata; invalid inputs return NaN, never equality. */
 export function compareVersions(a: string, b: string): number {
-  const left = semver(a)
-  const right = semver(b)
-  if (!left || !right) return 0
-  for (let index = 0; index < 3; index += 1) {
-    if ((left[index] ?? 0) !== (right[index] ?? 0)) return (left[index] ?? 0) > (right[index] ?? 0) ? 1 : -1
+  const left = semver(a), right = semver(b)
+  if (!left || !right) return Number.NaN
+  for (let index = 0; index < 3; index++) {
+    const comparison = compareIdentifier(left.core[index]!, right.core[index]!)
+    if (comparison !== 0) return comparison
+  }
+  if (left.pre.length === 0 || right.pre.length === 0) {
+    return left.pre.length === right.pre.length ? 0 : left.pre.length === 0 ? 1 : -1
+  }
+  for (let index = 0; index < Math.max(left.pre.length, right.pre.length); index++) {
+    const aPart = left.pre[index], bPart = right.pre[index]
+    if (aPart === undefined || bPart === undefined) return aPart === undefined ? -1 : 1
+    const comparison = compareIdentifier(aPart, bPart)
+    if (comparison !== 0) return comparison
   }
   return 0
 }
 
-/** Classify one engine version against the tested range. */
+/** Declared compatibility is distinct from the one tested/provisioned pin. */
 export function compatStatus(version: string | undefined): CompatStatus {
-  if (version === undefined || semver(version) === undefined) return 'unknown'
+  const parsed = version === undefined ? undefined : semver(version)
+  if (parsed === undefined || version === undefined) return 'unknown'
   if (compareVersions(version, MIN_ASC_VERSION) < 0) return 'older'
+  if (parsed.pre.length > 0) return 'prerelease'
   if (compareVersions(version, NEXT_ASC_MAJOR) >= 0) return 'newer'
   return 'supported'
 }
@@ -95,11 +122,12 @@ export function compatMessage(status: CompatStatus, version?: string): string {
   const found = version === undefined ? 'unknown version' : `asc ${version}`
   switch (status) {
     case 'supported':
-      return `${found} is within the tested range (${SUPPORTED_ASC_RANGE}).`
+      return `${found} is within the declared supported range (${SUPPORTED_ASC_RANGE}); the tested baseline is ${PINNED_ASC_VERSION}.`
     case 'older':
-      return `${found} is older than the tested range (${SUPPORTED_ASC_RANGE}); some flags or commands may be missing. Upgrade with \`brew upgrade asc\`, or enable \`allowProvision\` and run \`asc_setup\` with action \`provision\`.`
+      return `${found} is below the minimum supported version (${MIN_ASC_VERSION}); some flags or commands may be missing. Update the active installation to the tested baseline ${PINNED_ASC_VERSION}; run \`/asc-doctor\` to identify its source.`
     case 'newer':
-      return `${found} is newer than the tested range (${SUPPORTED_ASC_RANGE}); the plugin should still work, but new flags may need \`asc.run\`. Run \`/asc-doctor\` after an upstream change.`
+    case 'prerelease':
+      return `${found} is outside the declared supported range (${SUPPORTED_ASC_RANGE}); prereleases are not declared supported. Compatibility is unconfirmed; check the plugin's compatibility notes before changing the active installation.`
     default:
       return 'Could not determine the asc version. Run `asc version` in a terminal, or run `/asc-doctor`.'
   }

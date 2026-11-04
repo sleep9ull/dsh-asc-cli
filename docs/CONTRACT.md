@@ -113,7 +113,7 @@
 | command | `/asc`、`/asc-doctor`，只读、不产生模型消息 |
 | 结果 | `AscToolResult` + 10 类错误 + 3 个 projector + `maxDataBytes` |
 | 审计 | 选开 JSONL，字段见 [`COMMANDS.md §6`](./COMMANDS.md#6-结果契约) |
-| 引擎 | 定位 / 诊断 / 可选 provision / 版本握手 / 更新建议 |
+| 引擎 | 定位 / 诊断 / 可选 provision / 版本握手 / 使用时版本提示；推荐已验证 pin，latest 未验证时仅告知；更新缓存仅内存 |
 
 逐项参考见 [`COMMANDS.md`](./COMMANDS.md)；模块与数据流见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。
 
@@ -124,7 +124,8 @@
 - **版本**：`0.x`；工具/action 的破坏性变更用 `feat!`，同一提交内更新：README + README.zh 迁移表、CHANGELOG、受影响 skill、registry/contract。
 - **过渡期**：0.1.4 是硬切换。下一次破坏性变更应保留一个 minor 的 deprecated 别名，或在 README 给出逐步迁移路径。
 - **质量门**：`npm run verify`（typecheck → test → build → pack-manifest → contract → classify-audit → smoke）；`scripts/pack-manifest.mjs` 断言 `lib/` 与 `src/` 文件集一致。
-- **引擎**：pin 与区间只在 `src/compat.ts` 定义；`scripts/contract.mjs` 锁定 23 个注册命令与 `--help` 兼容性；CI + 每日 upstream-watch 兜底。
+- **引擎**：pin 与区间只在 `src/compat.ts` 定义；最低要求、已验证 pin 和声明支持范围区分，未来版本不称为已实测。`scripts/contract.mjs` 锁定 23 个注册命令与 `--help` 兼容性；CI + 每日 upstream-watch 监测 asc 漂移和 Harness 默认渠道变化，监测不等于完成适配。
+- **版本提示**：`checkUpdates` 沿用默认 true，扩展到普通工具和 `/asc`；可选 `versionNotice` 不改变业务结果或审批。远端缓存 24h、失败 15min，均在内存；不读写旧更新缓存文件。false 关闭自动检查和远端查询；显式本地诊断保留。
 - **宿主**：`engines.dsh` = `>=0.2.1-rc.5 <0.2.2-0`；peer 依赖由宿主提供。
 - **发布物**：`files` 含 `lib`、`skills`、`cordis.patch.yml`、README/CHANGELOG；`prepack`/`prepare` 构建；无 postinstall 下载。
 
@@ -160,6 +161,7 @@
 
 | 日期 | 版本 | 变更 | 理由 |
 |---|---|---|---|
+| 2026-11-04 | Unreleased | 使用时版本提示、稳定范围与验证 pin 分离、内存缓存、双上游维护入口 | 用户批准 spec 005/006 的代码实现；I1–I10 不放宽，部署/持久写授权/发布另行验收 |
 | 2026-10-24 | 0.1.4 | 初版契约建立 | 0.1.2–0.1.4 收敛后固化边界与路线 |
 | 2026-10-24 | 0.1.5 | 拆分重组为 CONTRACT / COMMANDS / ARCHITECTURE / TESTING / CONTRIBUTING / ROADMAP / SPECS，并按上游仓库模式重写 AGENTS.md | 文档与代码对齐，减少单文件 sprawl |
 | 2026-10-25 | 0.1.6 | 分类器归一化前导全局 flag（I10）、文件写 `download/export` 改 local-write（I1）、审批前参数校验（I2/I3）；I5 增加 `ASC_WEB_SESSION` tombstone | 修复 0.1.5 评估的 2 个安全 P1 与 2 个写路径 P1；spec 003 |
