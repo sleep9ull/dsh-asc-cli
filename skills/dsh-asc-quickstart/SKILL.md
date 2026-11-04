@@ -16,7 +16,7 @@ This plugin wraps `asc` for App Store Connect; it does not build or sign apps. A
 4. Resolve the app id with `asc action:"apps-list"`, then set `defaultAppId`.
 5. Prefer a job; raw commands last.
 
-`/asc-doctor` (`checkUpdates`, default true) shows the latest release and upgrade hint; never auto-upgrades. Tested `>=6.3.0 <7.0.0`.
+With `checkUpdates` (default true), ordinary tool results and `/asc` can carry a `versionNotice`; `/asc-doctor` always shows the full diagnostic facts. Briefly relay its message and source-specific hint to the user. The verified baseline is `6.3.0`; `>=6.3.0 <7.0.0` is a declared support range, not a claim that every future minor was tested. An `upstream-unverified` notice is information, not a recommendation to install latest. Never treat a notice as confirmation or approval to upgrade. Plugin cache precedes PATH, so `brew upgrade asc` may not change the executable in use.
 
 ## Choose the surface
 
