@@ -413,6 +413,70 @@ describe('version cache lifecycle', () => {
     expect(await engine.version()).toBe('6.3.0')
   })
 
+  it('remembers explicit versions without cancelling shared probes or overwriting the fresh fact', async () => {
+    let finish!: () => void
+    const calls: SubprocessSpawnSpec[] = []
+    const engine = createEngine(makeConfig({ ascPath: process.execPath }), (spec) => {
+      calls.push(spec)
+      return { ...handle('6.3.0'), done: new Promise((resolve) => { finish = () => resolve({ exitCode: 0, signal: null }) }) } as SubprocessHandle
+    })
+    try {
+      const selected = engine.snapshot()
+      const controller = new AbortController()
+      const cancelled = engine.inspectVersion(selected, { signal: controller.signal })
+      const first = engine.inspectVersion(selected)
+      const second = engine.inspectVersion(selected)
+      engine.rememberVersion(selected, '6.4.0')
+      controller.abort()
+      await expect(cancelled).rejects.toThrow()
+      expect(await engine.inspectVersion(selected)).toEqual({ version: '6.4.0', missing: false })
+      finish()
+      expect(await Promise.all([first, second])).toEqual([
+        { version: '6.3.0', missing: false },
+        { version: '6.3.0', missing: false },
+      ])
+      expect(calls[0]?.signal?.aborted).toBe(false)
+      expect(await engine.inspectVersion(selected)).toEqual({ version: '6.4.0', missing: false })
+      expect(calls).toHaveLength(1)
+    } finally { engine.dispose() }
+  })
+
+  it.each(['timeout', 'dispose', 'provision'])('still aborts detached probes on %s', async (reason) => {
+    vi.useFakeTimers()
+    const calls: SubprocessSpawnSpec[] = []
+    const engine = createEngine(makeConfig({ ascPath: process.execPath, allowProvision: true, cacheDir: testHome }), (spec) => {
+      calls.push(spec)
+      return { ...handle('6.3.0'), done: new Promise((resolve) => spec.signal?.addEventListener('abort', () => resolve({ exitCode: null, signal: 'SIGTERM' }), { once: true })) } as SubprocessHandle
+    })
+    try {
+      const selected = engine.snapshot()
+      const first = engine.inspectVersion(selected)
+      engine.rememberVersion(selected, '6.4.0')
+      const second = engine.inspectVersion(selected, { refresh: true })
+      engine.rememberVersion(selected, '6.5.0')
+      await vi.advanceTimersByTimeAsync(4_999)
+      expect(calls).toHaveLength(2)
+      expect(calls.map(call => call.signal?.aborted)).toEqual([false, false])
+      if (reason === 'timeout') {
+        await vi.advanceTimersByTimeAsync(1)
+      } else if (reason === 'dispose') {
+        engine.dispose()
+      } else {
+        const bytes = Buffer.from('verified replacement')
+        const digest = createHash('sha256').update(bytes).digest('hex')
+        expect((await engine.provision({ fetch: async (url) => String(url).endsWith('checksums.txt')
+          ? new Response(checksumsForTest(assetNameForTest(), digest)) : new Response(bytes) })).ok).toBe(true)
+      }
+      expect(await Promise.all([first, second])).toEqual([{ missing: false }, { missing: false }])
+      expect(calls.map(call => call.signal?.aborted)).toEqual([true, true])
+      expect(vi.getTimerCount()).toBe(0)
+      if (reason === 'timeout') {
+        expect(await engine.inspectVersion(selected)).toEqual({ version: '6.5.0', missing: false })
+        expect(calls).toHaveLength(2)
+      }
+    } finally { engine.dispose(); vi.useRealTimers() }
+  })
+
   it('bounds hanging probes and aborts pending probes on disposal', async () => {
     vi.useFakeTimers()
     const calls: SubprocessSpawnSpec[] = []

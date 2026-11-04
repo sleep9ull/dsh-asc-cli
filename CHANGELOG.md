@@ -8,6 +8,8 @@ All notable changes to this plugin are documented here.
 - Distinguish the declared stable support range, verified provisioning pin and unverified upstream releases; compare prereleases correctly. Freeze the executable for each business call and its version probe.
 - Replace disk update-check caching with bounded in-memory positive/negative caches; ignore existing `update-check.json` files without deleting them. `checkUpdates: false` disables automatic probes and remote update queries.
 - Add developer-only maintenance scripts, a repository skill and deployment instructions for dual-upstream discovery, recovery/locking, final-head merge checks and conservative local-main synchronization. Extend upstream-watch with Harness default-channel monitoring. Desktop task activation, GitHub rules and npm publication remain explicit deployment steps.
+- Harden maintenance recovery and synchronization: hold the ownership guard through final writes, require boolean exclusive-access confirmation, retain repair counts, detect orphan targets, and allow a successful third repair. Target markers use v2 keys covering independent Harness package versions; legacy v1 records require manual migration. Discovery reuses the compatibility module's asset mapping.
+- Preserve shared version-probe waiters when an explicit version result refreshes the cache; retain deadlines and disposal/provision cancellation for detached probes.
 - Specifications: [005](docs/specs/005-scheduled-upstream-maintenance.md), [006](docs/specs/006-asc-version-notices.md).
 
 ## 0.2.0 — 2026-11-03 (upstream compatibility)

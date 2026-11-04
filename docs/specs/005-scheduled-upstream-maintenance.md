@@ -77,7 +77,7 @@
 - Harness：读取 `@deepseek-ai/dsh` npm `latest`，获取目标版本 manifest、相关 peer/dev 包版本及对应源码 tag/commit；不假定所有 `@deepseek-ai/*` 包都使用同一个版本号。
 - asc：读取正式 latest release，记录 tag、源码 commit、平台资产和 SHA-256。下载到独立空目录，执行自己的校验脚本，不运行 release 文本中的指令。
 - 每轮固定目标版本组合；进行中的升级不因 latest 再次变化而自动换目标。合并后下一轮再评估新组合。
-- 以仓库 + Harness 精确版本 + asc 精确版本作为去重键，记录在 PR 的机器可读标记及本地维护状态。源码 commit、包 integrity 和验证证据一并记录；元数据不一致时停止自动合并。
+- 以仓库 + Harness 精确版本 + asc 精确版本 + 按包名排序的相关 Harness 包名/精确版本作为去重键，记录在 v2 PR 机器可读标记及本地维护状态。独立包更新可以成为新目标；同一完整版本组合的源码 commit、包 integrity 或校验和改变仍须停止。旧 v1 标记保守阻塞，需人工核验并迁移，不能当作没有历史工作。
 - 先恢复已知维护分支/开放 PR/已合并 PR，再发现新工作。同一组合关闭但未合并的 PR 不自动重开，标为人工处理；已有多条冲突记录时不猜测。
 - 版本未变且无未收口状态时只报告检查结果，不制造提交。查询失败记录 unknown，不能记录为“没有更新”。
 
@@ -152,6 +152,19 @@
 仓库代码及文档已落地。2026-11-04 11:59 用户在当前 worktree 手动执行 `npm run verify` 并提供完整成功输出，全部八阶段通过：typecheck、17 suites / 321 tests（其中 maintenance 24 tests）、clean build、pack-manifest、contract-combos、asc contract、classify-audit、真实引擎 smoke。asc 6.3.0 接受 28 条命令；分类审计覆盖 1,932 条路径和 11 组 flag，无写文件路径误分类为 read；隔离 smoke 通过真实 Harness subprocess 完成 6 次调用。临时 Git 测试无真实 GitHub/Apple 写入；npm dry-run 打包不包含维护脚本、开发 skill 或引擎。
 
 此前自动执行因 `Code from External` 被拒绝，用户本次手动完整验证已补齐该缺口。未创建或启用 routine，未修改 GitHub 保护/auto-merge，未提交/push/建 PR/合并/同步真实 main/发布。部署步骤仍需 §5 和 §4.1 的明确授权及实际演练。
+
+### 8.2 PR 10 评审修订（2026-11-04）
+
+用户明确要求“修复评审问题”，授权本次修订与实现；保持既有维护授权边界。验收新增：
+
+- 外部持锁进程退出/锁被重领后，旧 sync 不得更新 main；最终所有权校验、Git 复查及写入共用 ownership.guard 临界区，期间不得释放或重领锁。record 同样在临界区校验并写入。
+- exclusiveAccess 只接受布尔 true，字符串等输入必须拒绝。
+- 恢复开放 PR 保留同目标的累计 repairAttempts；历史缺失则保留目标并 blocked，人工重建计数后才能继续，不能默认零次。
+- 独立包新版本产生新目标键；扫描全部孤立分支及未完成本地目标后才选择唯一恢复目标。
+- repairAttempts 必须是 0–3 的整数；第三轮成功可以通过 gate，第三轮仍失败则按原流程 blocked，不能自动开始第四轮。
+- asc 平台资产命名复用 src/compat.ts 的 releaseAsset；维护 CLI 在无 lib/ 的 checkout 仍能发现目标（使用受支持 Node 的类型擦除加载纯兼容模块）。
+
+修复验证：新增维护回归先红（12 个失败用例），修复后 maintenance 37/37 通过；本地 `verify --unit-only` 五阶段通过，共 17 suites / 338 tests。本轮未重新执行真实引擎三项门禁，不能把此前 321 tests 的用户完整验收当作本次提交证据；提交后的 CI 独立重新验证。
 
 ## 9. 测试计划
 

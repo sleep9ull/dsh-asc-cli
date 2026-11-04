@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { access, realpath } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { acquireLock, assertLockOwner } from './state.mjs'
+import { acquireLock, assertLockOwner, withLockOwner } from './state.mjs'
 
 const execute = promisify(execFile)
 export async function runGit(cwd, args) {
@@ -36,7 +36,7 @@ export async function syncCheckout({ checkout, authorizedCheckout, expectedOrigi
     // Authorization binds the canonical path. A symlink must not redirect it elsewhere.
     if (actual !== resolve(authorizedCheckout) || actual !== await realpath(authorizedCheckout)) return pending('unauthorized-checkout')
     if (actual === await realpath(featureCheckout)) return pending('feature-worktree-is-not-main-checkout')
-    if (!exclusiveAccess) return pending('concurrent-use-not-excluded')
+    if (exclusiveAccess !== true) return pending('concurrent-use-not-excluded')
     if (await realpath(await run(actual, ['rev-parse', '--show-toplevel'])) !== actual) return pending('checkout-must-be-repository-root')
     const commonDir = await commonDirectory(actual, run)
     if (lockToken) await assertLockOwner(commonDir, lockToken)
@@ -53,14 +53,17 @@ export async function syncCheckout({ checkout, authorizedCheckout, expectedOrigi
     try { await run(actual, ['merge-base', '--is-ancestor', mergeCommit, remote]) } catch { return pending('squash-commit-not-in-origin-main') }
     try { await run(actual, ['merge-base', '--is-ancestor', local, remote]) } catch { return pending('local-main-diverged') }
     await beforeUpdate()
-    const final = await inspect(actual, expectedOrigin, run)
-    if (final) return pending(final)
-    if (await run(actual, ['rev-parse', 'HEAD']) !== local || await run(actual, ['rev-parse', 'refs/remotes/origin/main']) !== remote) return pending('refs-changed-during-sync')
-    if (local !== remote) await run(actual, ['merge', '--ff-only', '--no-edit', '--no-overwrite-ignore', remote])
-    const after = await inspect(actual, expectedOrigin, run)
-    const head = await run(actual, ['rev-parse', 'HEAD'])
-    if (after || head !== remote) return pending(after ?? 'post-sync-head-mismatch')
-    return { status: 'synced', checkout: actual, head, fetchedHead: remote, mergeCommit, checkedAt: now(), published: false }
+    const result = await withLockOwner(commonDir, lockToken ?? lock.owner.token, async () => {
+      const final = await inspect(actual, expectedOrigin, run)
+      if (final) return pending(final)
+      if (await run(actual, ['rev-parse', 'HEAD']) !== local || await run(actual, ['rev-parse', 'refs/remotes/origin/main']) !== remote) return pending('refs-changed-during-sync')
+      if (local !== remote) await run(actual, ['merge', '--ff-only', '--no-edit', '--no-overwrite-ignore', remote])
+      const after = await inspect(actual, expectedOrigin, run)
+      const head = await run(actual, ['rev-parse', 'HEAD'])
+      if (after || head !== remote) return pending(after ?? 'post-sync-head-mismatch')
+      return { status: 'synced', checkout: actual, head, fetchedHead: remote, mergeCommit, checkedAt: now(), published: false }
+    })
+    return result.status === 'blocked' ? pending(result.reason) : result
   } catch {
     // Do not print subprocess stderr: remote URLs and credential helpers may contain secrets.
     return pending('git-or-filesystem-check-failed; inspect the authorized checkout manually')

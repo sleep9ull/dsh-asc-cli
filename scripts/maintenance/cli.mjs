@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { discoverHarness, discoverTargets, downloadTarget } from './discovery.mjs'
-import { acquireLock, assertLockOwner, readState, writeState, recover, mergeGate, prMarker, targetKey } from './state.mjs'
+import { acquireLock, withLockOwner, readState, writeState, recover, mergeGate, prMarker, targetKey } from './state.mjs'
 import { commonDirectory, runGit, syncCheckout } from './git.mjs'
 
 const help = `Upstream maintenance helpers (Node 22/24; no GitHub mutations).
@@ -93,10 +93,12 @@ try {
       }
     } else if (command === 'state') result = await readState(await location())
     else if (command === 'record') {
-      await assertLockOwner(await commonDirectory(resolve(required('checkout'))), required('lock-token'))
+      const commonDir = await commonDirectory(resolve(required('checkout')))
       const state = await json(required('input'))
-      await writeState(await location(), state)
-      result = { status: 'recorded', key: state.key }
+      result = await withLockOwner(commonDir, required('lock-token'), async () => {
+        await writeState(join(commonDir, 'asc-maintenance', 'state.json'), state)
+        return { status: 'recorded', key: state.key }
+      })
     } else if (command === 'recover') {
       const snapshot = await json(required('input'))
       if (snapshot.complete !== true) throw new Error('Recovery requires a complete paginated PR snapshot')

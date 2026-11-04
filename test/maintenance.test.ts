@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 const modulePath = '../scripts/maintenance/'
 const { discoverTargets, discoverHarness, downloadTarget } = await import(modulePath + 'discovery.mjs')
 const { acquireLock, readState, writeState, targetKey, prMarker, recover, mergeGate } = await import(modulePath + 'state.mjs')
-const { syncCheckout, commonDirectory } = await import(modulePath + 'git.mjs')
+const { syncCheckout, commonDirectory, runGit } = await import(modulePath + 'git.mjs')
 const dirs: string[] = []
 async function temp() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'maintenance-')))
@@ -71,6 +71,46 @@ describe('maintenance discovery', () => {
 })
 
 describe('maintenance recovery and lock', () => {
+  it('retains repair history across recovery and blocks unknown histories', () => {
+    const branch = 'maintenance/one'
+    const pr = { number: 3, state: 'OPEN', body: prMarker(target), headRefName: branch }
+    const state = { status: 'awaiting-checks', key: key(), target, branch, repairAttempts: 2 }
+    const recovered = recover({ repository: target.repository, prs: [pr], branches: [branch], state })
+    expect(recovered).toMatchObject({ status: 'pr-open', repairAttempts: 2 })
+    expect(recover({ repository: target.repository, prs: [pr], state: recovered })).toMatchObject({ repairAttempts: 2 })
+    const unknown = recover({ repository: target.repository, prs: [pr] })
+    expect(unknown).toMatchObject({ status: 'blocked', key: key(), target, repairAttempts: null })
+  })
+  it('starts a new target for an independent package release after sync', async () => {
+    const pkg = { name: '@deepseek-ai/cordis', version: '4.0.5', commit: sha, integrity: 'sha512-first' }
+    const previous = { ...target, harness: { ...target.harness, packages: [pkg] } }
+    const next = { ...target, harness: { ...target.harness, packages: [{ ...pkg, version: '4.0.6', integrity: 'sha512-next' }] } }
+    const path = join(await temp(), 'state.json')
+    await writeState(path, { status: 'synced', key: targetKey(previous), target: previous })
+    const state = { status: 'adapting', key: targetKey(next), target: next, branch: 'maintenance/next', repairAttempts: 0 }
+    await writeState(path, state)
+    const prs = [
+      { number: 3, state: 'MERGED', body: prMarker(previous), headRefName: 'maintenance/previous', mergeCommit: { oid: sha } },
+      { number: 4, state: 'OPEN', body: prMarker(next), headRefName: state.branch },
+    ]
+    expect(recover({ repository: target.repository, prs, state, branches: prs.map(pr => pr.headRefName), syncedKeys: [targetKey(previous)] })).toMatchObject({ status: 'pr-open', target: next })
+    const second = { ...pkg, name: '@deepseek-ai/dsh-tools' }
+    expect(targetKey({ ...target, harness: { ...target.harness, packages: [pkg, second] } })).toBe(targetKey({ ...target, harness: { ...target.harness, packages: [second, pkg] } }))
+  })
+  it('blocks orphan branches and other unfinished local targets before selecting a PR', () => {
+    const branch = 'maintenance/one'
+    const pr = { number: 3, state: 'OPEN', body: prMarker(target), headRefName: branch }
+    const state = { status: 'awaiting-checks', key: key(), target, branch, repairAttempts: 0 }
+    expect(recover({ repository: target.repository, prs: [pr], state, branches: [branch, 'maintenance/orphan'] }).status).toBe('blocked')
+    const other = { ...target, asc: { ...target.asc, version: '6.5.0' } }
+    expect(recover({ repository: target.repository, prs: [pr], branches: [branch, 'maintenance/other'], state: { ...state, status: 'adapting', target: other, key: targetKey(other), branch: 'maintenance/other' } }).status).toBe('blocked')
+    expect(recover({ repository: target.repository, prs: [], branches: [branch, 'maintenance/orphan'], state: { ...state, status: 'adapting' } }).status).toBe('blocked')
+  })
+  it('does not silently ignore legacy target markers', () => {
+    const legacyKey = createHash('sha256').update(JSON.stringify([target.repository, target.harness.version, target.asc.version])).digest('hex')
+    const body = `<!-- asc-maintenance:v1 ${Buffer.from(JSON.stringify({ key: legacyKey, target })).toString('base64url')} -->`
+    expect(recover({ repository: target.repository, prs: [{ number: 3, state: 'OPEN', headRefName: 'maintenance/old', body }] })).toMatchObject({ status: 'blocked', reason: expect.stringContaining('v1') })
+  })
   it('serializes contenders across worktrees and does not expire a live owner', async () => {
     const directory = await temp()
     const options = { commonDir: directory, runId: 'first', now: () => 1 }
@@ -105,7 +145,7 @@ describe('maintenance recovery and lock', () => {
   })
   it('keeps an active older target fixed and does not trust local merged claims', () => {
     const pr = { number: 3, state: 'OPEN', body: prMarker(target), headRefName: 'maintenance/one' }
-    expect(recover({ repository: target.repository, prs: [pr], branches: [], state: { status: 'merged', key: key(), target } })).toMatchObject({ status: 'pr-open', target })
+    expect(recover({ repository: target.repository, prs: [pr], branches: [], state: { status: 'merged', key: key(), target, repairAttempts: 0 } })).toMatchObject({ status: 'pr-open', target })
     expect(recover({ repository: target.repository, prs: [], branches: [], state: { status: 'merged', key: key(), target } }).status).toBe('blocked')
   })
   it('preserves corrupt state for diagnosis and can recover solely from a PR marker', async () => {
@@ -116,7 +156,7 @@ describe('maintenance recovery and lock', () => {
     expect(await readFile(path, 'utf8')).toBe('{broken')
     const restored = recover({ repository: target.repository, prs: [{ number: 3, state: 'OPEN', body: prMarker(target), headRefName: 'maintenance/one' }], branches: [] })
     await writeState(path, restored)
-    expect((await readState(path)).state.status).toBe('pr-open')
+    expect((await readState(path)).state).toMatchObject({ status: 'blocked', target, repairAttempts: null })
     await expect(writeState(path, { ...restored, token: 'secret' })).rejects.toThrow()
     const changed = { ...target, asc: { ...target.asc, sha256: 'c'.repeat(64) } }
     await expect(writeState(path, { ...restored, target: changed })).rejects.toThrow('provenance')
@@ -125,9 +165,16 @@ describe('maintenance recovery and lock', () => {
 })
 
 function gateInput() {
-  return { target, head: sha, evidence: { head: sha, target, fullVerify: true, baselineVerify: true }, policy: { enforced: true, requiredChecks: [{ name: 'test (22)', appId: 15368 }, { name: 'test (24)', appId: 15368 }, { name: 'contract', appId: 15368 }], reviewsSatisfied: true, squashAllowed: true, mergeQueue: false }, checks: ['test (22)', 'test (24)', 'contract'].map(name => ({ name, appId: 15368, head: sha, status: 'COMPLETED', conclusion: 'SUCCESS' })), mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', unresolvedReviews: 0, withinScope: true }
+  return { target, head: sha, evidence: { head: sha, target, fullVerify: true, baselineVerify: true }, policy: { enforced: true, requiredChecks: [{ name: 'test (22)', appId: 15368 }, { name: 'test (24)', appId: 15368 }, { name: 'contract', appId: 15368 }], reviewsSatisfied: true, squashAllowed: true, mergeQueue: false }, checks: ['test (22)', 'test (24)', 'contract'].map(name => ({ name, appId: 15368, head: sha, status: 'COMPLETED', conclusion: 'SUCCESS' })), mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', unresolvedReviews: 0, withinScope: true, repairAttempts: 0 }
 }
 describe('final head merge gate', () => {
+  it('accepts a successful third repair but rejects exhausted or unknown budgets', () => {
+    expect(mergeGate({ ...gateInput(), repairAttempts: 3 }).allowed).toBe(true)
+    expect(mergeGate({ ...gateInput(), repairAttempts: 3, evidence: { ...gateInput().evidence, fullVerify: false } }).allowed).toBe(false)
+    for (const repairAttempts of [undefined, null, -1, 1.5, '2', 4]) {
+      expect(mergeGate({ ...gateInput(), repairAttempts }).allowed).toBe(false)
+    }
+  })
   it('accepts complete evidence but rejects stale, skipped, missing, unknown and unresolved evidence', () => {
     expect(mergeGate(gateInput()).allowed).toBe(true)
     for (const patch of [
@@ -170,6 +217,49 @@ async function repository() {
   return { root, remote, main, writer, options }
 }
 describe('authorized main fast-forward', () => {
+  it.each([false, 'false', 'true', 1, [], {}])('requires boolean true for exclusive access (%j)', async exclusiveAccess => {
+    const { main, options } = await repository()
+    const before = git(main, 'rev-parse', 'HEAD')
+    expect(await syncCheckout({ ...options, exclusiveAccess })).toMatchObject({ status: 'sync-pending', reason: 'concurrent-use-not-excluded' })
+    expect(git(main, 'rev-parse', 'HEAD')).toBe(before)
+  })
+  it('refuses an external token replaced while fetch was in progress', async () => {
+    const { main, options } = await repository()
+    const commonDir = await commonDirectory(main)
+    const owner = await acquireLock({ commonDir, runId: 'old' })
+    const replacement: { lock?: { status: string; release(): Promise<unknown> } } = {}
+    const before = git(main, 'rev-parse', 'HEAD')
+    try {
+      const result = await syncCheckout({ ...options, lockToken: owner.owner.token, beforeUpdate: async () => {
+        await owner.release()
+        replacement.lock = await acquireLock({ commonDir, runId: 'new' })
+      } })
+      expect(result.status).toBe('sync-pending')
+      expect(git(main, 'rev-parse', 'HEAD')).toBe(before)
+    } finally { if (replacement.lock?.status === 'acquired') await replacement.lock.release() }
+  })
+  it('prevents lock release and takeover throughout the final Git update', async () => {
+    const { main, options } = await repository()
+    const commonDir = await commonDirectory(main)
+    const owner = await acquireLock({ commonDir, runId: 'owner' })
+    let releaseStatus: string | undefined
+    const contender: { lock?: { status: string; release(): Promise<unknown> } } = {}
+    try {
+      const result = await syncCheckout({ ...options, lockToken: owner.owner.token, run: async (cwd: string, args: string[]) => {
+        if (args[0] === 'merge') {
+          releaseStatus = (await owner.release()).status
+          contender.lock = await acquireLock({ commonDir, runId: 'contender', reclaimDead: true, ownerAlive: () => false })
+        }
+        return runGit(cwd, args)
+      } })
+      expect(result.status).toBe('synced')
+      expect(releaseStatus).toBe('blocked')
+      expect(contender.lock?.status).toBe('blocked')
+    } finally {
+      if (contender.lock?.status === 'acquired') await contender.lock.release()
+      if (releaseStatus !== 'released') await owner.release()
+    }
+  })
   it('CLI lock excludes a second process and permits a new owner after release', async () => {
     const { main } = await repository()
     const cli = fileURLToPath(new URL('../scripts/maintenance/cli.mjs', import.meta.url))

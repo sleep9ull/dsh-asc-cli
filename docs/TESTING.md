@@ -101,7 +101,7 @@ npm run verify               # 完整：typecheck → test → build → pack-ma
 npm run verify -- --unit-only # 显式仅本地检查，不代表已通过引擎门禁
 # 或分开跑
 npm run typecheck
-npm test                     # 17 个 suite；当前源码 321 tests，含维护和版本提示回归
+npm test                     # 17 个 suite；当前源码 338 tests，含维护和版本提示回归
 npm run build                # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc
 node scripts/contract-combos.mjs
@@ -117,6 +117,7 @@ CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contra
 - 工具单测保留 stub runtime；`test/harness.test.ts` 用真实宿主 dispatch 到 exec seam，`scripts/smoke.mjs` 用真实 subprocess 到实际 6.3.0 引擎。尚未执行真实账号的 Apple 端业务读写验证；
 - `contract.mjs` 仍只校验命令/flag 接受性（组合由 `contract-combos.mjs` 在插件侧覆盖，未对上游做值校验）；
 - 0.2.0 已关闭 smoke 缺口：真实 Harness subprocess、隔离 HOME/ASC 配置、显式认证 canary 与 tombstone、离线 search/metadata init/validate、拒绝时零 spawn；断言失败非零退出。
+- PR 10 评审回归额外覆盖：最终 Git 写入与锁交接互斥、非布尔 exclusiveAccess 拒绝、恢复预算与孤立目标、独立包版本键/v1 迁移、第三轮成功，以及显式版本结果更新后共享探针的等待者与生命周期；
 - 没有覆盖率门槛；CI 无 lint；
 - engine 探针（version/auth/doctor/diagnose/provision）不写审计（文档已声明例外）；
 - `data`/`summary` 未做敏感键深度脱敏（0.1.7）。

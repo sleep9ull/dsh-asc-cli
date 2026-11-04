@@ -183,6 +183,8 @@ export function createEngine(config: Config, spawn: SpawnFn, dependencies: Engin
   const now = dependencies.now ?? Date.now
   const lifetime = new AbortController()
   const versions = new Map<string, LocalVersionEntry>()
+  // Remembering an explicit result can detach a probe that still has waiters.
+  const pendingVersions = new Set<AbortController>()
   let lastLocalClock = now()
   let updateCache: { checkedAt: number; value?: UpdateInfo } | undefined
   let updatePending: Promise<UpdateInfo | undefined> | undefined
@@ -191,7 +193,8 @@ export function createEngine(config: Config, spawn: SpawnFn, dependencies: Engin
   function snapshot(cwd?: string): EngineSnapshot { return snapshotAscBinary(config, cwd) }
 
   function invalidateVersions(): void {
-    for (const entry of versions.values()) entry.controller.abort()
+    for (const controller of pendingVersions) controller.abort()
+    pendingVersions.clear()
     versions.clear()
   }
 
@@ -212,7 +215,6 @@ export function createEngine(config: Config, spawn: SpawnFn, dependencies: Engin
   function rememberVersion(identity: EngineSnapshot, version: string | undefined): void {
     if (!identity.resolved || lifetime.signal.aborted) return
     const valid = version !== undefined && compatStatus(version) !== 'unknown' ? version : undefined
-    versions.get(identity.identity)?.controller.abort()
     versions.delete(identity.identity)
     versions.set(identity.identity, {
       controller: new AbortController(), checkedAt: now(),
@@ -274,6 +276,7 @@ export function createEngine(config: Config, spawn: SpawnFn, dependencies: Engin
     versions.set(selected.identity, entry)
     trimVersions()
     const owned = entry
+    pendingVersions.add(owned.controller)
     const signal = AbortSignal.any([owned.controller.signal, lifetime.signal])
     const timer = setTimeout(() => owned.controller.abort(), 5_000)
     owned.pending = waitFor(run(['version'], { snapshot: selected, timeoutMs: 5_000, output: false, signal }), signal)
@@ -284,6 +287,7 @@ export function createEngine(config: Config, spawn: SpawnFn, dependencies: Engin
       }, (): VersionFact => ({ missing: false }))
       .then((fact) => {
         clearTimeout(timer)
+        pendingVersions.delete(owned.controller)
         if (!lifetime.signal.aborted && versions.get(selected.identity) === owned) {
           owned.fact = fact
           owned.checkedAt = now()

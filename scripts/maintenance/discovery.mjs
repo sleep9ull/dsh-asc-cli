@@ -1,6 +1,8 @@
-import { readFile, mkdtemp, writeFile, chmod } from 'node:fs/promises'
+import { mkdtemp, writeFile, chmod } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
+// Supported Node versions strip types, so discovery needs neither lib/ nor duplicated facts.
+import { UPSTREAM_REPO, releaseAsset } from '../../src/compat.ts'
 
 const exactVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 const commit = /^[a-f0-9]{40}$/i
@@ -44,27 +46,18 @@ export async function discoverHarness({ packageNames = [], fetch: fetchFn = glob
   }
 }
 
-async function ascRepository() {
-  // Read the checked-in SSOT so discovery also works before npm run build.
-  const source = await readFile(new URL('../../src/compat.ts', import.meta.url), 'utf8')
-  const repo = /export const UPSTREAM_REPO = '([^']+)'/.exec(source)?.[1]
-  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('Cannot read asc upstream repository from compat.ts')
-  return repo
-}
-
 export async function discoverTargets({ repository, packageNames = [], platform = process.platform, arch = process.arch, fetch: fetchFn = globalThis.fetch, now = Date.now } = {}) {
   try {
     if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('Explicit owner/repository is required')
     const found = await discoverHarness({ packageNames, fetch: fetchFn, now })
     if (found.status !== 'discovered') return found
-    const repo = await ascRepository()
+    const repo = UPSTREAM_REPO
     const api = `https://api.github.com/repos/${repo}`
     const release = await (await get(`${api}/releases/latest`, fetchFn)).json()
     const version = String(release.tag_name ?? '').replace(/^v/, '')
     if (!/^\d+\.\d+\.\d+$/.test(version) || release.draft !== false || release.prerelease !== false) throw new Error('Invalid stable asc release')
-    const suffix = { 'darwin-arm64': 'macOS_arm64', 'darwin-x64': 'macOS_amd64', 'linux-arm64': 'linux_arm64', 'linux-x64': 'linux_amd64', 'win32-x64': 'windows_amd64.exe' }[`${platform}-${arch}`]
-    if (!suffix) throw new Error('Unsupported asc platform')
-    const name = `asc_${version}_${suffix}`
+    const name = releaseAsset(version, platform, arch)
+    if (name === undefined) throw new Error('Unsupported asc platform')
     const asset = release.assets?.find(item => item.name === name)
     const sums = release.assets?.find(item => item.name === `asc_${version}_checksums.txt`)
     const base = `https://github.com/${repo}/releases/download/${release.tag_name}/`

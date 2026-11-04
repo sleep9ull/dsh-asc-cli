@@ -10,7 +10,7 @@ node scripts/maintenance/cli.mjs discover --repository sleep9ull/dsh-asc-cli
 node scripts/maintenance/cli.mjs harness-watch
 ```
 
-需要 Node 22/24，不新增运行时依赖。脚本直接读取 `src/compat.ts` 的上游仓库事实，不要求预先 build。`discover` 查询 npm `@deepseek-ai/dsh` 的 latest manifest、当前 package.json 中所有相关 peer/dev 包各自的 latest 精确版本及来源，再查询 asc 正式 latest release 的 tag、源码 commit、平台资产与 SHA-256。latest 为 rc 时保留；不会追踪 alpha/next。每个包的版本独立解析，并保存 Harness 声明的依赖范围；发现结果不是这些独立版本已经兼容的证明。
+需要 Node ^22.19.0 或 >=24，不新增运行时依赖。脚本通过 Node 原生类型擦除直接导入 `src/compat.ts` 的上游仓库事实和 `releaseAsset`，不要求预先 build。`discover` 查询 npm `@deepseek-ai/dsh` 的 latest manifest、当前 package.json 中所有相关 peer/dev 包各自的 latest 精确版本及来源，再查询 asc 正式 latest release 的 tag、源码 commit、平台资产与 SHA-256。latest 为 rc 时保留；不会追踪 alpha/next。每个包的版本独立解析，并保存 Harness 声明的依赖范围；发现结果不是这些独立版本已经兼容的证明。
 
 所有命令输出 JSON（help 除外）。退出码 0 为成功，2 表示 unknown/drift/blocked/pending，1 表示输入或执行错误。HTTP 超时/元数据缺失为 unknown，不能解释成无更新。`harness-watch` 只比较默认渠道与 package.json/lockfile 基线：它不安装包、不改代码，也不验证新组合的真实集成。GitHub upstream-watch 保存报告 artifact，漂移/无法查询时开独立去重 issue；自动适配只属于另行部署的 Desktop routine。
 
@@ -27,11 +27,11 @@ node scripts/maintenance/cli.mjs harness-watch
 | `gate` | `--input final-head-evidence.json`；确定性门禁，**不调用 GitHub，不授权合并** |
 | `sync` | `--input sync-authorization.json [--lock-token TOKEN]`；只对明确指定主副本快进 |
 
-`discover` 的完整输出或其中的 `target` 对象均可作为 download/marker 输入。版本组合固定后，不用再次发现的 latest 替换目标；新 latest 留到下一轮。
+`discover` 的完整输出或其中的 `target` 对象均可作为 download/marker 输入。v2 目标键包含仓库、dsh/asc 精确版本以及按包名排序的相关 Harness 包名/版本；独立包发布因此可形成新目标。旧 v1 标记会明确阻塞，需人工核验来源后迁移，不能过滤掉旧标记来绕过恢复。版本组合固定后，不用再次发现的 latest 替换目标；新 latest 留到下一轮。
 
 ## 2. 互斥与恢复
 
-所有 worktree 共用 `<git common dir>/asc-maintenance/`：`lock.json` 记录运行标识、PID、主机、时间与所有权 token；`state.json` 保存恢复线索。目录 0700、文件 0600。`ownership.guard` 用原子 mkdir 串行化锁交接；状态以临时文件加 rename 写入，不保存认证 token 或子进程环境。所有权 token 只是本机锁身份，不是 GitHub/Apple 凭据。
+所有 worktree 共用 `<git common dir>/asc-maintenance/`：`lock.json` 记录运行标识、PID、主机、时间与所有权 token；`state.json` 保存恢复线索。目录 0700、文件 0600。`ownership.guard` 用原子 mkdir 串行化锁交接；record 的所有权校验与状态写入、sync 的最终所有权校验/Git 复查/快进/后验检查都持有同一 guard，期间 release/reclaim 返回 blocked。状态以临时文件加 rename 写入，不保存认证 token 或子进程环境。所有权 token 只是本机锁身份，不是 GitHub/Apple 凭据。
 
 在 Terminal 中启动 `hold-lock`，整个维护写阶段保持该进程运行，将其 token 传给 record/sync，结束后 Ctrl-C 并确认 released。只有 token 对应本机仍存活的持有者才允许 record。独立 sync 没有 token 时自行持锁。活跃持有者不因 TTL 过期而被抢占；不同主机、EPERM、损坏锁、遗留 guard 都保守阻塞。`--reclaim-dead` 只有本机 PID 被确认为不存在才重领锁；PID 复用会保守阻塞。异常遗留 guard 需要人工确认所有相关进程退出后处理，脚本不自动删除它。
 
@@ -46,7 +46,7 @@ node scripts/maintenance/cli.mjs harness-watch
       "number": 123,
       "state": "OPEN",
       "headRefName": "maintenance/harness-rc5-asc-640",
-      "body": "正文中包含 marker 命令生成的完整 asc-maintenance:v1 标记",
+      "body": "正文中包含 marker 命令生成的完整 asc-maintenance:v2 标记",
       "mergeCommit": null
     }
   ],
@@ -56,7 +56,7 @@ node scripts/maintenance/cli.mjs harness-watch
 
 `prs` 也要包括 CLOSED/MERGED。GitHub 是事实源，local merged 不能覆盖实际 OPEN；MERGED 必须提供 `mergeCommit: { "oid": "40位SHA" }`。只有 Git 重新证明对应 merge commit 已进入主副本、主副本干净且等于本轮 fetch 的 origin/main，才可把 key 放进 syncedKeys。不要从 local status 标签推导它。开放或关闭未合并 PR 即使被误填进 syncedKeys 仍需处理。
 
-存在唯一未收口 PR 时恢复其原目标/分支；同组合多个 PR、多个未完成目标、关闭未合并或找不到对应 PR/分支均 blocked，不猜测、不重开。状态损坏时保留文件供诊断，但可从唯一 PR 标记重建。PR 合并后尚未记录会恢复为 sync-pending；同步后尚未记录可重跑 sync 幂等成功。无 PR 的 discovered/adapting 只能恢复仍存在的已知分支。孤立 maintenance 分支需要人工关联，不能因本地文件缺失而另开重复 PR。
+先核对所有分支及未完成本地目标，再选择唯一未收口 PR 并恢复其原目标/分支；同组合多个 PR、多个未完成目标、关闭未合并或找不到对应 PR/分支均 blocked，不猜测、不重开。同 key 的 repairAttempts 保留，不能在下一次运行重置。状态损坏时可从唯一 PR 标记重建目标，但修复历史未知时返回 repairAttempts: null 和 blocked；须人工根据历史提交/CI 记录重建计数并明确解除 blocked 后继续，禁止将未知次数补成 0。PR 合并后尚未记录会恢复为 sync-pending；同步后尚未记录可重跑 sync 幂等成功。无 PR 的 discovered/adapting 只能恢复仍存在的已知分支。孤立 maintenance 分支需要人工关联，不能因本地文件缺失而另开重复 PR。
 
 记录文件由 `target`（保留完整原始来源）与最小状态组成，例如：
 
@@ -107,7 +107,7 @@ const evidence = {
 }
 ```
 
-精确匹配检查 name + App id + head；缺失、重复、skipped、旧 head 或 unknown 均不能通过。来源矛盾、完整验证未通过、第三轮修复失败、未处理实质评审、不满足 review 要求、规则未生效或无法保证 squash 的 merge queue 均拒绝。检查 gate 通过后仍须在启用 auto-merge 紧邻时确认 head 未变；每次新 push 前撤销旧 auto-merge，后续重新验证。GitHub 规则负责请求发出后到实际合并之间的约束，不以本地 gate 代替远端规则。
+repairAttempts 必须明确为 0–3 的整数；第三轮成功允许通过，未知/非法预算或超过三次均拒绝，第三轮仍失败则记录 blocked，不能自动开始第四轮。精确匹配检查 name + App id + head；缺失、重复、skipped、旧 head 或 unknown 均不能通过。来源矛盾、完整验证未通过、第三轮修复失败、未处理实质评审、不满足 review 要求、规则未生效或无法保证 squash 的 merge queue 均拒绝。检查 gate 通过后仍须在启用 auto-merge 紧邻时确认 head 未变；每次新 push 前撤销旧 auto-merge，后续重新验证。GitHub 规则负责请求发出后到实际合并之间的约束，不以本地 gate 代替远端规则。
 
 PR 创建后使用 Desktop PR 关联/监控，按授权启用 Auto-fix。由应用 CI、冲突、评审事件继续处理；不额外开启 loop/cron，不轮询 CI。若规则无法启用或权限无法核验，停在 PR-ready，不降级无保护合并。三轮失败后 blocked，撤销已授权 PR 的 auto-merge。
 
@@ -126,7 +126,7 @@ PR 创建后使用 Desktop PR 关联/监控，按授权启用 Auto-fix。由应�
 }
 ```
 
-expectedOrigin 是部署核验的精确字符串，不在失败后自动改成“当前看到的值”。授权路径应为 realpath，不能用后来指向另一仓库的 symlink。exclusiveAccess 只能在调用方实际确认编辑器、其他 agent/终端和用户没有并发写入后设置；文件锁无法检测外部所有写者，无法排除则传 false 并延期。
+expectedOrigin 是部署核验的精确字符串，不在失败后自动改成“当前看到的值”。授权路径应为 realpath，不能用后来指向另一仓库的 symlink。exclusiveAccess 只接受布尔 true；字符串 "false"、"true" 或其他真值均拒绝，且只能在调用方实际确认编辑器、其他 agent/终端和用户没有并发写入后设置；文件锁无法检测外部所有写者，无法排除则传 false 并延期。
 
 检查 current branch 必须 main、工作区/staging/untracked 干净、无 merge/rebase/cherry-pick/bisect/锁文件。fetch 使用无强制的显式 main refspec；确认 squash commit 在 origin/main，且本地 main 是其祖先或相同；临近更新重查 origin、branch、dirty/操作状态、HEAD 和 fetched ref 后执行 `git merge --ff-only --no-overwrite-ignore`（正常 hooks 保留，也拒绝覆盖被 ignore 的用户文件）。快进后再检查干净和 HEAD 等于本轮 fetched SHA。保留本地独有提交、所有用户文件和已有操作现场；绝不 stash/reset/force/切换分支。
 

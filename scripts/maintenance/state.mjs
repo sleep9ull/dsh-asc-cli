@@ -27,24 +27,32 @@ function validateTarget(target) {
 }
 export function targetKey(target) {
   validateTarget(target)
-  return createHash('sha256').update(JSON.stringify([target.repository, target.harness.version, target.asc.version])).digest('hex')
+  const packages = (target.harness.packages ?? []).map(pkg => {
+    if (!/^@deepseek-ai\/[a-z0-9-]+$/.test(pkg.name)) throw new Error('Missing Harness package name')
+    return [pkg.name, pkg.version]
+  }).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+  if (new Set(packages.map(([name]) => name)).size !== packages.length) throw new Error('Duplicate Harness package name')
+  return createHash('sha256').update(JSON.stringify([target.repository, target.harness.version, target.asc.version, packages])).digest('hex')
 }
 export function prMarker(target) {
-  return `<!-- asc-maintenance:v1 ${Buffer.from(JSON.stringify({ key: targetKey(target), target })).toString('base64url')} -->`
+  return `<!-- asc-maintenance:v2 ${Buffer.from(JSON.stringify({ key: targetKey(target), target })).toString('base64url')} -->`
 }
 export function parseMarker(body) {
-  const matches = [...String(body ?? '').matchAll(/<!-- asc-maintenance:v1 ([A-Za-z0-9_-]+) -->/g)]
+  if (String(body ?? '').includes('asc-maintenance:v1')) throw new Error('Legacy v1 target marker requires manual provenance and key migration')
+  const matches = [...String(body ?? '').matchAll(/<!-- asc-maintenance:v2 ([A-Za-z0-9_-]+) -->/g)]
   if (matches.length !== 1 || matches[0][1].length > 100_000) throw new Error('Missing or ambiguous maintenance PR marker')
   const record = JSON.parse(Buffer.from(matches[0][1], 'base64url').toString('utf8'))
   if (record.key !== targetKey(record.target)) throw new Error('Invalid maintenance PR key')
   return record
 }
 
+const knownRepairAttempts = value => Number.isInteger(value) && value >= 0
 const states = ['discovered', 'adapting', 'pr-open', 'awaiting-checks', 'ready', 'merge-requested', 'merged', 'sync-pending', 'synced', 'blocked']
 function validateState(state) {
   keys(state, ['schema', 'status', 'key', 'target', 'branch', 'pr', 'head', 'mergeCommit', 'syncedHead', 'reason', 'updatedAt', 'repairAttempts', 'published'])
   if (!states.includes(state.status) || state.key !== targetKey(state.target)) throw new Error('Invalid maintenance state')
   if (state.published && state.published !== false) throw new Error('Maintenance cannot publish')
+  if (state.repairAttempts !== undefined && state.repairAttempts !== null && !knownRepairAttempts(state.repairAttempts)) throw new Error('Invalid repair history')
   for (const field of ['head', 'mergeCommit', 'syncedHead']) if (state[field] !== undefined && !sha(state[field])) throw new Error(`Invalid ${field}`)
 }
 export async function readState(path) {
@@ -92,28 +100,37 @@ export function recover({ repository, prs, branches = [], state, syncedKeys = []
   // syncedKeys must be supplied from verified Git sync evidence, not inferred from a local status label.
   const unfinished = records.filter(record => record.state !== 'MERGED' || !syncedKeys.includes(record.key))
   if (unfinished.length > 1) return blocked('Multiple unfinished targets; manual resolution required')
+  const localPending = state && !syncedKeys.includes(state.key)
+  const prePrBranch = localPending && ['discovered', 'adapting'].includes(state.status) ? state.branch : undefined
+  if (branches.some(branch => branch !== prePrBranch && !records.some(record => record.branch === branch))) return blocked('Unmatched maintenance branches require investigation')
   if (unfinished.length === 1) {
     const record = unfinished[0]
+    if (localPending && state.key !== record.key) return blocked('Local and remote unfinished targets conflict')
     if (state?.key === record.key && serialized(state.target) !== serialized(record.target)) return blocked('Target provenance differs between local and PR records')
-    if (state?.status === 'blocked' && record.state !== 'MERGED') return blocked(state.reason ?? 'Manual unblock required')
-    const base = { key: record.key, target: record.target, branch: record.branch, pr: record.pr, published: false }
+    if (state?.key === record.key && state.branch !== undefined && state.branch !== record.branch) return blocked('Local and remote maintenance branches conflict')
+    const repairAttempts = state?.key === record.key && knownRepairAttempts(state.repairAttempts) ? state.repairAttempts : null
+    const base = { key: record.key, target: record.target, branch: record.branch, pr: record.pr, repairAttempts, published: false }
     if (record.state === 'MERGED') return sha(record.mergeCommit) ? { ...base, status: 'sync-pending', mergeCommit: record.mergeCommit } : blocked('Merged PR has no verified squash commit')
     if (record.state === 'CLOSED') return blocked('Target PR closed without merge; do not reopen automatically')
     if (record.state !== 'OPEN') return blocked('Unknown PR state')
+    if (state?.status === 'blocked') return { ...base, ...blocked(state.reason ?? 'Manual unblock required') }
+    if (repairAttempts === null) return { ...base, ...blocked('Repair history unknown; reconstruct it before continuing') }
     return { ...base, status: 'pr-open' }
   }
-  if (state && !syncedKeys.includes(state.key)) {
-    if (['discovered', 'adapting'].includes(state.status) && branches.includes(state.branch)) return { ...state, status: 'adapting' }
+  if (localPending) {
+    if (prePrBranch !== undefined && branches.includes(prePrBranch)) {
+      if (!knownRepairAttempts(state.repairAttempts)) return { ...state, ...blocked('Repair history unknown; reconstruct it before continuing'), repairAttempts: null }
+      return { ...state, status: 'adapting' }
+    }
     return blocked('Local record has no matching remote PR or maintenance branch')
   }
-  if (branches.some(branch => !records.some(record => record.branch === branch))) return blocked('Unmatched maintenance branches require investigation')
   return { status: 'idle', published: false }
 }
 
 /** Pure predicate. The caller must fetch fresh policy/PR/check/review facts for the exact head. */
 export function mergeGate(input) {
   const reasons = []
-  const { target, head, evidence, policy, checks, mergeable, mergeStateStatus, unresolvedReviews, withinScope, repairAttempts = 0 } = input
+  const { target, head, evidence, policy, checks, mergeable, mergeStateStatus, unresolvedReviews, withinScope, repairAttempts } = input
   try {
     targetKey(target)
     if (!sha(head) || evidence?.head !== head) reasons.push('Verification belongs to a different head')
@@ -122,7 +139,7 @@ export function mergeGate(input) {
     if (policy?.enforced !== true || !Array.isArray(policy.requiredChecks) || !policy.requiredChecks.length) reasons.push('Required branch protection not confirmed')
     if (policy?.reviewsSatisfied !== true || unresolvedReviews !== 0) reasons.push('Review requirements unresolved or unknown')
     if (policy?.squashAllowed !== true || policy?.mergeQueue !== false) reasons.push('Squash strategy not guaranteed')
-    if (withinScope !== true || repairAttempts >= 3) reasons.push('Scope or repair budget requires a human decision')
+    if (withinScope !== true || !knownRepairAttempts(repairAttempts) || repairAttempts > 3) reasons.push('Scope or repair budget requires a human decision')
     if (mergeable !== 'MERGEABLE' || mergeStateStatus !== 'CLEAN') reasons.push('Mergeability or base freshness not confirmed')
     for (const required of policy?.requiredChecks ?? []) {
       if (typeof required.name !== 'string' || !Number.isInteger(required.appId)) { reasons.push('Required check lacks exact name/app identity'); continue }
@@ -144,22 +161,29 @@ function processAlive(owner) {
   try { process.kill(owner.pid, 0); return true } catch (error) { return error.code === 'ESRCH' ? false : undefined }
 }
 
-/** A tiny guard serializes lock ownership changes, including dead-owner recovery.
- * A crashed guard is intentionally manual recovery: TTL is never proof of death.
- */
+/** Serialize ownership changes and protected writes. An interrupted guard needs manual recovery. */
+async function guarded(commonDir, action) {
+  const guard = join(commonDir, 'asc-maintenance', 'ownership.guard')
+  try { await mkdir(guard, { mode: 0o700 }) } catch (error) {
+    if (error.code === 'EEXIST') return { status: 'blocked', reason: 'Ownership transition or protected write active/interrupted; inspect guard before manual recovery' }
+    throw error
+  }
+  try { return await action() } finally { await rm(guard, { recursive: true }) }
+}
+
+/** Ownership cannot be released or reclaimed between this check and the completed write. */
+export async function withLockOwner(commonDir, token, action) {
+  return guarded(commonDir, async () => {
+    await assertLockOwner(commonDir, token)
+    return action()
+  })
+}
+
 export async function acquireLock({ commonDir, runId, pid = process.pid, now = Date.now, ownerAlive = processAlive, reclaimDead = false }) {
   const directory = join(commonDir, 'asc-maintenance')
-  const guard = join(directory, 'ownership.guard')
   const lock = join(directory, 'lock.json')
   await mkdir(directory, { recursive: true, mode: 0o700 })
-  async function guarded(action) {
-    try { await mkdir(guard, { mode: 0o700 }) } catch (error) {
-      if (error.code === 'EEXIST') return { status: 'blocked', reason: 'Ownership transition active or interrupted; inspect guard before manual recovery' }
-      throw error
-    }
-    try { return await action() } finally { await rm(guard, { recursive: true }) }
-  }
-  return guarded(async () => {
+  return guarded(commonDir, async () => {
     let owner
     try { owner = JSON.parse(await readFile(lock, 'utf8')) } catch (error) {
       if (error.code !== 'ENOENT') return { status: 'blocked', reason: 'Unreadable lock ownership; manual recovery required' }
@@ -168,7 +192,7 @@ export async function acquireLock({ commonDir, runId, pid = process.pid, now = D
     const token = randomUUID()
     const record = { runId, pid, hostname: hostname(), acquiredAt: now(), token }
     await writeFile(lock, JSON.stringify(record), { mode: 0o600, flag: owner ? 'w' : 'wx' })
-    return { status: 'acquired', owner: record, release: async () => guarded(async () => {
+    return { status: 'acquired', owner: record, release: async () => guarded(commonDir, async () => {
       const current = JSON.parse(await readFile(lock, 'utf8'))
       if (current.token !== token) return { status: 'blocked', reason: 'Lock ownership changed; refusing release' }
       await rm(lock)
