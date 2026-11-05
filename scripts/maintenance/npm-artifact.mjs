@@ -1,4 +1,5 @@
 import { createHash, createPublicKey, verify } from 'node:crypto'
+import { resolveHost, selectPackages, assertResolved, assertSharedPackages } from './compatibility.mjs'
 
 const registry = 'https://registry.npmjs.org'
 const source = 'https://github.com/deepseek-ai/deepseek-harness'
@@ -102,8 +103,9 @@ async function checkArtifact(pkg, manifest, { fetch, keys, now, pinnedKeyid }) {
   if (createHash('sha512').update(content).digest('base64') !== sha512(pkg.integrity)) throw new Error(`npm SHA-512 mismatch for ${pkg.name}`)
   return { ...pkg, verification: { kind: 'npm-registry-signature', keyid } }
 }
-export async function discoverPackage(name, { fetch, keys, now }) {
-  const manifest = await npmJson(manifestUrl(name), fetch)
+export async function discoverPackage(name, { fetch, keys, now }, version = 'latest') {
+  const manifest = await npmJson(manifestUrl(name, version), fetch)
+  if (version !== 'latest' && manifest.version !== version) throw new Error('Exact npm package version differs from resolution')
   return checkArtifact(record(manifest, name), manifest, { fetch, keys, now })
 }
 function canonical(value) {
@@ -118,13 +120,14 @@ function lockMatches(pkg, lock, required) {
 }
 
 /** Re-fetch exact manifests and bytes; saved verification fields alone never qualify an artifact. */
-export async function verifyHarness(harness, { fetch: fetchFn = globalThis.fetch, now = Date.now, lock } = {}) {
+export async function verifyHarness(harness, { fetch: fetchFn = globalThis.fetch, now = Date.now, lock, resolve = resolveHost } = {}) {
   try {
     if (harness?.name !== '@deepseek-ai/dsh' || !Array.isArray(harness.packages)) throw new Error('Missing fixed Harness target')
     const packages = [harness, ...harness.packages]
     if (new Set(packages.map(pkg => pkg.name)).size !== packages.length) throw new Error('Duplicate npm artifact identity')
     let declared
     if (lock !== undefined) {
+      assertSharedPackages(lock)
       const root = lock?.packages?.['']
       if (!root || typeof root !== 'object') throw new Error('Install lockfile has no root dependency declarations')
       declared = new Set(Object.keys({ ...root.peerDependencies, ...root.devDependencies }).filter(name => name.startsWith('@deepseek-ai/')))
@@ -144,6 +147,10 @@ export async function verifyHarness(harness, { fetch: fetchFn = globalThis.fetch
       if (JSON.stringify(canonical(found)) !== JSON.stringify(canonical(pinned))) throw new Error(`Pinned npm artifact metadata changed: ${pkg.name}`)
       await checkArtifact(found, manifest, { fetch: fetchFn, keys, now, pinnedKeyid: pkg.verification.keyid })
     }
-    return { status: 'verified', packages: packages.length, checkedAt: now() }
+    // Pin every selected package during re-resolution; later releases cannot replace this target.
+    const graph = await resolve(harness)
+    const selected = selectPackages(graph, harness, harness.packages.map(pkg => pkg.name))
+    for (const [index, entry] of selected.entries()) assertResolved(harness.packages[index], entry)
+    return { status: 'verified', validation: 'artifacts-and-dependency-resolution-only', packages: packages.length, checkedAt: now() }
   } catch (error) { return { status: 'unknown', checkedAt: now(), reason: error.message } }
 }

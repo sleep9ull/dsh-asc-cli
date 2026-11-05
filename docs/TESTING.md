@@ -36,6 +36,7 @@
 | `test/version-notice.test.ts` | 业务 outcome 保持、版本/来源建议、会话与嵌套去重、1s 等待上限、显式版本复用 |
 | `test/binary.test.ts` | cwd/PATH/文件指纹快照，避免不同实际引擎混用版本 |
 | `test/maintenance.test.ts` | 注入的上游发现、状态恢复/锁、最终 head 门禁，以及临时 bare remote/worktree 的安全快进 |
+| `test/maintenance-compatibility.test.ts` | 宿主完整图候选与独立 latest 分离、范围内独立 patch、旧标签不降级、共享实例分裂、实际安装锁与产品 pin 漂移、固定 peer 复验与隔离 npm 执行 |
 | `test/maintenance-artifact.test.ts` | 实际签名的合成 npm 字节、无 gitHead 成功路径、摘要/签名/URL/过期 key 拒绝、固定目标和安装锁文件复验、v2/v3 恢复迁移；密钥与网络由夹具提供 |
 | `test/discovery.test.ts` | 在临时 checkout 中通过真实 Vitest CLI 验证仅收集本 checkout 的测试，避免混入嵌套 worktree |
 | `test/helpers.ts` / `test/compat-helpers.ts` | `makeConfig`、spawn 替身等共用夹具 |
@@ -105,14 +106,14 @@ npm run verify               # 完整：typecheck → test → build → pack-ma
 npm run verify -- --unit-only # 显式仅本地检查，不代表已通过引擎门禁
 # 或分开跑
 npm run typecheck
-npm test                     # 19 个 suite；当前源码 370 tests，含 npm 产物验签/摘要与恢复回归
+npm test                     # 20 个 suite；当前源码 387 tests，含兼容组合选择、安装图/产品 pin 和产物验证回归
 npm run build                # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc
 node scripts/contract-combos.mjs
 node scripts/classify-audit.mjs ./vendor/asc
 ```
 
-CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contract-combos；独立引擎 job 校验下载的固定基线 SHA-256 后跑 contract + classify-audit + offline smoke。每日 `upstream-watch` 对 asc latest release 执行相同引擎门禁，并比较 Harness npm 默认渠道；漂移时自动开 issue。维护脚本测试通过 Vitest 自动进入 `npm test` 和 CI，不需要真实 GitHub。部署验收（Desktop Run now、GitHub ruleset/auto-merge、真实主副本同步）与这些本地模拟测试分别记录。完整 verify 缺少 vendor/asc 时失败，不再静默跳过。
+CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contract-combos；独立引擎 job 校验下载的固定基线 SHA-256 后跑 contract + classify-audit + offline smoke。每日 `upstream-watch` 对 asc latest release 执行相同引擎门禁，并严格解析 Harness 默认宿主的兼容候选、保留独立 latest 观察；适用候选漂移或来源/依赖验证失败时自动开 issue。维护脚本测试通过 Vitest 自动进入 `npm test` 和 CI，不需要真实 GitHub。部署验收（Desktop Run now、GitHub ruleset/auto-merge、真实主副本同步）与这些本地模拟测试分别记录。完整 verify 缺少 vendor/asc 时失败，不再静默跳过。
 
 ---
 

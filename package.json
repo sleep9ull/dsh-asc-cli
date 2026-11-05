@@ -29,16 +29,16 @@
     }
   },
   "engines": {
-    "dsh": ">=0.2.1-rc.5 <0.2.2-0",
+    "dsh": "0.2.1-rc.5",
     "node": "^22.19.0 || >=24.0.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/cordis": "4.0.5",
     "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
     "@deepseek-ai/dsh-subprocess": "0.2.1-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
     "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",
-    "@deepseek-ai/schemastery": "~3.18.5",
+    "@deepseek-ai/schemastery": "3.18.5",
     "@deepseek-ai/dsh-skill": "0.2.1-rc.5",
     "@deepseek-ai/dsh-commands": "0.2.1-rc.5",
     "@deepseek-ai/dsh-user-approval": "0.2.1-rc.5"

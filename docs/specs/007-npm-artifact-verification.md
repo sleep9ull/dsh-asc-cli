@@ -7,6 +7,8 @@
 | created | 2026-11-05 |
 | related | spec 005；CONTRACT §5；MAINTENANCE |
 
+> 后续变化见 [spec 008](008-harness-drift-triage.md)：兼容优先选择宿主依赖图内候选，独立 latest 仅作观察；发现与固定复验新增 npm 临时解析写入，不安装或执行包，本文保留当时的纯网络验证设计记录。
+
 **一句话**：缺少 `gitHead` 不再单独阻塞维护；以固定 npm 发布产物的 SHA-512 和注册表签名校验替代必填源码 commit，仍明确区分产物验证与源码构建来源证明。
 
 ## 1. 背景与问题

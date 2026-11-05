@@ -67,6 +67,8 @@ action 的具体行为以 `src/registry.ts`、工具 schema、`src/approval.ts` 
 
 维护层 npm 来源按 [spec 007](docs/specs/007-npm-artifact-verification.md)：固定官方 registry 的精确包与 tarball，实际验证 SHA-512 和注册表签名；缺失 gitHead 记 commit=null，不能冒充源码构建证明。安装前执行 `verify-harness --input target.json --lock-file package-lock.json` 重新核对固定目标；新 marker v3，未收口 v2 目标须显式迁移。此规则不改变插件 I1–I10。
 
+维护目标按 [spec 008](docs/specs/008-harness-drift-triage.md)：以精确默认宿主的完整依赖/peer 图选择兼容候选，独立包 latest 只作观察，不直接混装。候选解析不等于运行兼容；先严格解析、固定产物和安装锁复验，再完整集成验证，通过后才能更新已验证基线。当前宿主与相关 peer/dev 精确锁定；组件冲突或回归时保留基线，禁止自动降级、force/legacy-peer-deps 或弱化检查。discover/watch 会在独立临时目录写 npm 解析锁/cache，不安装或执行包代码，不改用户配置，结束仅清理本次临时目录。
+
 普通工具与 `/asc` 的版本提示只推荐已验证 pin；声明支持范围不等于逐一实测。`checkUpdates: false` 关闭自动提示检查与远端查询；更新缓存仅驻内存，不能因提示安装引擎或写本地文件。
 
 ## 实现不变式

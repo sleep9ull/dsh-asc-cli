@@ -10,15 +10,17 @@ node scripts/maintenance/cli.mjs discover --repository sleep9ull/dsh-asc-cli
 node scripts/maintenance/cli.mjs harness-watch
 ```
 
-需要 Node ^22.19.0 或 >=24，不新增运行时依赖。脚本通过 Node 原生类型擦除直接导入 `src/compat.ts` 的上游仓库事实和 `releaseAsset`，不要求预先 build。`discover` 查询 npm `@deepseek-ai/dsh` 与当前 package.json 中所有相关 peer/dev 包各自的 latest，固定精确版本 manifest、官方 tarball URL 和 SHA-512；从官方 keys 端点取得有效 ECDSA P-256 公钥，验证 `name@version:integrity` 注册表签名，并读取 tarball 实际字节验摘要（内存中有界读取，不写文件、不解压、不执行）。单个 metadata/body 请求限 30 秒，metadata 上限 2 MiB、tarball 上限 64 MiB，逐个处理包。然后查询 asc 正式 latest release 的 tag、源码 commit、平台资产与 SHA-256。latest 为 rc 时保留，不查询 alpha/next 渠道。包版本独立解析并保留依赖范围；发布物已验证不代表这些版本已兼容，也不证明源码构建来源。gitHead 存在时仅保存其声明，缺失记录 commit=null，不推测 tag。详见 [spec 007](specs/007-npm-artifact-verification.md)。
+需要 Node ^22.19.0 或 >=24 和 npm，不新增运行时依赖。脚本直接导入 `src/compat.ts`，无需 build。按 [spec 008](specs/008-harness-drift-triage.md)，先验签并验证 `@deepseek-ai/dsh` latest 的实际 tarball，再用该精确宿主在独立临时目录执行 npm package-lock-only / ignore-scripts / strict-peer-deps，解析完整 dependency/peer 图，不安装或执行包。配置、HOME 和 cache 均隔离，npm 总时限 5 分钟；结束只清理本次目录，不改 checkout 或用户配置。相关共享包必须唯一且顶层可解析。包可以独立版本号，但不能将各自 latest 直接混装；所选精确版本必须再核对官方 manifest、签名、实际 tarball SHA-512 与解析锁身份。各包独立 latest 仍实际验签验摘要，差异保留在 observations（旧默认标签或宿主解析未采用的版本）。查询 latest 标签，不查询 next/alpha 标签。
 
-所有命令输出 JSON（help 除外）。退出码 0 为成功，2 表示 unknown/drift/blocked/pending，1 表示输入或执行错误。HTTP 超时/元数据缺失为 unknown，不能解释成无更新。`harness-watch` 只比较默认渠道与 package.json/lockfile 基线：它不安装包、不改代码，也不验证新组合的真实集成。GitHub upstream-watch 保存报告 artifact，漂移/无法查询时开独立去重 issue；自动适配只属于另行部署的 Desktop routine。
+npm 字节读取仍按 [spec 007](specs/007-npm-artifact-verification.md)：metadata 最大 2 MiB、tarball 最大 64 MiB，单次请求/body 限 30 秒，官方 ECDSA P-256 验签，tarball 只在内存校验、不解压执行。gitHead 缺失为 commit=null，签名不证明源码构建来源。随后查询 asc stable release 的 tag/commit/平台资产/SHA-256。输出 validation 明确为 dependency-resolution-only；完整集成测试通过前都只是候选。
+
+所有命令输出 JSON（help 除外）。退出码 0 为成功，2 表示 unknown/drift/blocked/pending，1 表示输入或执行错误。HTTP 超时/元数据缺失为 unknown，不能解释成无更新。`harness-watch` 比较宿主图选出的候选与 package.json/lockfile 已验证基线：相同为 unchanged，适用新候选为 drift，降级或同版本身份变化为 unknown。独立 latest 差异留在 observations，不等于当前组合故障。它会写临时解析目录，但不安装包、不改代码，也不验证新组合的真实集成。GitHub upstream-watch 保存报告 artifact，漂移/无法查询时开独立去重 issue；自动适配只属于另行部署的 Desktop routine。
 
 | 命令 | 输入和行为 |
 |---|---|
-| `discover` | 必填 `--repository OWNER/REPO`，可选 `--package-file`；输出固定目标与查询时间 |
-| `harness-watch` | 可选 `--package-file` / `--lock-file`；只读基线差异 |
-| `verify-harness` | `--input target.json [--lock-file package-lock.json]`；重新读取固定精确 manifest、官方 keys 和 tarball 验签验摘要，可比对即将用于安装的锁文件；不查询 latest、不写文件 |
+| `discover` | 必填 `--repository OWNER/REPO`，可选 `--package-file` / `--lock-file`；输出严格图选出的固定候选、基线变化及独立 observations；禁止相对已验证基线降级 |
+| `harness-watch` | 可选 `--package-file` / `--lock-file`；兼容候选与基线差异及独立发布 observations；临时解析写入 |
+| `verify-harness` | `--input target.json [--lock-file package-lock.json]`；重新读取固定精确 manifest、官方 keys 和 tarball 验签验摘要，可比对即将用于安装的锁文件；不查询 latest，临时严格解析固定宿主及所选包的完整 peer 图，不安装 |
 | `download` | `--input target.json --directory /existing/download-parent`；创建独立空子目录，校验后才写可执行资产，不执行它 |
 | `marker` | `--input target.json`；输出稳定 key 与 PR 机器标记 |
 | `hold-lock` | `--checkout /repo [--run-id ID] [--reclaim-dead]`；保持进程直到 SIGINT/SIGTERM，输出 owner/token |
@@ -30,7 +32,7 @@ node scripts/maintenance/cli.mjs harness-watch
 
 `discover` 的完整输出或其中的 `target` 对象均可作为 download/marker/verify-harness 输入。新 marker 为 `asc-maintenance:v3`；沿用 v2 的版本组合键：仓库、dsh/asc 精确版本、按包名排序的相关 Harness 包名/版本，防止因格式更新重复开 PR。旧 v2 仍读取并参与去重，未收口目标须显式迁移并重新验证；仅当 Git 事实证明旧目标已同步时才可忽略其历史阻塞。旧 v1 仍需人工迁移，不能过滤旧标记来绕过恢复。固定后不再查 latest 替换目标。
 
-每个新 Harness 包记录包含 name/version/source/manifestUrl/tarball/integrity/commit/verification/dependencies；verification 仅记录 `kind: npm-registry-signature` 和验签的 keyid，不是审批凭证。安装前必须运行 `verify-harness --input target.json --lock-file package-lock.json`，确认所有相关 peer/dev 包的锁文件 version/integrity/resolved 与固定记录相同，再用该锁文件执行 `npm ci`；dsh CLI 本身只有在锁文件中存在时才比较。无有效签名、未知或过期 key、摘要/地址/来源变化、重定向、网络失败或超限均为 unknown。JSON 中的 verification 字段不代替实际复验。
+每个新 Harness 包记录包含 name/version/source/manifestUrl/tarball/integrity/commit/verification/dependencies；verification 仅记录 `kind: npm-registry-signature` 和验签的 keyid，不是审批凭证。安装前必须运行 `verify-harness --input target.json --lock-file package-lock.json`，确认所有相关 peer/dev 包的锁文件 version/integrity/resolved 与固定记录相同，随后按固定宿主与固定组件重新严格解析 peer 图（不因后来发布改变目标），通过后用该锁文件执行 `npm ci --strict-peer-deps`；dsh CLI 本身只有在锁文件中存在时才比较。无有效签名、未知或过期 key、摘要/地址/来源变化、重定向、网络失败或超限均为 unknown。JSON 中的 verification 字段不代替实际复验。
 
 ## 2. 互斥与恢复
 
@@ -159,6 +161,8 @@ Desktop 必须打开且机器唤醒；关闭期间不保证准时执行，漏跑
 - 允许按既有权限绑定 PR 并启用 Auto-fix / 评论处理；应用拒绝时报告，不绕过。遵守锁、恢复、来源不变和最多三轮修复规则。
 - 自动执行终点为 PR，禁止自动合并、启用 auto-merge、同步主副本和发布。已由人工合并的目标按实际 Git/GitHub 事实恢复；如仍待同步，报告后停止，不越权同步或伪造 synced。
 - 主副本不干净只作为同步限制报告，不阻止独立工作树中其他前置条件满足的适配。缺少有效产物签名/摘要、完整验证失败、宿主拒绝或其他必要检查不通过时停止并报告，不能通过改配置放宽门禁。
+
+2026-11-05 用户又明确要求先锁定“经过验证、能一起工作的最新组合”，新组件须先核验与其他组件兼容才能升级。按 spec 008，当前精确宿主 0.2.1-rc.5、13 个相关 dsh-* 包 rc.5、Cordis 4.0.5、Schemastery 3.18.5；上游元数据与实际严格解析表明这仍是当前默认宿主下的候选，无需升降版本。package.json 和安装锁同步精确宿主及相关 peer/dev pin。routine 同步为先解析完整图、再复验固定产物和安装锁、最后完整集成验证及 PR；独立 latest 仅作观察，失败组件不推进基线，不自动合并/同步。main 尚未包含 spec 008 及实现时报告 BOOTSTRAP_REQUIRED。
 
 任务配置更新不等于端到端验收完成。npm manifest 缺少 `gitHead` 按 spec 007 使用已验签并验证 SHA-512 的发布物，不再单独阻塞；缺少有效注册表签名或摘要仍阻塞。PR、Auto-fix 和目标版本完整验证的实际结果须逐轮报告。
 

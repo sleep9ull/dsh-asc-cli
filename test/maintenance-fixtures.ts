@@ -47,5 +47,9 @@ export function artifactNetwork() {
     if (url.endsWith('checksums.txt')) return new Response(`${'b'.repeat(64)}  asc_6.4.0_linux_amd64\n`)
     throw new Error(`Unexpected URL: ${url}`)
   }
-  return { calls, manifests, tarballs, keys, fetch }
+  const resolve = async () => ({ lockfileVersion: 3, packages: {
+    '': { dependencies: { '@deepseek-ai/dsh': manifests.get('@deepseek-ai/dsh')!.version } },
+    ...Object.fromEntries([...manifests.values()].map(m => [`node_modules/${m.name}`, { version: m.version, integrity: m.dist.integrity, resolved: m.dist.tarball }])),
+  } })
+  return { calls, manifests, tarballs, keys, fetch, resolve }
 }

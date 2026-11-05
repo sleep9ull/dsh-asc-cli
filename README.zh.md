@@ -134,7 +134,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 推荐目标是插件已验证 pin，未验证的 latest 仅告知。提示针对实际执行的配置路径、环境变量、插件缓存或 PATH；Homebrew 升级可能不会改变配置/缓存中的二进制。更新查询不再读写 `update-check.json`，旧文件保留不动；插件重启后可能重新查询。
 
-开发维护机制见 [MAINTENANCE](docs/MAINTENANCE.md)：本地 Desktop 定时任务、仓库脚本、GitHub 门禁及可恢复的 main 同步。部署和持久写授权独立于插件安装，不自动发布 npm。Harness 维护固定 npm tarball，验证实际字节的 SHA-512 与注册表签名，并在安装前对照锁文件重新验证。缺少 `gitHead` 时记录未知源码 commit；注册表签名不证明源码构建来源。
+开发维护机制见 [MAINTENANCE](docs/MAINTENANCE.md)：本地 Desktop 定时任务、仓库脚本、GitHub 门禁及可恢复的 main 同步。部署和持久写授权独立于插件安装，不自动发布 npm。Harness 维护固定 npm tarball，验证实际字节的 SHA-512 与注册表签名，并在安装前对照锁文件重新验证。缺少 `gitHead` 时记录未知源码 commit；注册表签名不证明源码构建来源。更新候选从精确宿主的严格 dependency/peer 图选择，各包独立 latest 仅作观察；宿主与 peer 保持已验证组合的精确锁定，隔离完整集成验证通过后才升级。解析使用临时 npm lock/cache、关闭 scripts，不安装包。
 
 ---
 
@@ -181,7 +181,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 | 依赖 | 版本 |
 |---|---|
-| DeepSeek Harness | `0.2.1-rc.5` 线（`engines.dsh: >=0.2.1-rc.5 <0.2.2-0`） |
+| DeepSeek Harness | 已验证组合：`0.2.1-rc.5`、Cordis `4.0.5`、Schemastery `3.18.5`；宿主与插件 peer 精确锁定 |
 | Node.js | `^22.19.0 \|\| >=24.0.0`（推荐 24） |
 | `asc` | 已验证基线 `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`/asc-doctor` 会提示漂移） |
 | App Store Connect API Key | 团队或个人 key，在 Agent 之外完成认证 |

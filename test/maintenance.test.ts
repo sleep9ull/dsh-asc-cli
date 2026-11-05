@@ -32,7 +32,7 @@ function network(fail = false) {
 describe('maintenance discovery', () => {
   it('pins default rc and independently versioned packages, ignoring alpha', async () => {
     const net = network()
-    const found = await discoverTargets({ repository: 'owner/plugin', packageNames: ['@deepseek-ai/cordis'], platform: 'linux', arch: 'x64', fetch: net.fetch, now: () => 42 })
+    const found = await discoverTargets({ repository: 'owner/plugin', packageNames: ['@deepseek-ai/cordis'], platform: 'linux', arch: 'x64', fetch: net.fetch, resolve: net.resolve, now: () => 42 })
     expect(found.status).toBe('discovered')
     expect(found.target.harness.version).toBe('0.2.1-rc.5')
     expect(found.target.harness.packages[0].version).toBe('4.0.5')
@@ -42,7 +42,8 @@ describe('maintenance discovery', () => {
   it('downloads the pinned asset into isolation only after matching its checksum', async () => {
     const directory = await temp()
     const bytes = 'synthetic binary fixture, never executed'
-    const found = await discoverTargets({ repository: 'owner/plugin', platform: 'linux', arch: 'x64', fetch: network().fetch })
+    const net = network()
+    const found = await discoverTargets({ repository: 'owner/plugin', platform: 'linux', arch: 'x64', fetch: net.fetch, resolve: net.resolve })
     found.target.asc.sha256 = createHash('sha256').update(bytes).digest('hex')
     const result = await downloadTarget(found.target, { directory, fetch: async () => new Response(bytes) })
     expect(await readFile(result.path, 'utf8')).toBe(bytes)

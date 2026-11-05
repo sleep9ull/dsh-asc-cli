@@ -21,7 +21,7 @@ describe('npm maintenance artifact verification', () => {
       }
       return net.fetch(url, init)
     }
-    const result = await discovery.discoverTargets({ repository: 'owner/plugin', packageNames: ['@deepseek-ai/cordis'], platform: 'linux', arch: 'x64', fetch })
+    const result = await discovery.discoverTargets({ repository: 'owner/plugin', packageNames: ['@deepseek-ai/cordis'], platform: 'linux', arch: 'x64', fetch, resolve: net.resolve })
     expect(result.status).toBe('discovered')
     expect(result.target.harness).toMatchObject({ commit: null, integrity: packageRecord().integrity, verification: { kind: 'npm-registry-signature', keyid: registryKey.keyid } })
     expect(result.target.harness.packages[0]).toMatchObject({ name: '@deepseek-ai/cordis', version: '4.0.5', commit: null })
@@ -45,7 +45,7 @@ describe('npm maintenance artifact verification', () => {
     if (failure === 'bad-commit') m.gitHead = 'not-a-commit'
     if (failure === 'wrong-name') m.name = '@deepseek-ai/dsh-tools'
     if (failure === 'wrong-version') m.version = '0.2.2'
-    const result = await discovery.discoverHarness({ fetch: net.fetch })
+    const result = await discovery.discoverHarness({ fetch: net.fetch, resolve: net.resolve })
     expect(result.status).toBe('unknown')
     expect(result.harness).toBeUndefined()
   })
@@ -59,7 +59,7 @@ describe('npm maintenance artifact verification', () => {
   ])('refuses a tarball URL outside the pinned identity: %s', async url => {
     const net = artifactNetwork()
     net.manifests.get('@deepseek-ai/dsh')!.dist.tarball = url
-    expect((await discovery.discoverHarness({ fetch: net.fetch })).status).toBe('unknown')
+    expect((await discovery.discoverHarness({ fetch: net.fetch, resolve: net.resolve })).status).toBe('unknown')
     expect(net.calls).not.toContain(url)
   })
 
@@ -67,7 +67,7 @@ describe('npm maintenance artifact verification', () => {
     const net = artifactNetwork()
     const manifest = net.manifests.get('@deepseek-ai/dsh')!
     manifest.repository.url = 'https://github.com/other/project'
-    expect((await discovery.discoverHarness({ fetch: net.fetch })).status).toBe('unknown')
+    expect((await discovery.discoverHarness({ fetch: net.fetch, resolve: net.resolve })).status).toBe('unknown')
     expect(net.calls).not.toContain(manifest.dist.tarball)
   })
 
@@ -90,7 +90,7 @@ describe('npm maintenance artifact verification', () => {
     const manifest = net.manifests.get('@deepseek-ai/dsh')!
     manifest.gitHead = 'a'.repeat(40)
     manifest.dist.signatures.unshift({ keyid: 'unknown', sig: 'invalid' })
-    const found = await discovery.discoverHarness({ fetch: net.fetch })
+    const found = await discovery.discoverHarness({ fetch: net.fetch, resolve: net.resolve })
     expect(found.status).toBe('discovered')
     expect(found.harness.commit).toBe(manifest.gitHead)
     expect(found.harness.verification.kind).toBe('npm-registry-signature')
@@ -101,10 +101,10 @@ describe('npm maintenance artifact verification', () => {
     const t = target()
     const pkg = t.harness.packages[0]!
     const lock = { packages: { '': { devDependencies: { [pkg.name]: pkg.version } }, [`node_modules/${pkg.name}`]: { version: pkg.version, integrity: pkg.integrity, resolved: pkg.tarball } } }
-    expect(await discovery.verifyHarness(t.harness, { fetch: net.fetch, lock })).toMatchObject({ status: 'verified', packages: 2 })
+    expect(await discovery.verifyHarness(t.harness, { fetch: net.fetch, lock, resolve: net.resolve })).toMatchObject({ status: 'verified', packages: 2 })
     expect(net.calls.some(url => url.endsWith('/latest'))).toBe(false)
     net.tarballs.set(t.harness.tarball, Buffer.from('changed after discovery'))
-    expect((await discovery.verifyHarness(t.harness, { fetch: net.fetch, lock })).status).toBe('unknown')
+    expect((await discovery.verifyHarness(t.harness, { fetch: net.fetch, lock, resolve: net.resolve })).status).toBe('unknown')
   })
 
   it.each(['version', 'integrity', 'resolved', 'missing'] as const)('blocks lockfile %s drift before installation', async failure => {
@@ -114,7 +114,7 @@ describe('npm maintenance artifact verification', () => {
     const entry = { version: pkg.version, integrity: pkg.integrity, resolved: pkg.tarball }
     if (failure !== 'missing') entry[failure] = 'different'
     const lock = { packages: { '': { devDependencies: { [pkg.name]: pkg.version } }, ...(failure === 'missing' ? {} : { [`node_modules/${pkg.name}`]: entry }) } }
-    expect((await discovery.verifyHarness(t.harness, { fetch: net.fetch, lock })).status).toBe('unknown')
+    expect((await discovery.verifyHarness(t.harness, { fetch: net.fetch, lock, resolve: net.resolve })).status).toBe('unknown')
   })
 
   it('rejects a fixed target omitting a direct Harness dependency declared by the install lock', async () => {
@@ -123,7 +123,7 @@ describe('npm maintenance artifact verification', () => {
     t.harness.packages = []
     const pkg = packageRecord('@deepseek-ai/cordis', '4.0.5')
     const lock = { packages: { '': { devDependencies: { [pkg.name]: pkg.version } }, [`node_modules/${pkg.name}`]: { version: pkg.version, integrity: pkg.integrity, resolved: pkg.tarball } } }
-    expect((await discovery.verifyHarness(t.harness, { fetch: net.fetch, lock })).status).toBe('unknown')
+    expect((await discovery.verifyHarness(t.harness, { fetch: net.fetch, lock, resolve: net.resolve })).status).toBe('unknown')
   })
 
   it('keeps the pinned signing identity valid when another valid key is listed first', async () => {
@@ -131,7 +131,7 @@ describe('npm maintenance artifact verification', () => {
     const second = signedManifest('@deepseek-ai/dsh', '0.2.1-rc.5', Buffer.from('@deepseek-ai/dsh@0.2.1-rc.5'), true)
     net.keys.unshift(second.key!)
     net.manifests.get('@deepseek-ai/dsh')!.dist.signatures.unshift(second.dist.signatures[0]!)
-    expect(await discovery.verifyHarness(target().harness, { fetch: net.fetch })).toMatchObject({ status: 'verified' })
+    expect(await discovery.verifyHarness(target().harness, { fetch: net.fetch, resolve: net.resolve })).toMatchObject({ status: 'verified' })
   })
 
   it('rejects same-version metadata drift and does not trust a supplied verification field', async () => {
@@ -140,7 +140,7 @@ describe('npm maintenance artifact verification', () => {
     const next = signedManifest('@deepseek-ai/dsh', t.harness.version, Buffer.from('replacement'))
     net.manifests.set(next.name, next)
     net.tarballs.set(next.dist.tarball, Buffer.from('replacement'))
-    expect((await discovery.verifyHarness(t.harness, { fetch: net.fetch })).status).toBe('unknown')
+    expect((await discovery.verifyHarness(t.harness, { fetch: net.fetch, resolve: net.resolve })).status).toBe('unknown')
   })
 })
 

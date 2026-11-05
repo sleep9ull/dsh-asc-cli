@@ -11,7 +11,8 @@ All notable changes to this plugin are documented here.
 - Harden maintenance recovery and synchronization: hold the ownership guard through final writes, require boolean exclusive-access confirmation, retain repair counts, detect orphan targets, and allow a successful third repair. Target keys cover independent Harness package versions; legacy v1 records require manual migration. Discovery reuses the compatibility module's asset mapping.
 - Preserve shared version-probe waiters when an explicit version result refreshes the cache; retain deadlines and disposal/provision cancellation for detached probes.
 - Verify Harness npm tarball bytes against canonical SHA-512 integrity and official registry signatures; record missing `gitHead` as an unknown source commit rather than blocking otherwise verified artifacts. Add fixed-target/lockfile re-verification, bounded downloads and v3 PR records; unfinished v2 records require explicit migration. Registry signatures do not establish source-build provenance.
-- Specifications: [005](docs/specs/005-scheduled-upstream-maintenance.md), [006](docs/specs/006-asc-version-notices.md), [007](docs/specs/007-npm-artifact-verification.md).
+- Pin the verified Harness `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5` combination exactly, including host and plugin peers. Select maintenance candidates from the exact host's strict dependency/peer graph; preserve independent latest tags as observations rather than mixing incompatible releases. Recheck the fixed peer graph before installation and retain full integration gates before upgrades. Metadata resolution uses isolated temporary npm locks/cache with scripts disabled.
+- Specifications: [005](docs/specs/005-scheduled-upstream-maintenance.md), [006](docs/specs/006-asc-version-notices.md), [007](docs/specs/007-npm-artifact-verification.md), [008](docs/specs/008-harness-drift-triage.md).
 
 ## 0.2.0 — 2026-11-03 (upstream compatibility)
 

@@ -30,6 +30,8 @@ spec 005/006 已于 2026-11-04 获准实施：新增 `scripts/maintenance/` 属�
 
 spec 007 将 Harness 维护来源改为固定 npm 发布物：新增 `scripts/maintenance/npm-artifact.mjs`，集中处理官方 registry URL/记录校验、ECDSA 注册表验签、有界 tarball SHA-512 校验及固定目标/lockfile 再验证；`discovery.mjs` 负责版本选择，`state.mjs` 共用记录形状校验。新 PR marker 为 v3，旧 v2 仍参与恢复和去重，未收口旧目标需要显式迁移。产物验签不证明源码构建来源，缺失的源码 commit 记录 null；该开发模块不进入 npm 插件包。
 
+spec 008 新增 `scripts/maintenance/compatibility.mjs`：用隔离配置的 npm package-lock-only / strict-peer-deps 解析精确宿主的完整依赖图，校核相关共享组件唯一性与固定产物身份；临时目录仅作解析且不执行包代码。discovery 选择该图中的相关包，独立 latest 只作 observations；watch 共用候选比较，不把 observations 当安装目标。npm 解析可满足不等于实测兼容，基线推进仍需完整验证和 PR。
+
 版本提示由 `src/control/version-notice.ts` 协调：engine 提供同一执行快照下的版本事实和有界内存缓存，compat 提供版本判断，format 定义及渲染可选 `versionNotice`。runtime 绑定实际执行快照，顶层工具/命令统一装饰结果，job 内部不重复提示。取消等待者不取消共享检查；插件卸载清理检查。查询不再读写磁盘更新缓存。
 
 | 文件 | 职责 | 关键约束 |

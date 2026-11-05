@@ -4,6 +4,8 @@ import { join } from 'node:path'
 // Supported Node versions strip types, so discovery needs neither lib/ nor duplicated facts.
 import { UPSTREAM_REPO, releaseAsset } from '../../src/compat.ts'
 import { discoverPackage, registryKeys } from './npm-artifact.mjs'
+import { resolveHost, selectPackages, assertResolved } from './compatibility.mjs'
+import { compareVersions } from '../../src/compat.ts'
 export { verifyHarness } from './npm-artifact.mjs'
 
 const commit = /^[a-f0-9]{40}$/i
@@ -14,24 +16,32 @@ async function get(url, fetchFn) {
   return response
 }
 
-export async function discoverHarness({ packageNames = [], fetch: fetchFn = globalThis.fetch, now = Date.now } = {}) {
+export async function discoverHarness({ packageNames = [], fetch: fetchFn = globalThis.fetch, now = Date.now, resolve = resolveHost } = {}) {
   try {
     const options = { fetch: fetchFn, keys: await registryKeys(fetchFn), now }
     const harness = await discoverPackage('@deepseek-ai/dsh', options)
     const names = [...new Set(packageNames)].filter(name => name !== harness.name).sort()
-    // Bound concurrent artifact memory rather than buffering every tarball at once.
-    const packages = []
-    for (const name of names) packages.push(await discoverPackage(name, options))
-    return { status: 'discovered', checkedAt: now(), harness: { ...harness, packages } }
+    const graph = await resolve(harness)
+    const selected = selectPackages(graph, harness, names)
+    // Keep independent releases visible, but install only the strict host resolution.
+    const packages = [], observations = []
+    for (const entry of selected) {
+      const latest = await discoverPackage(entry.name, options)
+      const pkg = latest.version === entry.version ? latest : await discoverPackage(entry.name, options, entry.version)
+      assertResolved(pkg, entry)
+      packages.push(pkg)
+      if (latest.version !== pkg.version) observations.push({ ...latest, selected: pkg.version, reason: compareVersions(latest.version, pkg.version) < 0 ? 'default-channel-behind-host' : 'outside-host-resolution' })
+    }
+    return { status: 'discovered', checkedAt: now(), validation: 'dependency-resolution-only', observations, harness: { ...harness, packages } }
   } catch (error) {
     return { status: 'unknown', checkedAt: now(), reason: error.message }
   }
 }
 
-export async function discoverTargets({ repository, packageNames = [], platform = process.platform, arch = process.arch, fetch: fetchFn = globalThis.fetch, now = Date.now } = {}) {
+export async function discoverTargets({ repository, packageNames = [], platform = process.platform, arch = process.arch, fetch: fetchFn = globalThis.fetch, now = Date.now, resolve = resolveHost } = {}) {
   try {
     if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('Explicit owner/repository is required')
-    const found = await discoverHarness({ packageNames, fetch: fetchFn, now })
+    const found = await discoverHarness({ packageNames, fetch: fetchFn, now, resolve })
     if (found.status !== 'discovered') return found
     const repo = UPSTREAM_REPO
     const api = `https://api.github.com/repos/${repo}`
@@ -49,7 +59,7 @@ export async function discoverTargets({ repository, packageNames = [], platform 
     const checksumText = await (await get(sums.browser_download_url, fetchFn)).text()
     const entries = checksumText.split(/\r?\n/).map(line => /^([a-f0-9]{64})\s+\*?(.+?)\s*$/i.exec(line)).filter(match => match?.[2] === name)
     if (entries.length !== 1) throw new Error('Missing or ambiguous asc SHA-256')
-    return { status: 'discovered', checkedAt: now(), target: {
+    return { status: 'discovered', checkedAt: now(), validation: found.validation, observations: found.observations, target: {
       repository, harness: found.harness,
       asc: { version, tag: release.tag_name, commit: resolved.sha, source: `https://github.com/${repo}`, releaseUrl: `${api}/releases/tags/${encodeURIComponent(release.tag_name)}`, asset: name, assetUrl: asset.browser_download_url, checksumsUrl: sums.browser_download_url, sha256: entries[0][1].toLowerCase(), platform, arch },
     } }
