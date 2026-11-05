@@ -134,7 +134,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 推荐目标是插件已验证 pin，未验证的 latest 仅告知。提示针对实际执行的配置路径、环境变量、插件缓存或 PATH；Homebrew 升级可能不会改变配置/缓存中的二进制。更新查询不再读写 `update-check.json`，旧文件保留不动；插件重启后可能重新查询。
 
-开发维护机制见 [MAINTENANCE](docs/MAINTENANCE.md)：本地 Desktop 定时任务、仓库脚本、GitHub 门禁及可恢复的 main 同步。部署和持久写授权独立于插件安装，不自动发布 npm。
+开发维护机制见 [MAINTENANCE](docs/MAINTENANCE.md)：本地 Desktop 定时任务、仓库脚本、GitHub 门禁及可恢复的 main 同步。部署和持久写授权独立于插件安装，不自动发布 npm。Harness 维护固定 npm tarball，验证实际字节的 SHA-512 与注册表签名，并在安装前对照锁文件重新验证。缺少 `gitHead` 时记录未知源码 commit；注册表签名不证明源码构建来源。
 
 ---
 

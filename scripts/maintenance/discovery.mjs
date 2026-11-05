@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 // Supported Node versions strip types, so discovery needs neither lib/ nor duplicated facts.
 import { UPSTREAM_REPO, releaseAsset } from '../../src/compat.ts'
+import { discoverPackage, registryKeys } from './npm-artifact.mjs'
+export { verifyHarness } from './npm-artifact.mjs'
 
-const exactVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 const commit = /^[a-f0-9]{40}$/i
 
 async function get(url, fetchFn) {
@@ -13,33 +14,14 @@ async function get(url, fetchFn) {
   return response
 }
 
-function sourceUrl(value) {
-  const url = new URL(String(value).replace(/^git\+/, '').replace(/\.git$/, ''))
-  if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Unsupported source repository URL')
-  return url.href
-}
-
-async function manifest(name, fetchFn) {
-  if (!/^@deepseek-ai\/[a-z0-9-]+$/.test(name)) throw new Error('Invalid Harness package name')
-  const url = `https://registry.npmjs.org/${encodeURIComponent(name)}/latest`
-  const data = await (await get(url, fetchFn)).json()
-  if (data.name !== name || !exactVersion.test(data.version) || !commit.test(data.gitHead) || !data.dist?.integrity) {
-    throw new Error(`Missing exact version or provenance for ${name}`)
-  }
-  return {
-    name, version: data.version, manifestUrl: url, commit: data.gitHead,
-    source: sourceUrl(typeof data.repository === 'string' ? data.repository : data.repository?.url),
-    integrity: data.dist.integrity,
-    // Dependency requirements are evidence, not a claim that independent latest packages interoperate.
-    dependencies: Object.fromEntries(Object.entries({ ...data.dependencies, ...data.peerDependencies }).filter(([key, value]) => key.startsWith('@deepseek-ai/') && typeof value === 'string')),
-  }
-}
-
 export async function discoverHarness({ packageNames = [], fetch: fetchFn = globalThis.fetch, now = Date.now } = {}) {
   try {
-    const harness = await manifest('@deepseek-ai/dsh', fetchFn)
+    const options = { fetch: fetchFn, keys: await registryKeys(fetchFn), now }
+    const harness = await discoverPackage('@deepseek-ai/dsh', options)
     const names = [...new Set(packageNames)].filter(name => name !== harness.name).sort()
-    const packages = await Promise.all(names.map(name => manifest(name, fetchFn)))
+    // Bound concurrent artifact memory rather than buffering every tarball at once.
+    const packages = []
+    for (const name of names) packages.push(await discoverPackage(name, options))
     return { status: 'discovered', checkedAt: now(), harness: { ...harness, packages } }
   } catch (error) {
     return { status: 'unknown', checkedAt: now(), reason: error.message }

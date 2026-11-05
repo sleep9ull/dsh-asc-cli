@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { discoverHarness, discoverTargets, downloadTarget } from './discovery.mjs'
+import { discoverHarness, discoverTargets, downloadTarget, verifyHarness } from './discovery.mjs'
 import { acquireLock, withLockOwner, readState, writeState, recover, mergeGate, prMarker, targetKey } from './state.mjs'
 import { commonDirectory, runGit, syncCheckout } from './git.mjs'
 
@@ -10,6 +10,7 @@ const help = `Upstream maintenance helpers (Node 22/24; no GitHub mutations).
 
   node scripts/maintenance/cli.mjs discover --repository OWNER/REPO [--package-file package.json]
   node scripts/maintenance/cli.mjs harness-watch [--package-file package.json] [--lock-file package-lock.json]
+  node scripts/maintenance/cli.mjs verify-harness --input target.json [--lock-file package-lock.json]
   node scripts/maintenance/cli.mjs download --input target.json --directory /existing/downloads
   node scripts/maintenance/cli.mjs marker --input target.json
   node scripts/maintenance/cli.mjs hold-lock --checkout /repo [--run-id ID] [--reclaim-dead]
@@ -31,6 +32,7 @@ const [command, ...args] = process.argv.slice(2)
 const options = {}
 const allowed = {
   discover: ['repository', 'package-file'], 'harness-watch': ['package-file', 'lock-file'],
+  'verify-harness': ['input', 'lock-file'],
   download: ['input', 'directory'], marker: ['input'], 'hold-lock': ['checkout', 'run-id', 'reclaim-dead'],
   state: ['checkout'], recover: ['checkout', 'input'], record: ['checkout', 'input', 'lock-token'], gate: ['input'], sync: ['input', 'lock-token'],
 }
@@ -72,6 +74,11 @@ try {
           result = { ...result, status: changes.length ? 'drift' : 'unchanged', changes }
         }
       }
+    } else if (command === 'verify-harness') {
+      const input = await json(required('input'))
+      const target = input.target ?? input
+      targetKey(target)
+      result = await verifyHarness(target.harness, { lock: options['lock-file'] ? await json(options['lock-file']) : undefined })
     } else if (command === 'download' || command === 'marker') {
       const input = await json(required('input'))
       const target = input.target ?? input

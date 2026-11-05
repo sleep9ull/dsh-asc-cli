@@ -134,7 +134,7 @@ With `checkUpdates: true` (the existing default), allowed calls can query the pu
 
 The verified recommendation is the plugin's pin, not an untested latest release. Guidance follows the executable actually selected: configured path, environment, plugin cache or PATH. A Homebrew upgrade may not affect a configured/cached binary. Update checks no longer read or write `update-check.json`; old files remain untouched, and restarting the plugin may query again.
 
-Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a local Desktop task plus repository scripts, GitHub gates and resumable main synchronization. Deployment and persistent write authorization are separate from installing the plugin; this does not publish npm releases automatically.
+Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a local Desktop task plus repository scripts, GitHub gates and resumable main synchronization. Deployment and persistent write authorization are separate from installing the plugin; this does not publish npm releases automatically. Harness maintenance pins npm tarballs, verifies their SHA-512 bytes and registry signatures, and rechecks the fixed artifacts against the install lockfile. Missing `gitHead` is recorded as unknown source commit; registry signatures do not prove a source build.
 
 ---
 

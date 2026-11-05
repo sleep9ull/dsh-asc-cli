@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { artifactNetwork, packageRecord } from './maintenance-fixtures.js'
 
 // The production helpers are native ESM developer scripts, outside the plugin build.
 const modulePath = '../scripts/maintenance/'
@@ -20,26 +21,12 @@ async function temp() {
 afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))) })
 const sha = 'a'.repeat(40)
 const checksum = 'b'.repeat(64)
-const target = { repository: 'owner/plugin', harness: { version: '0.2.1-rc.5', commit: sha, integrity: 'sha512-example', packages: [] }, asc: { version: '6.4.0', commit: sha, sha256: checksum } }
+const target = { repository: 'owner/plugin', harness: { ...packageRecord(), packages: [] }, asc: { version: '6.4.0', commit: sha, sha256: checksum } }
 const key = () => targetKey(target)
 
 function network(fail = false) {
-  const calls: string[] = []
-  const fetch = async (url: string) => {
-    calls.push(url)
-    if (fail) throw new Error('offline')
-    if (url.includes('registry.npmjs.org')) {
-      const name = url.includes('cordis') ? '@deepseek-ai/cordis' : '@deepseek-ai/dsh'
-      const version = name.endsWith('cordis') ? '4.0.5' : '0.2.1-rc.5'
-      const manifest = { name, version, gitHead: sha, repository: { url: 'git+https://github.com/deepseek-ai/harness.git' }, dist: { integrity: 'sha512-example', tarball: 'https://registry.npmjs.org/example.tgz' }, dependencies: name.endsWith('dsh') ? { '@deepseek-ai/cordis': '~4.0.5' } : {} }
-      return Response.json(url.endsWith('/latest') ? manifest : { 'dist-tags': { latest: version, alpha: '9.0.0-alpha.1' }, versions: { [version]: manifest } })
-    }
-    if (url.endsWith('/releases/latest')) return Response.json({ tag_name: '6.4.0', draft: false, prerelease: false, assets: [{ name: 'asc_6.4.0_linux_amd64', browser_download_url: 'https://github.com/rorkai/App-Store-Connect-CLI/releases/download/6.4.0/asc_6.4.0_linux_amd64' }, { name: 'asc_6.4.0_checksums.txt', browser_download_url: 'https://github.com/rorkai/App-Store-Connect-CLI/releases/download/6.4.0/asc_6.4.0_checksums.txt' }] })
-    if (url.includes('/commits/')) return Response.json({ sha })
-    if (url.endsWith('checksums.txt')) return new Response(`${checksum}  asc_6.4.0_linux_amd64\n`)
-    throw new Error(`Unexpected URL: ${url}`)
-  }
-  return { fetch, calls }
+  const net = artifactNetwork()
+  return fail ? { ...net, fetch: async () => { throw new Error('offline') } } : net
 }
 
 describe('maintenance discovery', () => {
@@ -82,9 +69,9 @@ describe('maintenance recovery and lock', () => {
     expect(unknown).toMatchObject({ status: 'blocked', key: key(), target, repairAttempts: null })
   })
   it('starts a new target for an independent package release after sync', async () => {
-    const pkg = { name: '@deepseek-ai/cordis', version: '4.0.5', commit: sha, integrity: 'sha512-first' }
+    const pkg = packageRecord('@deepseek-ai/cordis', '4.0.5')
     const previous = { ...target, harness: { ...target.harness, packages: [pkg] } }
-    const next = { ...target, harness: { ...target.harness, packages: [{ ...pkg, version: '4.0.6', integrity: 'sha512-next' }] } }
+    const next = { ...target, harness: { ...target.harness, packages: [packageRecord('@deepseek-ai/cordis', '4.0.6')] } }
     const path = join(await temp(), 'state.json')
     await writeState(path, { status: 'synced', key: targetKey(previous), target: previous })
     const state = { status: 'adapting', key: targetKey(next), target: next, branch: 'maintenance/next', repairAttempts: 0 }
@@ -94,7 +81,7 @@ describe('maintenance recovery and lock', () => {
       { number: 4, state: 'OPEN', body: prMarker(next), headRefName: state.branch },
     ]
     expect(recover({ repository: target.repository, prs, state, branches: prs.map(pr => pr.headRefName), syncedKeys: [targetKey(previous)] })).toMatchObject({ status: 'pr-open', target: next })
-    const second = { ...pkg, name: '@deepseek-ai/dsh-tools' }
+    const second = packageRecord('@deepseek-ai/dsh-tools', '4.0.5')
     expect(targetKey({ ...target, harness: { ...target.harness, packages: [pkg, second] } })).toBe(targetKey({ ...target, harness: { ...target.harness, packages: [second, pkg] } }))
   })
   it('blocks orphan branches and other unfinished local targets before selecting a PR', () => {
