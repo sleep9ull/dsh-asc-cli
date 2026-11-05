@@ -126,6 +126,7 @@
 - **质量门**：`npm run verify`（typecheck → test → build → pack-manifest → contract → classify-audit → smoke）；`scripts/pack-manifest.mjs` 断言 `lib/` 与 `src/` 文件集一致。
 - **引擎**：pin 与区间只在 `src/compat.ts` 定义；最低要求、已验证 pin 和声明支持范围区分，未来版本不称为已实测。`scripts/contract.mjs` 锁定 23 个注册命令与 `--help` 兼容性；CI + 每日 upstream-watch 监测 asc 漂移和 Harness 默认渠道变化，监测不等于完成适配。
 - **版本提示**：`checkUpdates` 沿用默认 true，扩展到普通工具和 `/asc`；可选 `versionNotice` 不改变业务结果或审批。远端缓存 24h、失败 15min，均在内存；不读写旧更新缓存文件。false 关闭自动检查和远端查询；显式本地诊断保留。
+- **开发维护的 npm 来源**（spec 007）：固定官方 registry 中精确版本/tarball/SHA-512，实际验签和验字节；源码 commit 可为 null。registry 签名不等于源码构建证明，记录字段不代替安装前复验；缺有效签名、摘要不符或来源漂移仍阻塞。新 marker 为 v3，旧 v2 不静默升级，未收口旧目标需显式迁移。
 - **宿主**：`engines.dsh` = `>=0.2.1-rc.5 <0.2.2-0`；peer 依赖由宿主提供。
 - **发布物**：`files` 含 `lib`、`skills`、`cordis.patch.yml`、README/CHANGELOG；`prepack`/`prepare` 构建；无 postinstall 下载。
 
@@ -161,6 +162,7 @@
 
 | 日期 | 版本 | 变更 | 理由 |
 |---|---|---|---|
+| 2026-11-05 | Unreleased | 维护层验证 npm 产物 SHA-512 和注册表签名、commit 可缺省、固定目标复验与 v3 恢复记录 | 用户明确批准 spec 007 的方案与实现；仅调整维护来源要求，I1–I10 不变 |
 | 2026-11-04 | Unreleased | 使用时版本提示、稳定范围与验证 pin 分离、内存缓存、双上游维护入口 | 用户批准 spec 005/006 的代码实现；I1–I10 不放宽，部署/持久写授权/发布另行验收 |
 | 2026-10-24 | 0.1.4 | 初版契约建立 | 0.1.2–0.1.4 收敛后固化边界与路线 |
 | 2026-10-24 | 0.1.5 | 拆分重组为 CONTRACT / COMMANDS / ARCHITECTURE / TESTING / CONTRIBUTING / ROADMAP / SPECS，并按上游仓库模式重写 AGENTS.md | 文档与代码对齐，减少单文件 sprawl |

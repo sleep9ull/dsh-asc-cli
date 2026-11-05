@@ -10,7 +10,7 @@ node scripts/maintenance/cli.mjs discover --repository sleep9ull/dsh-asc-cli
 node scripts/maintenance/cli.mjs harness-watch
 ```
 
-需要 Node ^22.19.0 或 >=24，不新增运行时依赖。脚本通过 Node 原生类型擦除直接导入 `src/compat.ts` 的上游仓库事实和 `releaseAsset`，不要求预先 build。`discover` 查询 npm `@deepseek-ai/dsh` 的 latest manifest、当前 package.json 中所有相关 peer/dev 包各自的 latest 精确版本及来源，再查询 asc 正式 latest release 的 tag、源码 commit、平台资产与 SHA-256。latest 为 rc 时保留；不会追踪 alpha/next。每个包的版本独立解析，并保存 Harness 声明的依赖范围；发现结果不是这些独立版本已经兼容的证明。
+需要 Node ^22.19.0 或 >=24，不新增运行时依赖。脚本通过 Node 原生类型擦除直接导入 `src/compat.ts` 的上游仓库事实和 `releaseAsset`，不要求预先 build。`discover` 查询 npm `@deepseek-ai/dsh` 与当前 package.json 中所有相关 peer/dev 包各自的 latest，固定精确版本 manifest、官方 tarball URL 和 SHA-512；从官方 keys 端点取得有效 ECDSA P-256 公钥，验证 `name@version:integrity` 注册表签名，并读取 tarball 实际字节验摘要（内存中有界读取，不写文件、不解压、不执行）。单个 metadata/body 请求限 30 秒，metadata 上限 2 MiB、tarball 上限 64 MiB，逐个处理包。然后查询 asc 正式 latest release 的 tag、源码 commit、平台资产与 SHA-256。latest 为 rc 时保留，不查询 alpha/next 渠道。包版本独立解析并保留依赖范围；发布物已验证不代表这些版本已兼容，也不证明源码构建来源。gitHead 存在时仅保存其声明，缺失记录 commit=null，不推测 tag。详见 [spec 007](specs/007-npm-artifact-verification.md)。
 
 所有命令输出 JSON（help 除外）。退出码 0 为成功，2 表示 unknown/drift/blocked/pending，1 表示输入或执行错误。HTTP 超时/元数据缺失为 unknown，不能解释成无更新。`harness-watch` 只比较默认渠道与 package.json/lockfile 基线：它不安装包、不改代码，也不验证新组合的真实集成。GitHub upstream-watch 保存报告 artifact，漂移/无法查询时开独立去重 issue；自动适配只属于另行部署的 Desktop routine。
 
@@ -18,6 +18,7 @@ node scripts/maintenance/cli.mjs harness-watch
 |---|---|
 | `discover` | 必填 `--repository OWNER/REPO`，可选 `--package-file`；输出固定目标与查询时间 |
 | `harness-watch` | 可选 `--package-file` / `--lock-file`；只读基线差异 |
+| `verify-harness` | `--input target.json [--lock-file package-lock.json]`；重新读取固定精确 manifest、官方 keys 和 tarball 验签验摘要，可比对即将用于安装的锁文件；不查询 latest、不写文件 |
 | `download` | `--input target.json --directory /existing/download-parent`；创建独立空子目录，校验后才写可执行资产，不执行它 |
 | `marker` | `--input target.json`；输出稳定 key 与 PR 机器标记 |
 | `hold-lock` | `--checkout /repo [--run-id ID] [--reclaim-dead]`；保持进程直到 SIGINT/SIGTERM，输出 owner/token |
@@ -27,7 +28,9 @@ node scripts/maintenance/cli.mjs harness-watch
 | `gate` | `--input final-head-evidence.json`；确定性门禁，**不调用 GitHub，不授权合并** |
 | `sync` | `--input sync-authorization.json [--lock-token TOKEN]`；只对明确指定主副本快进 |
 
-`discover` 的完整输出或其中的 `target` 对象均可作为 download/marker 输入。v2 目标键包含仓库、dsh/asc 精确版本以及按包名排序的相关 Harness 包名/版本；独立包发布因此可形成新目标。旧 v1 标记会明确阻塞，需人工核验来源后迁移，不能过滤掉旧标记来绕过恢复。版本组合固定后，不用再次发现的 latest 替换目标；新 latest 留到下一轮。
+`discover` 的完整输出或其中的 `target` 对象均可作为 download/marker/verify-harness 输入。新 marker 为 `asc-maintenance:v3`；沿用 v2 的版本组合键：仓库、dsh/asc 精确版本、按包名排序的相关 Harness 包名/版本，防止因格式更新重复开 PR。旧 v2 仍读取并参与去重，未收口目标须显式迁移并重新验证；仅当 Git 事实证明旧目标已同步时才可忽略其历史阻塞。旧 v1 仍需人工迁移，不能过滤旧标记来绕过恢复。固定后不再查 latest 替换目标。
+
+每个新 Harness 包记录包含 name/version/source/manifestUrl/tarball/integrity/commit/verification/dependencies；verification 仅记录 `kind: npm-registry-signature` 和验签的 keyid，不是审批凭证。安装前必须运行 `verify-harness --input target.json --lock-file package-lock.json`，确认所有相关 peer/dev 包的锁文件 version/integrity/resolved 与固定记录相同，再用该锁文件执行 `npm ci`；dsh CLI 本身只有在锁文件中存在时才比较。无有效签名、未知或过期 key、摘要/地址/来源变化、重定向、网络失败或超限均为 unknown。JSON 中的 verification 字段不代替实际复验。
 
 ## 2. 互斥与恢复
 
@@ -46,7 +49,7 @@ node scripts/maintenance/cli.mjs harness-watch
       "number": 123,
       "state": "OPEN",
       "headRefName": "maintenance/harness-rc5-asc-640",
-      "body": "正文中包含 marker 命令生成的完整 asc-maintenance:v2 标记",
+      "body": "正文中包含 marker 命令生成的完整 asc-maintenance:v3 标记",
       "mergeCommit": null
     }
   ],
@@ -134,7 +137,7 @@ expectedOrigin 是部署核验的精确字符串，不在失败后自动改成�
 
 ## 5. 部署验收（仍需实际执行）
 
-1. 记录用户对 spec 005 §4.1 自动维护范围的授权及版本；核验稳定项目目录、origin、main 归属、指定主副本 realpath，并确认本地时区/时段（建议每天 09:17）。一般开发批准不隐含部署批准。
+1. 记录用户对 spec 005 §4.1 自动维护范围的授权及版本；核验稳定项目目录、origin、main 归属、指定主副本 realpath，并确认本地时区/时段（建议每天 10:17）。一般开发批准不隐含部署批准。
 2. 用 Desktop 工具/UI 创建唯一 routine，绑定稳定目录，显式启用独立 worktree，首次保存后暂停。若创建 API 无暂停字段，创建后立即禁用，并在启用前核实未误跑。不要改 permission mode 或添加宽泛 allowlist。
 3. 检查实际 CI check 名，配置 main 必须 PR、Node 22/24 和 contract 必需检查、禁止 force-push、满足 base 最新性；确认规则真的生效，再配置允许 auto-merge 与 squash。这些是单独授权的 GitHub 写操作，脚本不会自动做。
 4. 暂停状态下执行手动演练（具体 Desktop 版本若不允许 disabled Run now，需要在获准的临时时段启用、手动运行、再暂停）；验证 fresh session、独立 worktree、实际工具权限、日志、锁恢复。拒绝审批要单独报告，不能把未执行写成成功。
@@ -142,9 +145,22 @@ expectedOrigin 是部署核验的精确字符串，不在失败后自动改成�
 
 任务 prompt 应自包含，推荐从以下模板填入**实际核验**的值：
 
-> 每日本地 09:17 在 `<稳定项目目录>` 的独立 worktree 运行 upstream-maintenance。先读 `<仓库中的 .claude/skills/upstream-maintenance/SKILL.md>`、AGENTS、spec 005 和 docs/MAINTENANCE。仓库 `<owner/repo>`，授权版本 `<已批准记录>`；固定主副本 `<realpath>`、origin `<精确remote URL>`。仅在 spec 005 §4.1 范围内自动适配/测试/提交/PR/Auto-fix/通过门禁后的 squash auto-merge/安全快进。先持锁并从 PR/Git 恢复固定目标，未完成前不换版本；缺来源/重复/关闭未合并/越界/三轮修复失败均 blocked。保持 I1–I10，不发布、不全局升级、不真实 Apple 写、不清理用户资源。完整 verify 和旧基线验证、Node22/24 与 contract required checks、最终 head/评审/实际规则全部核验；CI 用 Desktop 事件，不轮询。未知并发使用则 sync-pending。分别报告适配/验证/PR/合并/本地同步/发布，未做明确标记。任何部署字段或权限缺失只报告，不自授权限。
+> 每日本地 10:17 在 `<稳定项目目录>` 的独立 worktree 运行 upstream-maintenance。先读 `<仓库中的 .claude/skills/upstream-maintenance/SKILL.md>`、AGENTS、spec 005 和 docs/MAINTENANCE。仓库 `<owner/repo>`，授权版本 `<已批准记录>`；固定主副本 `<realpath>`、origin `<精确remote URL>`。仅在 spec 005 §4.1 范围内自动适配/测试/提交/PR/Auto-fix/通过门禁后的 squash auto-merge/安全快进。先持锁并从 PR/Git 恢复固定目标，未完成前不换版本；缺来源/重复/关闭未合并/越界/三轮修复失败均 blocked。保持 I1–I10，不发布、不全局升级、不真实 Apple 写、不清理用户资源。完整 verify 和旧基线验证、Node22/24 与 contract required checks、最终 head/评审/实际规则全部核验；CI 用 Desktop 事件，不轮询。未知并发使用则 sync-pending。分别报告适配/验证/PR/合并/本地同步/发布，未做明确标记。任何部署字段或权限缺失只报告，不自授权限。
 
 Desktop 必须打开且机器唤醒；关闭期间不保证准时执行，漏跑按产品实际补跑行为核验。不承诺云执行或合并后立即唤醒；下次定时运行恢复 sync-pending。暂停 routine 不会取消 GitHub 已有的 auto-merge：暂停时另行核实并显式取消对应维护 PR 的自动合并请求。同步完成前不自动归档。
+
+### 5.1 当前部署：自动维护至 PR
+
+2026-11-05，用户在 routine 运行会话中明确要求：“那么接下来我希望能够自动检测完没问题，就执行改代码，然后测试，最后开启 PR。”该指令将当前任务从 `PREFLIGHT_ONLY` 调整为 `AUTO_TO_PR`，授权版本为 `deployment-2026-11-05-pr-v1`；本阶段优先于任务中此前更宽的合并和同步授权。
+
+- 计划时间为 Asia/Shanghai 每天 10:17，保留独立 worktree，平台调度偏移不改变计划时间。
+- 先恢复已有目标，再发现上游。环境、权限、来源和恢复检查通过且需要适配时，自动写当轮 spec、范围内改代码、运行完整验证、commit/push 维护分支、创建或更新唯一维护 PR。
+- PR 创建前必须完成目标版本的本地完整 `npm run verify`；保留支持的旧基线也要实际验证。PR 创建后触发的 Node 22/24 与 contract CI 单独报告，不把待运行 CI 当作已经通过。
+- 允许按既有权限绑定 PR 并启用 Auto-fix / 评论处理；应用拒绝时报告，不绕过。遵守锁、恢复、来源不变和最多三轮修复规则。
+- 自动执行终点为 PR，禁止自动合并、启用 auto-merge、同步主副本和发布。已由人工合并的目标按实际 Git/GitHub 事实恢复；如仍待同步，报告后停止，不越权同步或伪造 synced。
+- 主副本不干净只作为同步限制报告，不阻止独立工作树中其他前置条件满足的适配。缺少有效产物签名/摘要、完整验证失败、宿主拒绝或其他必要检查不通过时停止并报告，不能通过改配置放宽门禁。
+
+任务配置更新不等于端到端验收完成。npm manifest 缺少 `gitHead` 按 spec 007 使用已验签并验证 SHA-512 的发布物，不再单独阻塞；缺少有效注册表签名或摘要仍阻塞。PR、Auto-fix 和目标版本完整验证的实际结果须逐轮报告。
 
 ## 6. 本地测试
 

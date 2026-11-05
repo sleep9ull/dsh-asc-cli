@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { assertPackageRecord } from './npm-artifact.mjs'
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical)
@@ -14,14 +15,21 @@ const version = value => /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(value
 function keys(value, allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected maintenance record fields')
 }
-function validateTarget(target) {
+function artifactTarget(target) {
+  return target?.harness?.name === '@deepseek-ai/dsh' && [target.harness, ...(target.harness.packages ?? [])].every(pkg => pkg?.verification !== undefined)
+}
+function validateTarget(target, requireArtifacts = false) {
   keys(target, ['repository', 'harness', 'asc'])
   if (!/^[\w.-]+\/[\w.-]+$/.test(target.repository)) throw new Error('Invalid repository')
   const packages = [target.harness, ...(target.harness?.packages ?? [])]
+  const artifacts = artifactTarget(target)
+  if (requireArtifacts && !artifacts) throw new Error('Legacy v2 target requires artifact verification and explicit migration')
   for (const pkg of packages) {
-    keys(pkg, ['name', 'version', 'commit', 'source', 'integrity', 'manifestUrl', 'dependencies', 'packages'])
-    if (!version(pkg.version) || !sha(pkg.commit) || typeof pkg.integrity !== 'string' || !pkg.integrity) throw new Error('Missing Harness provenance')
+    keys(pkg, ['name', 'version', 'commit', 'source', 'integrity', 'manifestUrl', 'dependencies', 'packages', 'tarball', 'verification'])
+    if (artifacts) assertPackageRecord(pkg)
+    else if (pkg.verification !== undefined || pkg.tarball !== undefined || !version(pkg.version) || !sha(pkg.commit) || typeof pkg.integrity !== 'string' || !pkg.integrity) throw new Error('Missing Harness provenance')
   }
+  if (artifacts && (packages.slice(1).some(pkg => pkg.name === '@deepseek-ai/dsh') || !Array.isArray(target.harness.packages))) throw new Error('Invalid Harness artifact package list')
   keys(target.asc, ['version', 'tag', 'commit', 'source', 'releaseUrl', 'asset', 'assetUrl', 'checksumsUrl', 'sha256', 'platform', 'arch'])
   if (!version(target.asc.version) || !sha(target.asc.commit) || !/^[a-f0-9]{64}$/i.test(target.asc.sha256)) throw new Error('Missing asc provenance')
 }
@@ -35,15 +43,18 @@ export function targetKey(target) {
   return createHash('sha256').update(JSON.stringify([target.repository, target.harness.version, target.asc.version, packages])).digest('hex')
 }
 export function prMarker(target) {
-  return `<!-- asc-maintenance:v2 ${Buffer.from(JSON.stringify({ key: targetKey(target), target })).toString('base64url')} -->`
+  validateTarget(target, true)
+  return `<!-- asc-maintenance:v3 ${Buffer.from(JSON.stringify({ key: targetKey(target), target })).toString('base64url')} -->`
 }
 export function parseMarker(body) {
   if (String(body ?? '').includes('asc-maintenance:v1')) throw new Error('Legacy v1 target marker requires manual provenance and key migration')
-  const matches = [...String(body ?? '').matchAll(/<!-- asc-maintenance:v2 ([A-Za-z0-9_-]+) -->/g)]
-  if (matches.length !== 1 || matches[0][1].length > 100_000) throw new Error('Missing or ambiguous maintenance PR marker')
-  const record = JSON.parse(Buffer.from(matches[0][1], 'base64url').toString('utf8'))
+  const text = String(body ?? '')
+  const matches = [...text.matchAll(/<!-- asc-maintenance:v([23]) ([A-Za-z0-9_-]+) -->/g)]
+  if (matches.length !== 1 || (text.match(/asc-maintenance:/g) ?? []).length !== 1 || matches[0][2].length > 100_000) throw new Error('Missing or ambiguous maintenance PR marker')
+  const record = JSON.parse(Buffer.from(matches[0][2], 'base64url').toString('utf8'))
+  validateTarget(record.target, matches[0][1] === '3')
   if (record.key !== targetKey(record.target)) throw new Error('Invalid maintenance PR key')
-  return record
+  return { ...record, markerVersion: Number(matches[0][1]) }
 }
 
 const knownRepairAttempts = value => Number.isInteger(value) && value >= 0
@@ -110,6 +121,7 @@ export function recover({ repository, prs, branches = [], state, syncedKeys = []
     if (state?.key === record.key && state.branch !== undefined && state.branch !== record.branch) return blocked('Local and remote maintenance branches conflict')
     const repairAttempts = state?.key === record.key && knownRepairAttempts(state.repairAttempts) ? state.repairAttempts : null
     const base = { key: record.key, target: record.target, branch: record.branch, pr: record.pr, repairAttempts, published: false }
+    if (record.markerVersion === 2) return { ...base, ...blocked('Legacy v2 target requires artifact verification and explicit migration') }
     if (record.state === 'MERGED') return sha(record.mergeCommit) ? { ...base, status: 'sync-pending', mergeCommit: record.mergeCommit } : blocked('Merged PR has no verified squash commit')
     if (record.state === 'CLOSED') return blocked('Target PR closed without merge; do not reopen automatically')
     if (record.state !== 'OPEN') return blocked('Unknown PR state')
@@ -118,6 +130,7 @@ export function recover({ repository, prs, branches = [], state, syncedKeys = []
     return { ...base, status: 'pr-open' }
   }
   if (localPending) {
+    if (!artifactTarget(state.target)) return blocked('Legacy v2 local target requires artifact verification and explicit migration')
     if (prePrBranch !== undefined && branches.includes(prePrBranch)) {
       if (!knownRepairAttempts(state.repairAttempts)) return { ...state, ...blocked('Repair history unknown; reconstruct it before continuing'), repairAttempts: null }
       return { ...state, status: 'adapting' }
@@ -132,6 +145,7 @@ export function mergeGate(input) {
   const reasons = []
   const { target, head, evidence, policy, checks, mergeable, mergeStateStatus, unresolvedReviews, withinScope, repairAttempts } = input
   try {
+    validateTarget(target, true)
     targetKey(target)
     if (!sha(head) || evidence?.head !== head) reasons.push('Verification belongs to a different head')
     if (serialized(evidence?.target) !== serialized(target)) reasons.push('Target provenance changed')

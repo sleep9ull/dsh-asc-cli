@@ -65,6 +65,8 @@ action 的具体行为以 `src/registry.ts`、工具 schema、`src/approval.ts` 
 
 限定维护特例：只有用户另行授予并记录 [spec 005 §4.1](docs/specs/005-scheduled-upstream-maintenance.md#41-拟议的持久授权边界) 的持久执行权限后，维护 routine 才可为范围内适配自动编写并执行单次 spec，记录授权来源，无需每轮重复询问。批准实现维护机制本身不等于启用该权限。放宽 I1–I10、移除公共能力、修改授权或门禁时暂停；普通开发仍按上述流程。任务使用 Squash 也须在持久授权中明确；发布和远端删除不在此特例内。
 
+维护层 npm 来源按 [spec 007](docs/specs/007-npm-artifact-verification.md)：固定官方 registry 的精确包与 tarball，实际验证 SHA-512 和注册表签名；缺失 gitHead 记 commit=null，不能冒充源码构建证明。安装前执行 `verify-harness --input target.json --lock-file package-lock.json` 重新核对固定目标；新 marker v3，未收口 v2 目标须显式迁移。此规则不改变插件 I1–I10。
+
 普通工具与 `/asc` 的版本提示只推荐已验证 pin；声明支持范围不等于逐一实测。`checkUpdates: false` 关闭自动提示检查与远端查询；更新缓存仅驻内存，不能因提示安装引擎或写本地文件。
 
 ## 实现不变式

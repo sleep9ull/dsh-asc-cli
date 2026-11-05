@@ -36,6 +36,7 @@
 | `test/version-notice.test.ts` | 业务 outcome 保持、版本/来源建议、会话与嵌套去重、1s 等待上限、显式版本复用 |
 | `test/binary.test.ts` | cwd/PATH/文件指纹快照，避免不同实际引擎混用版本 |
 | `test/maintenance.test.ts` | 注入的上游发现、状态恢复/锁、最终 head 门禁，以及临时 bare remote/worktree 的安全快进 |
+| `test/maintenance-artifact.test.ts` | 实际签名的合成 npm 字节、无 gitHead 成功路径、摘要/签名/URL/过期 key 拒绝、固定目标和安装锁文件复验、v2/v3 恢复迁移；密钥与网络由夹具提供 |
 | `test/discovery.test.ts` | 在临时 checkout 中通过真实 Vitest CLI 验证仅收集本 checkout 的测试，避免混入嵌套 worktree |
 | `test/helpers.ts` / `test/compat-helpers.ts` | `makeConfig`、spawn 替身等共用夹具 |
 
@@ -104,7 +105,7 @@ npm run verify               # 完整：typecheck → test → build → pack-ma
 npm run verify -- --unit-only # 显式仅本地检查，不代表已通过引擎门禁
 # 或分开跑
 npm run typecheck
-npm test                     # 18 个 suite；当前源码 339 tests，含测试发现隔离回归
+npm test                     # 19 个 suite；当前源码 370 tests，含 npm 产物验签/摘要与恢复回归
 npm run build                # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc
 node scripts/contract-combos.mjs
