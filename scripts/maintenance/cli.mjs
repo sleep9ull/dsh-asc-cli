@@ -5,12 +5,13 @@ import { randomUUID } from 'node:crypto'
 import { discoverHarness, discoverTargets, downloadTarget, verifyHarness } from './discovery.mjs'
 import { acquireLock, withLockOwner, readState, writeState, recover, mergeGate, prMarker, targetKey } from './state.mjs'
 import { commonDirectory, runGit, syncCheckout } from './git.mjs'
+import { compareBaseline } from './compatibility.mjs'
 
 const help = `Upstream maintenance helpers (Node 22/24; no GitHub mutations).
 
-  node scripts/maintenance/cli.mjs discover --repository OWNER/REPO [--package-file package.json]
+  node scripts/maintenance/cli.mjs discover --repository OWNER/REPO [--package-file package.json] [--lock-file package-lock.json]
   node scripts/maintenance/cli.mjs harness-watch [--package-file package.json] [--lock-file package-lock.json]
-  node scripts/maintenance/cli.mjs verify-harness --input target.json [--lock-file package-lock.json]
+  node scripts/maintenance/cli.mjs verify-harness --input target.json [--lock-file package-lock.json]  (artifacts + fixed peer graph)
   node scripts/maintenance/cli.mjs download --input target.json --directory /existing/downloads
   node scripts/maintenance/cli.mjs marker --input target.json
   node scripts/maintenance/cli.mjs hold-lock --checkout /repo [--run-id ID] [--reclaim-dead]
@@ -21,7 +22,9 @@ const help = `Upstream maintenance helpers (Node 22/24; no GitHub mutations).
   node scripts/maintenance/cli.mjs sync --input sync-authorization.json [--lock-token TOKEN]
 
 JSON inputs and examples: docs/MAINTENANCE.md. Relative paths resolve from cwd.
-Discovery fixes exact versions/provenance; queries latest only, never alpha/next.
+Discovery resolves the exact latest host graph using npm (isolated temporary writes, no scripts/install).
+Independent latest releases are observations, not install targets; never queries alpha/next tags.
+Dependency resolution is only a candidate; full integration verification is required before upgrades.
 hold-lock stays alive until SIGINT/SIGTERM, prints the ownership token once.
 record requires that live lock. sync acquires its own lock unless given its token.
 No stale lock is reclaimed without --reclaim-dead AND a confirmed dead local PID.
@@ -31,7 +34,7 @@ The gate evaluates supplied facts; fresh GitHub verification is the operator's j
 const [command, ...args] = process.argv.slice(2)
 const options = {}
 const allowed = {
-  discover: ['repository', 'package-file'], 'harness-watch': ['package-file', 'lock-file'],
+  discover: ['repository', 'package-file', 'lock-file'], 'harness-watch': ['package-file', 'lock-file'],
   'verify-harness': ['input', 'lock-file'],
   download: ['input', 'directory'], marker: ['input'], 'hold-lock': ['checkout', 'run-id', 'reclaim-dead'],
   state: ['checkout'], recover: ['checkout', 'input'], record: ['checkout', 'input', 'lock-token'], gate: ['input'], sync: ['input', 'lock-token'],
@@ -59,20 +62,15 @@ try {
     if (command === 'discover' || command === 'harness-watch') {
       const pkg = await json(options['package-file'] ?? 'package.json')
       const packageNames = Object.keys({ ...pkg.peerDependencies, ...pkg.devDependencies }).filter(name => name.startsWith('@deepseek-ai/'))
-      if (command === 'discover') result = await discoverTargets({ repository: required('repository'), packageNames })
-      else {
-        result = await discoverHarness({ packageNames })
-        if (result.status === 'discovered') {
-          const lock = await json(options['lock-file'] ?? 'package-lock.json')
-          const baseline = /^>=([^ ]+)/.exec(pkg.engines?.dsh ?? '')?.[1]
-          const changes = []
-          if (!baseline || baseline !== result.harness.version) changes.push({ name: '@deepseek-ai/dsh', installed: baseline ?? 'unknown', latest: result.harness.version })
-          for (const item of result.harness.packages) {
-            const installed = lock.packages?.[`node_modules/${item.name}`]?.version
-            if (!installed || installed !== item.version) changes.push({ name: item.name, installed: installed ?? 'unknown', latest: item.version })
-          }
-          result = { ...result, status: changes.length ? 'drift' : 'unchanged', changes }
-        }
+      result = command === 'discover'
+        ? await discoverTargets({ repository: required('repository'), packageNames })
+        : await discoverHarness({ packageNames })
+      if (result.status === 'discovered') {
+        const lock = await json(options['lock-file'] ?? 'package-lock.json')
+        try {
+          const changes = compareBaseline(command === 'discover' ? result.target.harness : result.harness, pkg, lock)
+          result = { ...result, status: command === 'discover' ? 'discovered' : changes.length ? 'drift' : 'unchanged', changes }
+        } catch (error) { result = { ...result, status: 'unknown', reason: error.message } }
       }
     } else if (command === 'verify-harness') {
       const input = await json(required('input'))

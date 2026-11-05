@@ -9,7 +9,7 @@
 
 **一句话**：Claude Desktop 定期检查 DeepSeek Harness 与 asc 的默认发布渠道，完成范围内的兼容适配、验证、提交、PR 和 Squash 合并，并可恢复地同步指定的本地 main。
 
-> 后续变更：npm 产物来源验证和 v3 标记按 [spec 007](007-npm-artifact-verification.md)；本文保留最初的源码 commit/v2 设计记录。当前部署权限以任务配置和 [MAINTENANCE §5.1](../MAINTENANCE.md#51-当前部署自动维护至-pr) 为准，AUTO_TO_PR 不授权自动合并或同步。
+> 后续变更：兼容优先的宿主图目标选择及独立 latest 观察按 [spec 008](008-harness-drift-triage.md)；npm 产物来源验证和 v3 标记按 [spec 007](007-npm-artifact-verification.md)；本文保留最初的源码 commit/v2 设计记录。当前部署权限以任务配置和 [MAINTENANCE §5.1](../MAINTENANCE.md#51-当前部署自动维护至-pr) 为准，AUTO_TO_PR 不授权自动合并或同步。
 
 > 用户于 2026-11-04 批准代码实现。部署、GitHub 设置、持久提交/push/合并授权及真实主副本同步仍属独立验收；下文授权表只有在用户明确批准相应执行范围后才生效。
 
