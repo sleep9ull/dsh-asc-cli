@@ -1,0 +1,10 @@
+{
+  "development": "0.2.2-rc.1",
+  "developmentTarget": "development-harness-target.json",
+  "retained": [
+    {
+      "target": "retained-harness-target.json",
+      "lock": "retained-harness-lock.json"
+    }
+  ]
+}

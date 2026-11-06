@@ -1,0 +1,412 @@
+{
+  "name": "@deepseek-ai/dsh",
+  "version": "0.2.1-rc.5",
+  "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh/0.2.1-rc.5",
+  "commit": null,
+  "source": "https://github.com/deepseek-ai/deepseek-harness",
+  "integrity": "sha512-WkyJZv4zl9sCAxSzRctGm58m0rilGqwR6pniBiLOz5CPDfHfDuAUicg0AAazXI7oj/Cph6/cjNTncA/rpLTXpw==",
+  "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-0.2.1-rc.5.tgz",
+  "dependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-hmr": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-base": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-goal": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-skill": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-acp-app": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-cmdline": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-persona": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-sdk-app": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-fs": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-web-app": "0.2.1-rc.5",
+    "@deepseek-ai/schemastery": "~3.18.5",
+    "@deepseek-ai/dsh-app-boot": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-fs-local": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-headless": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-schedule": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-terminal": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-web": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-plan-mode": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-bash": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-goal": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-jobs": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-pwsh": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-todo": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-http-proxy": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-jobs-local": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-mcp-client": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-pwsh-local": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-skill": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-sdk-minimal": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-token-meter": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-cordis": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-agent-preset": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-atomic-write": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-command-goal": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-pwsh-sandbox": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-skill-office": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-time-context": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tmux-context": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-present": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-workflow-ptc": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-mcp-resources": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-terminal-bash": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-ask-user": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-schedule": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-subagent": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-workflow": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-plugin-manager": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-fs-search": "0.2.1-rc.5",
+    "@deepseek-ai/cordis-plugin-timer": "~1.1.7",
+    "@deepseek-ai/dsh-command-compact": "0.2.1-rc.5",
+    "@deepseek-ai/cordis-plugin-loader": "~1.0.6",
+    "@deepseek-ai/dsh-client-ui-cordis": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-compaction-basic": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-skill-filesystem": "0.2.1-rc.5",
+    "@deepseek-ai/cordis-plugin-include": "~1.0.10",
+    "@deepseek-ai/dsh-goal-round-driver": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-session-reference": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-agent-instructions": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-launch-environment": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-session-projection": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-cordis-client-runner": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-bash-persistent": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-pwsh-persistent": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-subagent-control": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-agent-preset": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-agent-tool-presentation": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-str-replace-editor": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-auto-review": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-ralph-bundle": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-tool-worktree": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-session-search": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tool-workspace-dependencies": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-terminal-bundle": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-compaction-tool-result-pruner": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-inspector-profile": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-agent-team-profile": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-badge-skill-bundle": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-voice-input-bundle": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-plugin-market-bundle": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-session-titles-bundle": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-experimental-cot-translation-bundle": "0.2.1-rc.5"
+  },
+  "verification": {
+    "kind": "npm-registry-signature",
+    "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+  },
+  "packages": [
+    {
+      "name": "@deepseek-ai/cordis",
+      "version": "4.0.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fcordis/4.0.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-Sktq5axy0owk9PdnivBRNOJjHEVEibCt0+TDDZcv0+UH2KS1M910fX4kn5y45YFsrpZIi1mJf/1s5VzywMUnyg==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/cordis/-/cordis-4.0.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/cosmokit": "~1.8.6",
+        "@deepseek-ai/cordis-plugin-loader": "~1.0.6",
+        "@deepseek-ai/cordis-plugin-include": "~1.0.10"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-agent",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-agent/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-mHNbxag0rZVNHaXZvr4OhiveaTTGMNPEpzO4nS8ohOQiQL0MWqA7brwtjBbaAlB3aMZ13tbHGHINpFlXdu8J3Q==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent/-/dsh-agent-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-workspace": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-session-projection": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-agent-loop",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-agent-loop/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-fWDnhe4md8D0D18puVuNQIg5EklenitiqtyL4p1sbCUytraGn11naUqiUJ77O0Mpit4qJTvCozsgEzyBpbsXuA==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-agent-loop/-/dsh-agent-loop-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/dsh-brand": "0.2.1-rc.5",
+        "@deepseek-ai/schemastery": "~3.18.5",
+        "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-agent": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-session-projection": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-session-persistence": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-commands",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-commands/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-6jzjcag7rj4Ljk5si0RogCykv/fuwXpSysbgqzwPffYPDIZbupW0wTdngLKFVRkSUCSTDQTfjMSoku6xowkINA==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-commands/-/dsh-commands-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/dsh-util-crypto": "0.2.1-rc.5",
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-agent": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-brand": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-attachment": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-llm",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-llm/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-g9mSILkqY7wByl0tpLBhXxWxQ3MoNzXokuJq86R/snPL3v1OonXv1b46wtvldEgyr88aK1gBBlifMsRnXjMWTA==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-llm/-/dsh-llm-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/dsh-brand": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-timeout": "0.2.1-rc.5",
+        "@deepseek-ai/schemastery": "~3.18.5",
+        "@deepseek-ai/dsh-util-crypto": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.5",
+        "@deepseek-ai/cordis": "~4.0.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-session",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-session/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-A5NdQFgeY4qi29+lBzgZiOloiFe+E1iBbIRjJTplee79rswYGUUmUZYmOvAcdmk4tERkY2S9htuc+V+jNifqRw==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-session/-/dsh-session-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-brand": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-projection",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-session-projection/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-YGrTGZXqPVPc1lF3jeCITgrgTovr5JZyKC6vHeKpb6Wlyoyu60Yfeerd36wuGNLcs9ydJsUKP6pV5B/zpNv74g==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-session-projection/-/dsh-session-projection-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-session": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-skill",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-skill/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-IjZf4EoaiU8CBIJaaE02DbnY5QYcTcqJkUCIJVbQyc722ztoDDsti7jqs/8CYp/8l6Oi5bEIlFI5XDc7ea+jhg==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-skill/-/dsh-skill-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/schemastery": "~3.18.5",
+        "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-subprocess",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-subprocess/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-qwexyhc7qoxuFrjujnSXKoI7dLKuS8T1UgsAwNd41priFGiAxKZ3vUkLaE7VALW0SS9YeQV85RtqPSpAP3WarQ==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-subprocess/-/dsh-subprocess-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-http-proxy": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-subprocess-local",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-subprocess-local/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-odoGPqKzsrSfpz0IQmNkEqwyAxsxrsv5a/gFr3kfKFAQEnEaUbpW4r98ClBFKzWcCjj6CHDdJOe59mmx4qpwsQ==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-subprocess-local/-/dsh-subprocess-local-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/dsh-lazy-require": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-win32-process": "0.2.1-rc.5",
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-timeout": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-subprocess": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-system-prompt",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-system-prompt/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-HWW0k4Ug4XjRbCghLZYFMpLh8Ywcuh/bS7DAnjWfq4HbwwB+hV0XXJRF3iCf5600uYArfbuv4Ttz+4PHKu7k9w==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-system-prompt/-/dsh-system-prompt-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/schemastery": "~3.18.5",
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-tools",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-tools/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-tOEMsbG1jH4EV80xcGucfeWsKHLjnETjRLtSnyFrVl2oma95tzTHBjti5MK60IvT2ijcCWhx8CrUKcqRksfDPA==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-tools/-/dsh-tools-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/dsh-brand": "0.2.1-rc.5",
+        "@deepseek-ai/schemastery": "~3.18.5",
+        "@deepseek-ai/dsh-util-values": "0.2.1-rc.5",
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-agent": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-sandbox": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-ptc-runtime": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-user-approval": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-working-directory": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-user-approval",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-user-approval/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-3lwcH3SBnBLO07qLlPXYjuerMRDcXcJFPIdqwgliC6J5SAdrbi7Vx9rCYhz2aWcrpwmxhR3yXYiaNkvSnHHCJQ==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-user-approval/-/dsh-user-approval-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/schemastery": "~3.18.5",
+        "@deepseek-ai/cordis": "~4.0.5",
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-agent": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-brand": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+        "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/dsh-util-values",
+      "version": "0.2.1-rc.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fdsh-util-values/0.2.1-rc.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-PL8TerJM/4jpZ2ArwgTpFbeDiAVnqkSh8Xinw2iEu8B6a+axmshzL4dCpwpf+uB8GHdXAhGz1cT+SBQwX/2TLQ==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/dsh-util-values/-/dsh-util-values-0.2.1-rc.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/cordis": "~4.0.5"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    },
+    {
+      "name": "@deepseek-ai/schemastery",
+      "version": "3.18.5",
+      "manifestUrl": "https://registry.npmjs.org/%40deepseek-ai%2Fschemastery/3.18.5",
+      "commit": null,
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "integrity": "sha512-Mnobvqf9rHsZYv4g5edj5ddxS1oF1kIdSlz0DunUgnY3LWG5F26MqvH3YOOsSaodCgyzJ16OMN9O99/s5Crtdw==",
+      "tarball": "https://registry.npmjs.org/@deepseek-ai/schemastery/-/schemastery-3.18.5.tgz",
+      "dependencies": {
+        "@deepseek-ai/cosmokit": "~1.8.6"
+      },
+      "verification": {
+        "kind": "npm-registry-signature",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    }
+  ]
+}

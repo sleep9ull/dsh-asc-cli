@@ -1,7 +1,7 @@
 # 测试规范（TESTING）
 
 > 测试的**规则**（写什么、不写什么）在 [`../AGENTS.md`](../AGENTS.md)「测试」一节；本文给模式与工具。
-> 基线 `0.2.0`｜质量门见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) §3。
+> 源码 `0.2.1`｜质量门见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) §3。
 
 ---
 
@@ -31,7 +31,7 @@
 | `test/commands.test.ts` | `/asc`、`/asc-doctor` 的渲染与只读性 |
 | `test/skills.test.ts` | frontmatter、rank 600、provider list/get、非法目录 |
 | `test/audit.test.ts` | 脱敏（独立/内联 flag）、8 KB 按字节、`0o600`、失败不影响调用 |
-| `test/harness.test.ts` | rc.5 真实 Tools/ApprovalService/Skills/Commands；五工具、六技能、两命令；审批拒绝/取消/缺失、listener 绕过、参数替换与并发隔离 |
+| `test/harness.test.ts` | 0.2.2-rc.1 真实 Tools/ApprovalService/Skills/Commands，公开批次调度与执行管线；五工具、六技能、两命令；审批拒绝/取消/缺失、listener 绕过、参数替换与并发隔离 |
 | `test/scripts.test.ts` | 隔离 checkout 中运行实际下载/验证/overlay 脚本，模拟 Windows/macOS/Linux 路径、损坏下载与显式路径；不启动原生 Windows 引擎 |
 | `test/version-notice.test.ts` | 业务 outcome 保持、版本/来源建议、会话与嵌套去重、1s 等待上限、显式版本复用 |
 | `test/binary.test.ts` | cwd/PATH/文件指纹快照，避免不同实际引擎混用版本 |
@@ -106,7 +106,7 @@ npm run verify               # 完整：typecheck → test → build → pack-ma
 npm run verify -- --unit-only # 显式仅本地检查，不代表已通过引擎门禁
 # 或分开跑
 npm run typecheck
-npm test                     # 20 个 suite；当前源码 387 tests，含兼容组合选择、安装图/产品 pin 和产物验证回归
+npm test                     # 20 个 suite；当前源码 406 tests，含稳定线/支持并集、安装图与产物验证回归
 npm run build                # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc
 node scripts/contract-combos.mjs
@@ -118,6 +118,10 @@ CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contra
 ---
 
 ## 6. 验证边界与剩余缺口
+
+spec 010 的 `npm run harness:matrix` 读取 test/fixtures/harness-support.json、两宿主固定产物、保留宿主锁及当前精确开发锁；两个消费端严格安装同一打包产物，在隔离环境执行真实审批集成和本地门禁。声明的所有保留宿主必须有对应夹具，开发基线与最高精确支持项一致；新增支持不能静默跳过旧环境。Node22/24 CI 均添加该步骤，原 required check 名称保留。
+
+2026-11-06 源码 0.2.1：用户明确授权人工续跑并实际记录累计第 4 轮。发布列表 HTTP 503 用例改为断言 unknown 且不暴露 harness/support 成功字段，不再锁定偶然错误文本。推荐 pin 更新后的提示回归使用当前 pin，并验证保留的 6.3.0 只收到 upgrade-recommended。新开发宿主 20 suites / 406 tests 和 asc 6.5.0 完整八阶段通过；保留引擎 6.3.0 的 contract / classify-audit / smoke 通过。同一 tarball 的两消费端矩阵也各通过 406 个测试、类型/构建/pack/参数守卫与保留引擎 smoke（两侧均复验 16 个固定产物）；Node22/24/contract 远端检查与本地结果分开。此前 405/406 和审批拒绝仅是 spec 中的历史记录，不代表当前状态。
 
 - 工具单测保留 stub runtime；`test/harness.test.ts` 用真实宿主 dispatch 到 exec seam，`scripts/smoke.mjs` 用真实 subprocess 到实际 6.3.0 引擎。尚未执行真实账号的 Apple 端业务读写验证；
 - `contract.mjs` 仍只校验命令/flag 接受性（组合由 `contract-combos.mjs` 在插件侧覆盖，未对上游做值校验）；

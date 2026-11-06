@@ -1,6 +1,6 @@
 # 产品契约（CONTRACT）
 
-> 状态：**契约（SSOT）**｜基线：`0.2.0`｜更新：2026-11-03
+> 状态：**契约（SSOT）**｜源码：`0.2.1`（npm 已发布 `0.2.0`）｜更新：2026-11-06
 > 常驻规则见 [`../AGENTS.md`](../AGENTS.md)；命令面参考见 [`COMMANDS.md`](./COMMANDS.md)；流程见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) 与 [`SPECS.md`](./SPECS.md)。
 > **优先级**：用户指令 > `AGENTS.md` > 本文件 > 其他文档。代码与测试必须服从本文件；发现不一致，走 spec 流程修正，禁止沉默偏离。
 
@@ -87,7 +87,7 @@
 | I5 | 单一执行点：`ctx.subprocess` + argv 数组、无 shell；显式转发 4 个 `ASC_*` 认证变量、`ASC_WEB_SESSION` 强制 tombstone；凭据不进模型 | `src/exec.ts` |
 | I6 | 工具面固定 5 个；新能力进既有工具或 job，不新增命令型工具 | `src/index.ts`、`src/registry.ts` |
 | I7 | 知识随包：6 个 skill 以 rank 600 发布；工具名变更同提交更新 skill | `src/skills.ts`、`package.json files` |
-| I8 | 引擎外置：pin `6.3.0` / 区间 `>=6.3.0 <7.0.0`；provision 默认关 + SHA-256；永不自动升级 | `src/compat.ts`、`src/control/engine.ts` |
+| I8 | 引擎外置：pin `6.5.0` / 区间 `>=6.3.0 <7.0.0`；provision 默认关 + SHA-256；永不自动升级 | `src/compat.ts`、`src/control/engine.ts` |
 | I9 | 审计可关：未配置 `auditLog` 即不写；best-effort、脱敏、`0o600`、单行 8 KB | `src/audit.ts` |
 | I10 | 禁区：`auth login/logout`、`asc web`、`versions phased-release guard` 一律 `forbidden`；未识别命令走 `unknown` | `src/classify.ts` |
 
@@ -124,10 +124,11 @@
 - **版本**：`0.x`；工具/action 的破坏性变更用 `feat!`，同一提交内更新：README + README.zh 迁移表、CHANGELOG、受影响 skill、registry/contract。
 - **过渡期**：0.1.4 是硬切换。下一次破坏性变更应保留一个 minor 的 deprecated 别名，或在 README 给出逐步迁移路径。
 - **质量门**：`npm run verify`（typecheck → test → build → pack-manifest → contract → classify-audit → smoke）；`scripts/pack-manifest.mjs` 断言 `lib/` 与 `src/` 文件集一致。
-- **引擎**：pin 与区间只在 `src/compat.ts` 定义；最低要求、已验证 pin 和声明支持范围区分，未来版本不称为已实测。`scripts/contract.mjs` 锁定 23 个注册命令与 `--help` 兼容性；CI + 每日 upstream-watch 监测 asc 漂移和 Harness 默认渠道变化，监测不等于完成适配。
+- **引擎**：pin 与区间只在 `src/compat.ts` 定义；最低要求、已验证 pin 和声明支持范围区分，未来版本不称为已实测；源码 0.2.1 推荐 pin 为 6.5.0，并保留 6.3.0 实际回归。`scripts/contract.mjs` 锁定 23 个注册命令与 `--help` 兼容性；CI + 每日 upstream-watch 监测 asc 漂移和 Harness 默认渠道变化，监测不等于完成适配。
 - **版本提示**：`checkUpdates` 沿用默认 true，扩展到普通工具和 `/asc`；可选 `versionNotice` 不改变业务结果或审批。远端缓存 24h、失败 15min，均在内存；不读写旧更新缓存文件。false 关闭自动检查和远端查询；显式本地诊断保留。
 - **开发维护的 npm 来源**（spec 007）：固定官方 registry 中精确版本/tarball/SHA-512，实际验签和验字节；源码 commit 可为 null。registry 签名不等于源码构建证明，记录字段不代替安装前复验；缺有效签名、摘要不符或来源漂移仍阻塞。新 marker 为 v3，旧 v2 不静默升级，未收口旧目标需显式迁移。
-- **宿主**：`engines.dsh` 精确为 `0.2.1-rc.5`，相关 plugin peer/dev 精确锁定已验证组合（Cordis 4.0.5 / Schemastery 3.18.5 / dsh-* rc.5）；peer 依赖由宿主提供。开发维护按 spec 008 解析宿主完整依赖/peer 图，独立 latest 只作观察；候选必须先实际验签、校验字节与安装锁，再通过完整集成验证才能推进基线，禁止自动降级、force 或 legacy-peer-deps。
+- **宿主**：源码候选 0.2.1 的 `engines.dsh` 为 `0.2.1-rc.5 || 0.2.2-rc.1`，公开 peer 为相应精确版本并集，由宿主提供；开发 pin 为 dsh-* 0.2.2-rc.1 / Cordis 4.1.0 / Schemastery 3.19.0，保留环境固定 dsh-* 0.2.1-rc.5 / Cordis 4.0.5 / Schemastery 3.18.5。双宿主消费端严格安装同一打包插件，验证类型、真实审批集成及完整本地门禁；每组产物/锁均在安装前复验。开发维护按 spec 008/010 解析完整宿主图与正式稳定线，独立 latest 只作观察；产物验签、锁复验、完整集成与旧支持回归仍是推进基线的前置条件，禁止自动降级、force 或 legacy-peer-deps。
+- **宿主兼容保留原则**（spec 010，2026-11-06 用户授权）：最低保留 dsh 上一兼容大版本正式稳定线，当前线稳定版也保留，并逐步适配默认渠道每次更新；1.x 及以后按 major、0.x 按 minor。每条需保留稳定线以最新正式 patch 作回归锚点。正式稳定版必须来自真实发布且无 prerelease 后缀；尚无正式稳定版时记录原因，保留既有已验证基线。用户兼容声明覆盖已验证支持集合，每组开发依赖/宿主图/锁仍精确固定。同一插件产物须验证保留基线及新增候选；不强制旧用户升级，不以放宽声明代替验证。既有单版本基线证据不构成自动删除旧支持的许可。
 - **发布物**：`files` 含 `lib`、`skills`、`cordis.patch.yml`、README/CHANGELOG；`prepack`/`prepare` 构建；无 postinstall 下载。
 
 ---
@@ -162,6 +163,7 @@
 
 | 日期 | 版本 | 变更 | 理由 |
 |---|---|---|---|
+| 2026-11-06 | Unreleased | 新增长期兼容保留原则、同包双宿主严格验证与精确支持并集；asc pin 推进 6.5.0，最低 6.3.0；没有正式稳定版时保留已验证基线 | 用户明确要求插件 0.2.1 按此适配并更新双上游维护原则，spec 010；I1–I10 不变 |
 | 2026-11-05 | Unreleased | 宿主与 peer 精确锁定已验证组合；维护先解析完整宿主依赖/peer 图，独立 latest 只作观察 | 用户要求兼容优先的最新组合与升级前验证，spec 008；I1–I10 不变 |
 | 2026-11-05 | Unreleased | 维护层验证 npm 产物 SHA-512 和注册表签名、commit 可缺省、固定目标复验与 v3 恢复记录 | 用户明确批准 spec 007 的方案与实现；仅调整维护来源要求，I1–I10 不变 |
 | 2026-11-04 | Unreleased | 使用时版本提示、稳定范围与验证 pin 分离、内存缓存、双上游维护入口 | 用户批准 spec 005/006 的代码实现；I1–I10 不放宽，部署/持久写授权/发布另行验收 |

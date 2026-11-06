@@ -32,6 +32,8 @@ spec 007 将 Harness 维护来源改为固定 npm 发布物：新增 `scripts/ma
 
 spec 008 新增 `scripts/maintenance/compatibility.mjs`：用隔离配置的 npm package-lock-only / strict-peer-deps 解析精确宿主的完整依赖图，校核相关共享组件唯一性与固定产物身份；临时目录仅作解析且不执行包代码。discovery 选择该图中的相关包，独立 latest 只作 observations；watch 共用候选比较，不把 observations 当安装目标。npm 解析可满足不等于实测兼容，基线推进仍需完整验证和 PR。
 
+spec 010 的双宿主验证入口 `scripts/harness-matrix.mjs` 属于开发层：读取两宿主固定目标、保留宿主安装锁与当前精确开发锁，在隔离 HOME/npm 配置/cache 的临时 checkout 中复验产物再严格安装同一 tarball；两个消费端均从安装包加载插件，运行真实宿主测试。夹具仅根据宿主公开 pipeline export 选择旧单调用或新批次执行入口，生产插件仍只注册既有服务与最终 guard。用户 engines/peer 支持并集和精确开发锁分离；维护 discovery 检查正式稳定线保留，固定候选身份及 v3 key 不变。矩阵入口不进入 npm 发布包，不修改真实 profile。
+
 版本提示由 `src/control/version-notice.ts` 协调：engine 提供同一执行快照下的版本事实和有界内存缓存，compat 提供版本判断，format 定义及渲染可选 `versionNotice`。runtime 绑定实际执行快照，顶层工具/命令统一装饰结果，job 内部不重复提示。取消等待者不取消共享检查；插件卸载清理检查。查询不再读写磁盘更新缓存。
 
 | 文件 | 职责 | 关键约束 |

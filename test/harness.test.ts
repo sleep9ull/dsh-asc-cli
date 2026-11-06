@@ -3,15 +3,24 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { type PreToolDecision } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type PreToolDecision, type ToolExecutionInput, type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import { createRequire } from 'node:module'
 import ApprovalService, { type ApprovalOutcome, type ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
-import * as AscPlugin from '../src/index.js'
 import type { Config } from '../src/config.js'
 import { makeConfig } from './helpers.js'
+import { PINNED_ASC_VERSION } from '../src/compat.js'
+
+// The retained-host matrix runs the exact lib/ built against the development host.
+const pluginPath = process.env.ASC_HARNESS_BUILT === '1' ? '@sleep9ull/dsh-asc-cli' : '../src/index.js'
+const AscPlugin = await import(pluginPath)
+const pipelinePath = '@deepseek-ai/dsh-tools/pipeline'
+const toolExports = createRequire(import.meta.url)('@deepseek-ai/dsh-tools/package.json').exports
+const batchApi = toolExports['./pipeline'] === undefined ? undefined : await import(pipelinePath)
 
 const contexts: Context[] = []
 afterEach(async () => {
@@ -34,6 +43,7 @@ async function harness(options: {
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(SystemPrompt)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(CommandRuntime)
@@ -53,7 +63,22 @@ async function harness(options: {
   options.before?.(ctx)
   const plugin = await ctx.plugin(AscPlugin, makeConfig({ ascPath: '/test/asc', defaultAppId: '123', ...options.config }))
   const agent = agentForCall()
-  const call = (args: unknown, extra: { agent?: Agent; signal?: AbortSignal } = {}) => ctx.tools.execute({
+  // Both public host entry points run the real policy and final guards; errors never fall back to a handler.
+  const pipeline = batchApi === undefined ? undefined : new batchApi.ToolExecutionPipeline(ctx)
+  const execute = async (input: ToolExecutionInput): Promise<ToolExecutionResult> => {
+    if (pipeline === undefined) {
+      const legacyExecute = ctx.tools.execute as unknown as (call: ToolExecutionInput) => Promise<ToolExecutionResult>
+      return legacyExecute.call(ctx.tools, input)
+    }
+    const batch = await batchApi!.executeToolBatch({
+      calls: [{ type: 'tool-call', id: input.callId, name: input.name, arguments: JSON.stringify(input.arguments) }],
+      signal: input.signal,
+      ...(input.agent === undefined ? {} : { agent: input.agent }),
+    }, pipeline, () => 1)
+    expect(batch.results).toHaveLength(1)
+    return batch.results[0]!.result
+  }
+  const call = (args: unknown, extra: { agent?: Agent; signal?: AbortSignal } = {}) => execute({
     name: 'asc',
     callId: ToolCallId('same-call-id'),
     arguments: args,
@@ -61,7 +86,7 @@ async function harness(options: {
     signal: new AbortController().signal,
     ...extra,
   })
-  return { ctx, plugin, agent, spawn, answer, call }
+  return { ctx, plugin, agent, spawn, answer, call, execute }
 }
 
 const unknown = { action: 'run', args: ['future-command'], confirm: true }
@@ -200,7 +225,7 @@ describe('real Harness tool pipeline', () => {
   it('keeps read-only denials and invalid registered combinations ahead of approval', async () => {
     const h = await harness()
     expect((await h.call(write)).isError).toBe(true)
-    const invalid = await h.ctx.tools.execute({
+    const invalid = await h.execute({
       name: 'asc_apply', callId: ToolCallId('invalid'), agent: h.agent,
       arguments: { action: 'upload', file: 'App.ipa', dryRun: true, wait: true, confirm: true },
       signal: new AbortController().signal,
@@ -221,14 +246,14 @@ describe('real Harness tool pipeline', () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ tag_name: '7.0.0' })))
     vi.stubGlobal('fetch', fetch)
     const h = await harness({ config: { ascPath: process.execPath, checkUpdates: true }, version: '6.2.0 (commit: fixture)' })
-    const invoke = (agent = h.agent) => h.ctx.tools.execute({
+    const invoke = (agent = h.agent) => h.execute({
       name: name as string, arguments: args, callId: ToolCallId('notice'), agent,
       signal: new AbortController().signal,
     })
     const first = await invoke()
     expect(first.isError).toBe(false)
     expect(first.value).toMatchObject({ ok: true, versionNotice: { code: 'upgrade-required', installedVersion: '6.2.0' } })
-    expect(first.content.some((part) => part.type === 'text' && part.text.includes('Verified recommendation: 6.3.0'))).toBe(true)
+    expect(first.content.some((part) => part.type === 'text' && part.text.includes(`Verified recommendation: ${PINNED_ASC_VERSION}`))).toBe(true)
     expect((await invoke()).value).not.toHaveProperty('versionNotice')
     expect((await invoke(agentForCall())).value).toHaveProperty('versionNotice')
     expect(fetch).toHaveBeenCalledOnce()
@@ -251,7 +276,7 @@ describe('real Harness tool pipeline', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ tag_name: '7.0.0' }))))
     const h = await harness({ config: { ascPath: process.execPath, checkUpdates: true }, version: '6.2.0' })
     const card = await h.ctx.commands.execute(h.agent, '/asc', [], new AbortController().signal)
-    expect(card?.result).toMatchObject({ kind: 'success', text: expect.stringContaining('Verified recommendation: 6.3.0') })
+    expect(card?.result).toMatchObject({ kind: 'success', text: expect.stringContaining(`Verified recommendation: ${PINNED_ASC_VERSION}`) })
     expect(h.spawn).toHaveBeenCalledOnce()
     expect(h.spawn.mock.calls[0]?.[0].argv).toContain('version')
   })

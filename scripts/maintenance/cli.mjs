@@ -68,7 +68,7 @@ try {
       if (result.status === 'discovered') {
         const lock = await json(options['lock-file'] ?? 'package-lock.json')
         try {
-          const changes = compareBaseline(command === 'discover' ? result.target.harness : result.harness, pkg, lock)
+          const changes = compareBaseline(command === 'discover' ? result.target.harness : result.harness, pkg, lock, result.support)
           result = { ...result, status: command === 'discover' ? 'discovered' : changes.length ? 'drift' : 'unchanged', changes }
         } catch (error) { result = { ...result, status: 'unknown', reason: error.message } }
       }

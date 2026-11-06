@@ -18,7 +18,7 @@ App Store Connect 是 iOS 发布流程的核心，也是团队最耗时间的地
 dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 ```
 
-> 当前源码包含下述**尚未发布**的版本提示和维护工具；npm `0.2.0` 尚未包含这些新增能力。源码版 `/asc` 是轻量引擎/能力卡；认证检查请运行 `/asc-doctor`。
+> 当前源码目标为**尚未发布的 `0.2.1`**，包含旧宿主兼容、版本提示和维护工具；npm `0.2.0` 尚未包含这些新增能力。实际验证进度见 [spec 010](docs/specs/010-dual-harness-compatibility.md)。源码版 `/asc` 是轻量引擎/能力卡；认证检查请运行 `/asc-doctor`。
 
 ---
 
@@ -127,14 +127,14 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 |---|---|
 | 定位 | `ascPath` → `ASC_CLI_PATH` → 插件缓存 → `PATH` |
 | 诊断 | 版本、声明支持范围和验证 pin、认证、默认 app、provision 状态，给一个下一步 |
-| Provision | 可选：固定 `asc 6.3.0`、SHA-256 校验、按平台缓存 |
+| Provision | 可选：固定 `asc 6.5.0`、SHA-256 校验、按平台缓存 |
 | 更新 | 普通调用和 `/asc` 显示来源相关的版本提示；`/asc-doctor` 展示完整事实；从不自动升级 |
 
 `checkUpdates: true` 沿用已有默认值，允许的普通调用现在也可查询公共 GitHub release。成功结果内存缓存 24 小时，失败退避 15 分钟；普通调用最多额外等 1 秒，检查自身上限 5 秒。提示不改变业务成功/失败，同会话同版本组合只提示一次，job 只在顶层显示。设置 `checkUpdates: false` 关闭自动检查与远端版本查询；显式本地版本/诊断仍可用。
 
 推荐目标是插件已验证 pin，未验证的 latest 仅告知。提示针对实际执行的配置路径、环境变量、插件缓存或 PATH；Homebrew 升级可能不会改变配置/缓存中的二进制。更新查询不再读写 `update-check.json`，旧文件保留不动；插件重启后可能重新查询。
 
-开发维护机制见 [MAINTENANCE](docs/MAINTENANCE.md)：本地 Desktop 定时任务、仓库脚本、GitHub 门禁及可恢复的 main 同步。部署和持久写授权独立于插件安装，不自动发布 npm。Harness 维护固定 npm tarball，验证实际字节的 SHA-512 与注册表签名，并在安装前对照锁文件重新验证。缺少 `gitHead` 时记录未知源码 commit；注册表签名不证明源码构建来源。更新候选从精确宿主的严格 dependency/peer 图选择，各包独立 latest 仅作观察；宿主与 peer 保持已验证组合的精确锁定，隔离完整集成验证通过后才升级。解析使用临时 npm lock/cache、关闭 scripts，不安装包。
+开发维护机制见 [MAINTENANCE](docs/MAINTENANCE.md)：本地 Desktop 定时任务、仓库脚本、GitHub 门禁及可恢复的 main 同步。部署和持久写授权独立于插件安装，不自动发布 npm。Harness 维护固定 npm tarball，验证实际字节的 SHA-512 与注册表签名，并在安装前对照锁文件重新验证。缺少 `gitHead` 时记录未知源码 commit；注册表签名不证明源码构建来源。更新候选从精确宿主的严格 dependency/peer 图选择，各包独立 latest 仅作观察；每组开发/验证环境的宿主、组件和安装锁保持精确固定，用户宿主/peer 声明覆盖实际验证的支持集合。维护至少保留上一正式稳定兼容线，同时逐步适配默认渠道更新；1.x 以后按 major、0.x 按 minor 划线。没有正式稳定版时保留上一已验证基线，如实标明 RC。同一插件产物必须在保留与新增宿主上分别通过严格安装和真实审批测试，不能因追新静默排除旧用户。详见[长期兼容原则](docs/MAINTENANCE.md#0-长期兼容原则)。解析使用临时 npm lock/cache、关闭 scripts，不安装包。
 
 ---
 
@@ -181,9 +181,9 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 | 依赖 | 版本 |
 |---|---|
-| DeepSeek Harness | 已验证组合：`0.2.1-rc.5`、Cordis `4.0.5`、Schemastery `3.18.5`；宿主与插件 peer 精确锁定 |
+| DeepSeek Harness | 源码 `0.2.1`：保留 `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`，并适配 `0.2.2-rc.1` / `4.1.0` / `3.19.0`；peer 为精确并集，不强制升级宿主。同一打包插件在两个宿主上分别验证，见 spec 010 |
 | Node.js | `^22.19.0 \|\| >=24.0.0`（推荐 24） |
-| `asc` | 已验证基线 `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`/asc-doctor` 会提示漂移） |
+| `asc` | 源码 `0.2.1`：已验证 pin `6.5.0`，保留基线 `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`/asc-doctor` 会提示漂移） |
 | App Store Connect API Key | 团队或个人 key，在 Agent 之外完成认证 |
 
 ---

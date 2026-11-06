@@ -8,7 +8,7 @@
  */
 
 /** Version provisioned by default when the user opts in. */
-export const PINNED_ASC_VERSION = '6.3.0'
+export const PINNED_ASC_VERSION = '6.5.0'
 
 /** Compatibility bounds; future minors are monitored, not individually certified. */
 export const MIN_ASC_VERSION = '6.3.0'

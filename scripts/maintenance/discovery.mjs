@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 // Supported Node versions strip types, so discovery needs neither lib/ nor duplicated facts.
 import { UPSTREAM_REPO, releaseAsset } from '../../src/compat.ts'
-import { discoverPackage, registryKeys } from './npm-artifact.mjs'
+import { discoverPackage, registryKeys, npmJson } from './npm-artifact.mjs'
 import { resolveHost, selectPackages, assertResolved } from './compatibility.mjs'
 import { compareVersions } from '../../src/compat.ts'
 export { verifyHarness } from './npm-artifact.mjs'
@@ -16,10 +16,35 @@ async function get(url, fetchFn) {
   return response
 }
 
-export async function discoverHarness({ packageNames = [], fetch: fetchFn = globalThis.fetch, now = Date.now, resolve = resolveHost } = {}) {
+/** Stable regression anchors come from published versions, never dist-tag names. */
+function stableSupport(latest, versions) {
+  if (!Array.isArray(versions) || !versions.length || versions.some(version => typeof version !== 'string' || !/^\d/.test(version) || !Number.isFinite(compareVersions(version, version)))) throw new Error('Invalid Harness published versions')
+  if (!versions.includes(latest)) throw new Error('Default Harness release missing from published versions')
+  const line = version => {
+    const [major, minor] = version.split('.')
+    return major === '0' ? `0.${minor}` : major
+  }
+  const currentLine = line(latest)
+  const stable = versions.filter(version => !version.split('+')[0].includes('-')).sort((a, b) => compareVersions(b, a))
+  const current = stable.find(version => line(version) === currentLine) ?? null
+  const previous = stable.find(version => line(version) !== currentLine && compareVersions(version, latest) < 0) ?? null
+  return {
+    status: stable.length ? 'stable-releases' : 'no-stable-release', currentLine, current, previous,
+    anchors: [current, previous].filter(Boolean),
+    reasons: [...(!current ? ['no-current-stable-release'] : []), ...(!previous ? ['no-previous-stable-line'] : [])],
+  }
+}
+
+export async function discoverHarness({ packageNames = [], fetch: fetchFn = globalThis.fetch, now = Date.now, resolve = resolveHost, versions } = {}) {
   try {
     const options = { fetch: fetchFn, keys: await registryKeys(fetchFn), now }
     const harness = await discoverPackage('@deepseek-ai/dsh', options)
+    if (versions === undefined) {
+      const published = await npmJson('https://registry.npmjs.org/%40deepseek-ai%2Fdsh', fetchFn)
+      if (published.name !== harness.name || !published.versions || typeof published.versions !== 'object' || Array.isArray(published.versions)) throw new Error('Missing Harness published versions')
+      versions = Object.keys(published.versions)
+    }
+    const support = stableSupport(harness.version, versions)
     const names = [...new Set(packageNames)].filter(name => name !== harness.name).sort()
     const graph = await resolve(harness)
     const selected = selectPackages(graph, harness, names)
@@ -32,16 +57,16 @@ export async function discoverHarness({ packageNames = [], fetch: fetchFn = glob
       packages.push(pkg)
       if (latest.version !== pkg.version) observations.push({ ...latest, selected: pkg.version, reason: compareVersions(latest.version, pkg.version) < 0 ? 'default-channel-behind-host' : 'outside-host-resolution' })
     }
-    return { status: 'discovered', checkedAt: now(), validation: 'dependency-resolution-only', observations, harness: { ...harness, packages } }
+    return { status: 'discovered', checkedAt: now(), validation: 'dependency-resolution-only', observations, support, harness: { ...harness, packages } }
   } catch (error) {
     return { status: 'unknown', checkedAt: now(), reason: error.message }
   }
 }
 
-export async function discoverTargets({ repository, packageNames = [], platform = process.platform, arch = process.arch, fetch: fetchFn = globalThis.fetch, now = Date.now, resolve = resolveHost } = {}) {
+export async function discoverTargets({ repository, packageNames = [], platform = process.platform, arch = process.arch, fetch: fetchFn = globalThis.fetch, now = Date.now, resolve = resolveHost, versions } = {}) {
   try {
     if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('Explicit owner/repository is required')
-    const found = await discoverHarness({ packageNames, fetch: fetchFn, now, resolve })
+    const found = await discoverHarness({ packageNames, fetch: fetchFn, now, resolve, versions })
     if (found.status !== 'discovered') return found
     const repo = UPSTREAM_REPO
     const api = `https://api.github.com/repos/${repo}`
@@ -59,7 +84,7 @@ export async function discoverTargets({ repository, packageNames = [], platform 
     const checksumText = await (await get(sums.browser_download_url, fetchFn)).text()
     const entries = checksumText.split(/\r?\n/).map(line => /^([a-f0-9]{64})\s+\*?(.+?)\s*$/i.exec(line)).filter(match => match?.[2] === name)
     if (entries.length !== 1) throw new Error('Missing or ambiguous asc SHA-256')
-    return { status: 'discovered', checkedAt: now(), validation: found.validation, observations: found.observations, target: {
+    return { status: 'discovered', checkedAt: now(), validation: found.validation, observations: found.observations, support: found.support, target: {
       repository, harness: found.harness,
       asc: { version, tag: release.tag_name, commit: resolved.sha, source: `https://github.com/${repo}`, releaseUrl: `${api}/releases/tags/${encodeURIComponent(release.tag_name)}`, asset: name, assetUrl: asset.browser_download_url, checksumsUrl: sums.browser_download_url, sha256: entries[0][1].toLowerCase(), platform, arch },
     } }

@@ -4,6 +4,7 @@ import type { AscEngine } from '../src/control/engine.js'
 import type { EngineSnapshot } from '../src/control/binary.js'
 import { renderResult, type AscToolResult } from '../src/format.js'
 import { makeConfig } from './helpers.js'
+import { PINNED_ASC_VERSION } from '../src/compat.js'
 
 const snapshot: EngineSnapshot = {
   resolution: { path: '/fixture/asc', source: 'configured' }, identity: 'binary-one',
@@ -30,7 +31,7 @@ describe('version notices', () => {
     const { notices, exec, run } = fixture()
     const first = await notices.run(exec, run)
     expect(first).toMatchObject(outcome)
-    expect(first.versionNotice).toMatchObject({ code: 'upgrade-required', recommendedVersion: '6.3.0', source: 'configured' })
+    expect(first.versionNotice).toMatchObject({ code: 'upgrade-required', recommendedVersion: PINNED_ASC_VERSION, source: 'configured' })
     expect(first.versionNotice?.hint).not.toContain('brew upgrade')
     expect(renderResult(first).map((part) => part.type === 'text' ? part.text : '').join('')).toContain(first.versionNotice?.message)
     expect((await notices.run(exec, run)).versionNotice).toBeUndefined()
@@ -38,13 +39,14 @@ describe('version notices', () => {
   })
 
   it('does not treat a new upstream major or prerelease as a verified upgrade', () => {
-    expect(versionNotice(snapshot, { version: '6.3.0', missing: false }, '7.0.0')).toMatchObject({ code: 'upstream-unverified', recommendedVersion: '6.3.0' })
+    expect(versionNotice(snapshot, { version: PINNED_ASC_VERSION, missing: false }, '7.0.0')).toMatchObject({ code: 'upstream-unverified', recommendedVersion: PINNED_ASC_VERSION })
     expect(versionNotice(snapshot, { version: '6.4.0-rc.1', missing: false }, '6.4.0')?.code).toBe('outside-supported-range')
     expect(versionNotice(snapshot, { version: 'garbage', missing: false }, '7.0.0')?.code).toBe('version-unknown')
-    expect(versionNotice(snapshot, { version: '6.3.0', missing: false })).toBeUndefined()
-    const cached = versionNotice({ ...snapshot, resolution: { ...snapshot.resolution, source: 'cache' } }, { version: '6.3.0', missing: false }, '7.0.0')
+    expect(versionNotice(snapshot, { version: PINNED_ASC_VERSION, missing: false })).toBeUndefined()
+    expect(versionNotice(snapshot, { version: '6.3.0', missing: false })).toMatchObject({ code: 'upgrade-recommended', recommendedVersion: PINNED_ASC_VERSION })
+    const cached = versionNotice({ ...snapshot, resolution: { ...snapshot.resolution, source: 'cache' } }, { version: PINNED_ASC_VERSION, missing: false }, '7.0.0')
     expect(cached?.hint).not.toContain('brew')
-    expect(cached?.hint).toContain('6.3.0')
+    expect(cached?.hint).toContain(PINNED_ASC_VERSION)
   })
 
   it('does not probe rejected operations, cancelled callers or disabled checks', async () => {

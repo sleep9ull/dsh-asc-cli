@@ -24,6 +24,8 @@ jobs:
       - run: npm ci
       - name: Types, unit and real Harness integration, build, package and guards
         run: npm run verify -- --unit-only
+      - name: Same package on both Harness versions (verified artifacts, strict install and real approvals)
+        run: node scripts/harness-matrix.mjs
 
   contract:
     runs-on: ubuntu-latest
