@@ -42,6 +42,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Build plugin before engine checks
+        run: npm run build
       - name: Download compatibility baseline and verify SHA-256
         run: node scripts/download-asc.mjs
       - name: Command and flag contract

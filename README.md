@@ -8,17 +8,17 @@ English | [中文](README.zh.md)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
-Current npm release: [**0.2.0**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.0), verified with DeepSeek Harness `0.2.1-rc.5` and asc `6.3.0`. See the [changelog](CHANGELOG.md#020--2026-11-03-upstream-compatibility) and [upgrade steps](#upgrading-from-016-to-020).
+Current npm release: [**0.2.1**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.1), verified with DeepSeek Harness `0.2.1-rc.5` / `0.2.2-rc.1` and asc `6.3.0` / `6.5.0`. See the [changelog](CHANGELOG.md#021--2026-11-06) and [compatibility validation](docs/specs/010-dual-harness-compatibility.md).
 
 App Store Connect is where iOS releases happen — and where teams lose hours to CLI flags, JSON blobs, half-documented states and approval rituals. This plugin puts it inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): install once, ask in plain language, and the agent runs the right workflow, showing a plan and stopping for approval before anything ships.
 
 The [asc CLI](https://github.com/rorkai/App-Store-Connect-CLI) (MIT, Go) remains the engine. This plugin is the product layer around it: five task-shaped **jobs**, a small **read / plan / apply** tool surface, **bundled skills** that teach the agent how to use it, and an **engine manager** that diagnoses, provisions and version-checks `asc`.
 
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.1
 ```
 
-> The source tree targets **unreleased `0.2.1`**, including retained-host compatibility, version notices and maintenance tooling described below; npm `0.2.0` does not include these additions yet. Validation status is recorded in [spec 010](docs/specs/010-dual-harness-compatibility.md). `/asc` in this source version is a lightweight engine/capabilities card; use `/asc-doctor` for authentication diagnostics.
+> The source tree targets **unreleased `0.2.2`**, which moves builds to packaging so consumers do not need to approve this plugin's install scripts; see [spec 011](docs/specs/011-prebuilt-plugin-install.md). npm `0.2.1` retains the earlier packaging behavior. Host compatibility remains as documented in [spec 010](docs/specs/010-dual-harness-compatibility.md). `/asc` is a lightweight engine/capabilities card; use `/asc-doctor` for authentication diagnostics.
 
 ---
 
@@ -41,11 +41,15 @@ Every write follows the same shape: **plan first → `confirm: true` → host ap
 
 ### 1 · Install the plugin
 
-Open DeepSeek Harness Desktop once to initialize its profile, then fully quit it before installing. The command below installs `0.2.0`; replace `desktop` with your profile name if you use another profile.
+Open DeepSeek Harness Desktop once to initialize its profile, then fully quit it before installing. The command below installs the published `0.2.1`; replace `desktop` with your profile name if you use another profile.
 
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.1
 ```
+
+Use the **npm package name** above as the installation source, rather than the GitHub repository URL. The repository contains TypeScript source and does not include the compiled `lib/` directory.
+
+Starting with the unreleased `0.2.2` source, the package is built and checked before packing; installing its prebuilt npm package or `.tgz` requires no install scripts from this plugin. Once `0.2.2` is published, replace `@0.2.1` above with `@0.2.2`. Other packages may still require their own script approval. To try the current source before publication, build a local package using the development steps below.
 
 Restart or reload the profile. The plugin inserts one row (`mode: read-only`) into the profile's `cordis.patch.yml`.
 
@@ -181,9 +185,9 @@ Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a loc
 
 | Requirement | Version |
 |---|---|
-| DeepSeek Harness | source `0.2.1`: retained `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`, and `0.2.2-rc.1` / `4.1.0` / `3.19.0`; exact peer alternatives, no forced host upgrade. The same packed plugin is tested on both hosts; see spec 010 |
+| DeepSeek Harness | source `0.2.2`: retained `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`, and `0.2.2-rc.1` / `4.1.0` / `3.19.0`; exact peer alternatives, no forced host upgrade. The same packed plugin is tested on both hosts; see spec 010 |
 | Node.js | `^22.19.0 \|\| >=24.0.0` (24 recommended) |
-| `asc` | source `0.2.1`: verified pin `6.5.0`, retained baseline `6.3.0`; support line `>=6.3.0 <7.0.0` (`/asc-doctor` reports drift) |
+| `asc` | source `0.2.2`: verified pin `6.5.0`, retained baseline `6.3.0`; support line `>=6.3.0 <7.0.0` (`/asc-doctor` reports drift) |
 | App Store Connect API key | team or individual key, authenticated **outside** the agent |
 
 ---

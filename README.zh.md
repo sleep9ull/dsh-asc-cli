@@ -8,17 +8,17 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
-当前 npm 发布版本：[**0.2.0**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.0)，已验证 DeepSeek Harness `0.2.1-rc.5` 与 asc `6.3.0`。详见[更新日志](CHANGELOG.md#020--2026-11-03-upstream-compatibility)和[升级步骤](#从-016-升级到-020)。
+当前 npm 发布版本：[**0.2.1**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.1)，已验证 DeepSeek Harness `0.2.1-rc.5` / `0.2.2-rc.1` 与 asc `6.3.0` / `6.5.0`。详见[更新日志](CHANGELOG.md#021--2026-11-06)和[兼容性验证](docs/specs/010-dual-harness-compatibility.md)。
 
 App Store Connect 是 iOS 发布流程的核心，也是团队最耗时间的地方：命令行参数、大段 JSON、状态机、审批与合规检查。这个插件把它搬进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：安装一次，用自然语言提出需求，Agent 会选对流程、先给出计划，并在真正改动线上之前停下来等你审批。
 
 底层执行引擎仍是 [`asc` CLI](https://github.com/rorkai/App-Store-Connect-CLI)（MIT，Go）。本插件是它上层的产品层：5 个任务型**作业**、按意图组织的**读 / 计划 / 变更**工具面、随包发布的**内置技能**，以及负责体检、安装与版本对齐的**引擎管理器**。
 
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.1
 ```
 
-> 当前源码目标为**尚未发布的 `0.2.1`**，包含旧宿主兼容、版本提示和维护工具；npm `0.2.0` 尚未包含这些新增能力。实际验证进度见 [spec 010](docs/specs/010-dual-harness-compatibility.md)。源码版 `/asc` 是轻量引擎/能力卡；认证检查请运行 `/asc-doctor`。
+> 当前源码目标为**尚未发布的 `0.2.2`**，将构建移到打包阶段，消除本插件对消费者安装脚本授权的需求，见 [spec 011](docs/specs/011-prebuilt-plugin-install.md)。npm `0.2.1` 仍保留旧打包行为。宿主兼容集合沿用 [spec 010](docs/specs/010-dual-harness-compatibility.md)。`/asc` 是轻量引擎/能力卡；认证检查请运行 `/asc-doctor`。
 
 ---
 
@@ -41,11 +41,15 @@ dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 
 ### 1 · 安装插件
 
-先打开一次 DeepSeek Harness Desktop，初始化 profile，然后完全退出再安装。下面的命令安装 `0.2.0`；如果使用其他 profile，请把 `desktop` 替换为对应名称。
+先打开一次 DeepSeek Harness Desktop，初始化 profile，然后完全退出再安装。下面的命令安装已发布的 `0.2.1`；如果使用其他 profile，请把 `desktop` 替换为对应名称。
 
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.1
 ```
+
+安装来源请使用上面的 **npm 包名**。GitHub 仓库地址提供的是 TypeScript 源码，不包含编译后的 `lib/`，不能代替成品包入口。
+
+从当前尚未发布的 `0.2.2` 源码起，插件在打包前完成构建和校验，用户安装预构建 npm 包或 `.tgz` 时无需执行本插件的安装脚本。待 `0.2.2` 正式发布后，将上面命令中的 `@0.2.1` 换成 `@0.2.2` 即可；其他包仍可能单独要求脚本授权。发布前体验当前源码，请按下方开发步骤构建本地安装包。
 
 重启或重新加载 profile。插件会向 `cordis.patch.yml` 插入一行配置（默认 `mode: read-only`）。
 
@@ -181,9 +185,9 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 | 依赖 | 版本 |
 |---|---|
-| DeepSeek Harness | 源码 `0.2.1`：保留 `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`，并适配 `0.2.2-rc.1` / `4.1.0` / `3.19.0`；peer 为精确并集，不强制升级宿主。同一打包插件在两个宿主上分别验证，见 spec 010 |
+| DeepSeek Harness | 源码 `0.2.2`：保留 `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`，并适配 `0.2.2-rc.1` / `4.1.0` / `3.19.0`；peer 为精确并集，不强制升级宿主。同一打包插件在两个宿主上分别验证，见 spec 010 |
 | Node.js | `^22.19.0 \|\| >=24.0.0`（推荐 24） |
-| `asc` | 源码 `0.2.1`：已验证 pin `6.5.0`，保留基线 `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`/asc-doctor` 会提示漂移） |
+| `asc` | 源码 `0.2.2`：已验证 pin `6.5.0`，保留基线 `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`/asc-doctor` 会提示漂移） |
 | App Store Connect API Key | 团队或个人 key，在 Agent 之外完成认证 |
 
 ---
