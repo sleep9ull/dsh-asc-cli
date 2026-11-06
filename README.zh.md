@@ -9,7 +9,7 @@
 
 **各版本的详细更新与迁移说明统一查看 [CHANGELOG.md](CHANGELOG.md)。**
 
-> 本 README 对应 **0.2.1**，源码已合并，尚未发布到 npm；当前 npm 发布版本仍为 **0.2.0**。安装方式见下方[安装插件](#1--安装插件)。
+> 当前 npm 发布版本是 [**0.2.1**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.1)。当前源码目标为**尚未发布的 0.2.2**，在打包前完成构建，消除本插件对消费者安装脚本授权的需求；详见 [spec 011](docs/specs/011-prebuilt-plugin-install.md) 和下方[安装插件](#1--安装插件)。
 
 ---
 
@@ -46,15 +46,15 @@ App Store Connect 是 iOS 发布流程的核心，也是团队最耗时间的地
 
 ### 1 · 安装插件
 
-先打开一次 DeepSeek Harness Desktop，初始化 profile，然后完全退出再安装。如果使用其他 profile，请把 `desktop` 替换为对应名称。
-
-**使用本文的 0.2.1：** npm 发布尚未完成，请按[开发章节](#开发)从当前源码构建并安装。
-
-**使用当前 npm 版本 0.2.0：** 执行下方命令；该版本的能力与升级要求见 [CHANGELOG.md](CHANGELOG.md#020--2026-11-03-upstream-compatibility)。
+先打开一次 DeepSeek Harness Desktop，初始化 profile，然后完全退出再安装。下面的命令安装已发布的 `0.2.1`；如果使用其他 profile，请把 `desktop` 替换为对应名称。
 
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.1
 ```
+
+安装来源请使用上面的 **npm 包名**。GitHub 仓库地址提供的是 TypeScript 源码，不包含编译后的 `lib/`，不能代替成品包入口。
+
+从当前尚未发布的 `0.2.2` 源码起，插件在打包前完成构建和校验，用户安装预构建 npm 包或 `.tgz` 时无需执行本插件的安装脚本。待 `0.2.2` 正式发布后，将上面命令中的 `@0.2.1` 换成 `@0.2.2` 即可；其他包仍可能单独要求脚本授权。发布前体验当前源码，请按下方开发步骤构建本地安装包。
 
 重启或重新加载 profile。插件会向 `cordis.patch.yml` 插入一行配置（默认 `mode: read-only`）。
 
@@ -191,9 +191,9 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 | 依赖 | 版本 |
 |---|---|
-| DeepSeek Harness | 源码 `0.2.1`：保留 `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`，并适配 `0.2.2-rc.1` / `4.1.0` / `3.19.0`；peer 为精确并集，不强制升级宿主。同一打包插件在两个宿主上分别验证，见 spec 010 |
+| DeepSeek Harness | 源码 `0.2.2`：保留 `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`，并适配 `0.2.2-rc.1` / `4.1.0` / `3.19.0`；peer 为精确并集，不强制升级宿主。同一打包插件在两个宿主上分别验证，见 spec 010 |
 | Node.js | `^22.19.0 \|\| >=24.0.0`（推荐 24） |
-| `asc` | 源码 `0.2.1`：已验证 pin `6.5.0`，保留基线 `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`/asc-doctor` 会提示漂移） |
+| `asc` | 源码 `0.2.2`：已验证 pin `6.5.0`，保留基线 `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`/asc-doctor` 会提示漂移） |
 | App Store Connect API Key | 团队或个人 key，在 Agent 之外完成认证 |
 
 ---

@@ -1,7 +1,7 @@
 # 测试规范（TESTING）
 
 > 测试的**规则**（写什么、不写什么）在 [`../AGENTS.md`](../AGENTS.md)「测试」一节；本文给模式与工具。
-> 源码 `0.2.1`｜质量门见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) §3。
+> 源码 `0.2.2`｜质量门见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) §3。
 
 ---
 
@@ -33,6 +33,7 @@
 | `test/audit.test.ts` | 脱敏（独立/内联 flag）、8 KB 按字节、`0o600`、失败不影响调用 |
 | `test/harness.test.ts` | 0.2.2-rc.1 真实 Tools/ApprovalService/Skills/Commands，公开批次调度与执行管线；五工具、六技能、两命令；审批拒绝/取消/缺失、listener 绕过、参数替换与并发隔离 |
 | `test/matrix-scripts.test.ts` | 已有旧 lib 时重新构建后再认证打包产物；Windows npm CLI 的路径空格与参数元字符保持字面值，不代表原生 Windows 实测 |
+| `test/packaging.test.ts` | 隔离无 lib 源码执行真实离线 npm pack；成品包无消费者安装脚本，解包后仅提供宿主 peers 即可加载公开入口、六个技能和 patch |
 | `test/scripts.test.ts` | 隔离 checkout 中运行实际下载/验证/overlay 脚本，模拟 Windows/macOS/Linux 路径、损坏下载与显式路径；不启动原生 Windows 引擎 |
 | `test/version-notice.test.ts` | 业务 outcome 保持、版本/来源建议、会话与嵌套去重、1s 等待上限、显式版本复用 |
 | `test/binary.test.ts` | cwd/PATH/文件指纹快照，避免不同实际引擎混用版本 |
@@ -80,7 +81,7 @@ const spawn = (spec: SubprocessSpawnSpec) => {
 - `scripts/classify-audit.mjs`：从 `asc completion` 取全部路径，任何"写文件却分类为 read"的叶子都失败；
 - `scripts/pack-manifest.mjs`：构建后断言 `lib/` 文件集与 `src/` 一一对应，防止 stale 模块进包。
 
-四者都接在 `npm run verify` 与 CI 上。
+四者都接在 `npm run verify` 与 CI 上。`test/packaging.test.ts` 通过 `npm test` 进入相同门禁：生产端启用 prepack，从没有 lib 的源码真实离线打包；消费者只解包并提供宿主 peers，不执行安装脚本、不提供编译器，即可加载插件与随包资源。它捕获重新引入 prepare/安装脚本、漏编译、漏打包资源及损坏入口的回归。实际包管理器禁用脚本严格安装由双宿主矩阵补充验证，不等同于真实 Desktop UI 实测。
 
 `vitest.config.ts` 将发现范围限定为当前 checkout 的 `test/**/*.test.ts`，避免根目录运行测试时递归收集 `.claude/worktrees/` 下其他分支的测试。新增测试放在 `test/` 中（允许子目录）。测试发现隔离仅修正开发验证范围，不改变插件行为，无需产品 spec。
 
@@ -107,18 +108,20 @@ npm run verify               # 完整：typecheck → test → build → pack-ma
 npm run verify -- --unit-only # 显式仅本地检查，不代表已通过引擎门禁
 # 或分开跑
 npm run typecheck
-npm test                     # 21 个 suite；当前源码 409 tests，含稳定线/支持并集、安装图与产物验证回归
+npm test                     # 22 个 suite；当前源码 410 tests，含稳定线/支持并集、安装图与免脚本成品包回归
 npm run build                # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc
 node scripts/contract-combos.mjs
 node scripts/classify-audit.mjs ./vendor/asc
 ```
 
-CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contract-combos；独立 contract job 分别下载 compat SSOT 的 pin 与最低保留版本，校验 SHA-256 后各跑 contract + classify-audit + offline smoke。下载器 `--minimum` 与 `--latest` 互斥。每日 `upstream-watch` 对 asc latest release 执行相同引擎门禁，并严格解析 Harness 默认宿主的兼容候选、保留独立 latest 观察；适用候选漂移或来源/依赖验证失败时自动开 issue。维护脚本测试通过 Vitest 自动进入 `npm test` 和 CI，不需要真实 GitHub。部署验收（Desktop Run now、GitHub ruleset/auto-merge、真实主副本同步）与这些本地模拟测试分别记录。完整 verify 缺少 vendor/asc 时失败，不再静默跳过。
+CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contract-combos；独立 contract job 在 npm ci 后显式 build（不依赖安装阶段构建），再分别下载 compat SSOT 的 pin 与最低保留版本，校验 SHA-256 后各跑 contract + classify-audit + offline smoke。下载器 `--minimum` 与 `--latest` 互斥。每日 `upstream-watch` 对 asc latest release 执行相同引擎门禁，并严格解析 Harness 默认宿主的兼容候选、保留独立 latest 观察；适用候选漂移或来源/依赖验证失败时自动开 issue。维护脚本测试通过 Vitest 自动进入 `npm test` 和 CI，不需要真实 GitHub。部署验收（Desktop Run now、GitHub ruleset/auto-merge、真实主副本同步）与这些本地模拟测试分别记录。完整 verify 缺少 vendor/asc 时失败，不再静默跳过。
 
 ---
 
 ## 6. 验证边界与剩余缺口
+
+spec 011（2026-11-06，源码 0.2.2）新增预构建成品包回归：从无 lib 状态运行完整八阶段通过，22 suites / 410 tests；同一个 0.2.2 tarball 在 0.2.1-rc.5 与 0.2.2-rc.1 两消费端禁用脚本严格安装，分别复验 16 个固定产物，均通过 410 tests、本地门禁及 asc 6.5.0 离线 smoke。证据在 `vendor/harness-matrix-eYO5Aq/`，两侧包摘要一致。当前机器的网络代理需临时转发给隔离 npm 子进程才能完成依赖解析；校验算法与严格安装参数未改变。此次实际运行 Node 24.14.0，未运行远端 Node22/24 CI，也未操作真实 Desktop profile 或发布 npm；0.2.1 已发布的事实已从官方 registry 核对。历史验证记录保留在下文。
 
 spec 010 的 `npm run harness:matrix` 读取 test/fixtures/harness-support.json、两宿主固定产物、保留宿主锁及当前精确开发锁；两个消费端严格安装同一打包产物，在隔离环境执行真实审批集成和本地门禁。生产端先 clean build 当前源码再禁用生命周期脚本打包，避免认证 stale lib。声明的所有保留宿主必须有对应夹具，开发基线与最高精确支持项一致；新增支持不能静默跳过旧环境。实际消费端安装锁、目标、共同 plugin.tgz、锁 SHA-256 和逐宿主结果保存在本 checkout 新建的 `vendor/harness-matrix-*` 目录，临时安装目录仍清理；Node22/24 CI 上传证据，原 required check 名称保留。矩阵、宿主解析与 verify 共用无 shell 的 npm 启动方式；Windows 使用当前 Node 执行 npm CLI。
 

@@ -2,7 +2,12 @@
 
 All versions' detailed changes, breaking changes and migration notes are maintained here. For current usage and installation, see [README.md](README.md) or [README.zh.md](README.zh.md).
 
-## 0.2.1 — Unreleased
+## 0.2.2 — Unreleased
+
+- Move compilation from `prepare` to `prepack`, including the compiled-file manifest check. Distribute prebuilt npm packages or `.tgz` files with no consumer install scripts; GitHub source URLs are not the supported end-user installation entry. Add an offline regression that packs unbuilt source and loads the extracted plugin, skills and patch without running install scripts. Build explicitly before CI engine checks. See [spec 011](docs/specs/011-prebuilt-plugin-install.md).
+- Correct the installation guide to identify the published npm `0.2.1` and the unreleased `0.2.2` fix separately; preserve the existing host/peer compatibility set.
+
+## 0.2.1 — 2026-11-06
 
 - Retain Harness `0.2.1-rc.5` while adapting `0.2.2-rc.1`; public host/peer declarations cover both exact combinations while development dependencies remain pinned to the new host. Use the same packed plugin for retained-host strict installation and real approval/guard regressions.
 - Adopt a maintenance policy that preserves the previous formal stable compatibility line while progressively adapting default-channel updates. Before 1.0, minor versions define compatibility lines; when no formal stable exists, keep the verified baseline and label RCs explicitly. Check official published versions, not the `latest` label alone.

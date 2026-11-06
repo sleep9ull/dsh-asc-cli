@@ -25,11 +25,13 @@ node scripts/dev-patch.mjs      # 从当前 checkout/worktree 生成绝对路径
 dsh web --patch ./vendor/cordis.dev.patch.yml --no-open --port 3199
 ```
 
-本地打包安装：
+安装开发依赖不再自动构建，先按上面步骤显式运行 `npm run build`。本地打包安装：
 
 ```bash
 npm pack && dsh plugin --profile desktop add ./sleep9ull-dsh-asc-cli-*.tgz
 ```
+
+`npm pack` / `npm publish` 的 `prepack` 自动 clean build 并检查 `lib/` 与 `src/` 文件集；校验日志写 stderr，保留 `npm pack --json` 的机器可读输出。成品包安装不执行本插件的安装脚本。若使用 `npm pack --ignore-scripts`，调用方必须先显式 build 和运行 pack-manifest。不要把 GitHub 源码 URL 当作用户成品包入口；正式用户使用 npm 包名及精确已发布版本，不要求用户放行构建脚本。详见 [spec 011](specs/011-prebuilt-plugin-install.md)。
 
 ---
 
@@ -87,8 +89,8 @@ node scripts/classify-audit.mjs ./vendor/asc
 1. 按 SemVer 判断版本（`0.x`；破坏性工具面变更用 `feat!` 并给迁移表）。
 2. `package.json` 与 `package-lock.json` 同步 bump。
 3. CHANGELOG 增加该版本章节（把 Unreleased 条目归入），写清 breaking/fixed/docs。
-4. 跑完整质量门 + contract。
-5. 发版由维护者执行（当前无自动 publish workflow）；tag 与 npm publish 需明确授权。
+4. 跑完整质量门 + contract；确认真实 `npm pack` 从尚无 `lib/` 的源码产出可加载的完整插件，安装包没有消费者安装脚本，并完成同包双宿主的禁用脚本严格安装验证。
+5. 发版由维护者执行（当前无自动 publish workflow）；tag 与 npm publish 需明确授权。发布完成后再更新 README 的当前 npm 版本与安装命令，不把候选版本称为已发布。
 
 ---
 

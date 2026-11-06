@@ -1,6 +1,6 @@
 # 产品契约（CONTRACT）
 
-> 状态：**契约（SSOT）**｜源码：`0.2.1`（npm 已发布 `0.2.0`）｜更新：2026-11-06
+> 状态：**契约（SSOT）**｜源码：`0.2.2`（npm 已发布 `0.2.1`）｜更新：2026-11-06
 > 常驻规则见 [`../AGENTS.md`](../AGENTS.md)；命令面参考见 [`COMMANDS.md`](./COMMANDS.md)；流程见 [`CONTRIBUTING.md`](./CONTRIBUTING.md) 与 [`SPECS.md`](./SPECS.md)。
 > **优先级**：用户指令 > `AGENTS.md` > 本文件 > 其他文档。代码与测试必须服从本文件；发现不一致，走 spec 流程修正，禁止沉默偏离。
 
@@ -124,12 +124,12 @@
 - **版本**：`0.x`；工具/action 的破坏性变更用 `feat!`，同一提交内更新：README + README.zh 迁移表、CHANGELOG、受影响 skill、registry/contract。
 - **过渡期**：0.1.4 是硬切换。下一次破坏性变更应保留一个 minor 的 deprecated 别名，或在 README 给出逐步迁移路径。
 - **质量门**：`npm run verify`（typecheck → test → build → pack-manifest → contract → classify-audit → smoke）；`scripts/pack-manifest.mjs` 断言 `lib/` 与 `src/` 文件集一致。
-- **引擎**：pin 与区间只在 `src/compat.ts` 定义；最低要求、已验证 pin 和声明支持范围区分，未来版本不称为已实测；源码 0.2.1 推荐 pin 为 6.5.0，并保留 6.3.0 实际回归。`scripts/contract.mjs` 锁定 23 个注册命令与 `--help` 兼容性；CI + 每日 upstream-watch 监测 asc 漂移和 Harness 默认渠道变化，监测不等于完成适配。
+- **引擎**：pin 与区间只在 `src/compat.ts` 定义；最低要求、已验证 pin 和声明支持范围区分，未来版本不称为已实测；源码 0.2.2 推荐 pin 为 6.5.0，并保留 6.3.0 实际回归。`scripts/contract.mjs` 锁定 23 个注册命令与 `--help` 兼容性；CI + 每日 upstream-watch 监测 asc 漂移和 Harness 默认渠道变化，监测不等于完成适配。
 - **版本提示**：`checkUpdates` 沿用默认 true，扩展到普通工具和 `/asc`；可选 `versionNotice` 不改变业务结果或审批。远端缓存 24h、失败 15min，均在内存；不读写旧更新缓存文件。false 关闭自动检查和远端查询；显式本地诊断保留。
 - **开发维护的 npm 来源**（spec 007）：固定官方 registry 中精确版本/tarball/SHA-512，实际验签和验字节；源码 commit 可为 null。registry 签名不等于源码构建证明，记录字段不代替安装前复验；缺有效签名、摘要不符或来源漂移仍阻塞。新 marker 为 v3，旧 v2 不静默升级，未收口旧目标需显式迁移。
-- **宿主**：源码候选 0.2.1 的 `engines.dsh` 为 `0.2.1-rc.5 || 0.2.2-rc.1`，公开 peer 为相应精确版本并集，由宿主提供；开发 pin 为 dsh-* 0.2.2-rc.1 / Cordis 4.1.0 / Schemastery 3.19.0，保留环境固定 dsh-* 0.2.1-rc.5 / Cordis 4.0.5 / Schemastery 3.18.5。双宿主消费端严格安装同一打包插件，验证类型、真实审批集成及完整本地门禁；每组产物/锁均在安装前复验。开发维护按 spec 008/010 解析完整宿主图与正式稳定线，独立 latest 只作观察；产物验签、锁复验、完整集成与旧支持回归仍是推进基线的前置条件，禁止自动降级、force 或 legacy-peer-deps。
+- **宿主**：源码候选 0.2.2 的 `engines.dsh` 为 `0.2.1-rc.5 || 0.2.2-rc.1`，公开 peer 为相应精确版本并集，由宿主提供；开发 pin 为 dsh-* 0.2.2-rc.1 / Cordis 4.1.0 / Schemastery 3.19.0，保留环境固定 dsh-* 0.2.1-rc.5 / Cordis 4.0.5 / Schemastery 3.18.5。双宿主消费端严格安装同一打包插件，验证类型、真实审批集成及完整本地门禁；每组产物/锁均在安装前复验。开发维护按 spec 008/010 解析完整宿主图与正式稳定线，独立 latest 只作观察；产物验签、锁复验、完整集成与旧支持回归仍是推进基线的前置条件，禁止自动降级、force 或 legacy-peer-deps。
 - **宿主兼容保留原则**（spec 010，2026-11-06 用户授权）：最低保留 dsh 上一兼容大版本正式稳定线，当前线稳定版也保留，并逐步适配默认渠道每次更新；1.x 及以后按 major、0.x 按 minor。每条需保留稳定线以最新正式 patch 作回归锚点。正式稳定版必须来自真实发布且无 prerelease 后缀；尚无正式稳定版时记录原因，保留既有已验证基线。用户兼容声明覆盖已验证支持集合，每组开发依赖/宿主图/锁仍精确固定。同一插件产物须验证保留基线及新增候选；不强制旧用户升级，不以放宽声明代替验证。既有单版本基线证据不构成自动删除旧支持的许可。
-- **发布物**：`files` 含 `lib`、`skills`、`cordis.patch.yml`、README/CHANGELOG；`prepack`/`prepare` 构建；无 postinstall 下载。
+- **发布物**（spec 011）：`files` 含 `lib`、`skills`、`cordis.patch.yml`、README/CHANGELOG；`prepack` 执行 clean build + pack-manifest，生产端完成编译与校验。成品包不声明 `prepare` / `preinstall` / `install` / `postinstall`，用户安装本插件无需运行安装脚本；正式入口为 npm 包名及精确已发布版本，或预构建 `.tgz`。GitHub 源码不含 lib，不作为成品包安装入口。其他包的脚本授权不在此承诺内；无 postinstall 下载。
 
 ---
 

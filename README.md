@@ -9,7 +9,7 @@
 
 For every release's detailed changes and migration notes, see [CHANGELOG.md](CHANGELOG.md).
 
-> This README describes **0.2.1**, merged into the source tree but not yet published to npm. The current npm release is **0.2.0**; see [installation options](#1--install-the-plugin) below.
+> The current npm release is [**0.2.1**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.1). This source checkout targets **unreleased 0.2.2**, which builds packages before distribution so consumers do not need to approve this plugin's install scripts; see [spec 011](docs/specs/011-prebuilt-plugin-install.md) and [installation options](#1--install-the-plugin).
 
 ---
 
@@ -46,15 +46,15 @@ Every write follows the same shape: **plan first → `confirm: true` → host ap
 
 ### 1 · Install the plugin
 
-Open DeepSeek Harness Desktop once to initialize its profile, then fully quit it before installing. Replace `desktop` with your profile name if you use another profile.
-
-**For 0.2.1:** npm publication is pending; [build and install this source checkout](#development) to use the version described here.
-
-**For the current npm release, 0.2.0:** use the command below. Its feature set and upgrade requirements are recorded in [CHANGELOG.md](CHANGELOG.md#020--2026-11-03-upstream-compatibility).
+Open DeepSeek Harness Desktop once to initialize its profile, then fully quit it before installing. The command below installs the published `0.2.1`; replace `desktop` with your profile name if you use another profile.
 
 ```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.1
 ```
+
+Use the **npm package name** above as the installation source, rather than the GitHub repository URL. The repository contains TypeScript source and does not include the compiled `lib/` directory.
+
+Starting with the unreleased `0.2.2` source, the package is built and checked before packing; installing its prebuilt npm package or `.tgz` requires no install scripts from this plugin. Once `0.2.2` is published, replace `@0.2.1` above with `@0.2.2`. Other packages may still require their own script approval. To try the current source before publication, build a local package using the development steps below.
 
 Restart or reload the profile. The plugin inserts one row (`mode: read-only`) into the profile's `cordis.patch.yml`.
 
@@ -191,9 +191,9 @@ Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a loc
 
 | Requirement | Version |
 |---|---|
-| DeepSeek Harness | source `0.2.1`: retained `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`, and `0.2.2-rc.1` / `4.1.0` / `3.19.0`; exact peer alternatives, no forced host upgrade. The same packed plugin is tested on both hosts; see spec 010 |
+| DeepSeek Harness | source `0.2.2`: retained `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`, and `0.2.2-rc.1` / `4.1.0` / `3.19.0`; exact peer alternatives, no forced host upgrade. The same packed plugin is tested on both hosts; see spec 010 |
 | Node.js | `^22.19.0 \|\| >=24.0.0` (24 recommended) |
-| `asc` | source `0.2.1`: verified pin `6.5.0`, retained baseline `6.3.0`; support line `>=6.3.0 <7.0.0` (`/asc-doctor` reports drift) |
+| `asc` | source `0.2.2`: verified pin `6.5.0`, retained baseline `6.3.0`; support line `>=6.3.0 <7.0.0` (`/asc-doctor` reports drift) |
 | App Store Connect API key | team or individual key, authenticated **outside** the agent |
 
 ---
