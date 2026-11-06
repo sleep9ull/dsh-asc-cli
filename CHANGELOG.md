@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this plugin are documented here.
+All versions' detailed changes, breaking changes and migration notes are maintained here. For current usage and installation, see [README.md](README.md) or [README.zh.md](README.zh.md).
 
 ## 0.2.2 — Unreleased
 
@@ -48,6 +48,16 @@ All notable changes to this plugin are documented here.
 - Require engine gates for full verification; provide explicit `--unit-only`. Check generated flags against upstream help and include negative parameter combinations.
 - Verify downloaded checksums in pinned CI and latest-release monitoring. Generate development overlays using paths from the current checkout.
 - Migration contract and acceptance evidence: [spec 004](docs/specs/004-upstream-compatibility.md).
+
+### Migration from 0.1.6
+
+For this release, upgrade DeepSeek Harness to `0.2.1-rc.5` and use asc `6.3.0`. Fully quit Desktop, then update the plugin in the profile where it is installed:
+
+```bash
+dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
+```
+
+Reopen Desktop or reload the profile, then run `/asc` and `/asc-doctor` to check the resolved engine, authentication and compatibility. Review `asc-tools` before enabling writes. Optional provisioning requires `allowProvision`, explicit confirmation and host approval. Tool and job names remain unchanged from 0.1.6.
 
 ## 0.1.6 — 2026-10-25 (write-path contract)
 
@@ -151,11 +161,15 @@ replaced by intent-shaped ones.
 |---|---|
 | `asc_search` | `asc` action `discover` |
 | `asc_run` | `asc` action `run` |
-| `asc_apps` / `asc_builds` / `asc_testflight` / `asc_metadata` / `asc_release` | `asc` (reads), `asc_plan` (plans), `asc_apply` (mutations) |
+| `asc_apps` `list`/`view` | `asc` `apps-list`/`apps-view` |
+| `asc_builds` `list`/`next-number` | `asc` `builds-list`/`builds-next-number` |
+| `asc_builds` `upload`/`add-groups` | `asc_apply` `upload`/`groups` |
+| `asc_testflight` `feedback`/`crashes`/`groups` | `asc` `testflight-feedback`/`-crashes`/`-groups` |
+| `asc_metadata` `validate` | `asc` `metadata-validate` |
+| `asc_metadata` `init`/`plan`/`apply` | `asc_apply` `metadata-init`; `asc_plan` `metadata-plan`; `asc_apply` `metadata-apply` |
+| `asc_release` `status`/`validate`/`stage`/`publish` | `asc_plan` `status`/`validate`; `asc_apply` `stage`/`publish` |
 
-`asc_job` and `asc_setup` keep their names. The surface is now five tools:
-`asc_job`, `asc`, `asc_plan`, `asc_apply`, `asc_setup`. See the README migration
-table for the action-level mapping.
+`asc_job` and `asc_setup` keep their names; jobs gain `compliance-sweep`. The surface is now five tools: `asc_job`, `asc`, `asc_plan`, `asc_apply`, `asc_setup`.
 
 ### Added
 

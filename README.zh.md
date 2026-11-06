@@ -1,24 +1,29 @@
 # ASC · DeepSeek Harness 的 App Store Connect 操作台
 
+## 0.2.1 主要更新
+
+- **旧版与新版宿主都能用**：同一插件兼容 Harness `0.2.1-rc.5` 和 `0.2.2-rc.1`，新增适配不会强制旧用户升级宿主。
+- **更新 asc 验证基线**：推荐版本和可选代下载版本升至 `6.5.0`，继续保留经过验证的 `6.3.0` 支持；插件不会自动升级引擎。
+- **使用时提供版本建议**：普通调用和 `/asc` 显示与实际引擎来源相关的版本提示；`/asc` 是轻量能力卡，完整环境与认证诊断交给 `/asc-doctor`。
+- **持续验证兼容性**：双上游维护保留上一正式稳定兼容线，并逐步适配默认渠道更新；同一打包插件在两个受支持宿主及 Node 22/24 下验证。
+
+**各版本的详细更新与迁移说明统一查看 [CHANGELOG.md](CHANGELOG.md)。**
+
+> 当前 npm 发布版本是 [**0.2.1**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.1)。当前源码目标为**尚未发布的 0.2.2**，在打包前完成构建，消除本插件对消费者安装脚本授权的需求；详见 [spec 011](docs/specs/011-prebuilt-plugin-install.md) 和下方[安装插件](#1--安装插件)。
+
+---
+
 **用对话完成 TestFlight 发布、发版体检、反馈分诊与合规巡检。**
 
 [English](README.md) | 中文
 
 [![npm](https://img.shields.io/npm/v/@sleep9ull/dsh-asc-cli?label=npm&color=cb3837)](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
-
-当前 npm 发布版本：[**0.2.1**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.1)，已验证 DeepSeek Harness `0.2.1-rc.5` / `0.2.2-rc.1` 与 asc `6.3.0` / `6.5.0`。详见[更新日志](CHANGELOG.md#021--2026-11-06)和[兼容性验证](docs/specs/010-dual-harness-compatibility.md)。
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5%20%7C%200.2.2--rc.1-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
 App Store Connect 是 iOS 发布流程的核心，也是团队最耗时间的地方：命令行参数、大段 JSON、状态机、审批与合规检查。这个插件把它搬进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：安装一次，用自然语言提出需求，Agent 会选对流程、先给出计划，并在真正改动线上之前停下来等你审批。
 
 底层执行引擎仍是 [`asc` CLI](https://github.com/rorkai/App-Store-Connect-CLI)（MIT，Go）。本插件是它上层的产品层：5 个任务型**作业**、按意图组织的**读 / 计划 / 变更**工具面、随包发布的**内置技能**，以及负责体检、安装与版本对齐的**引擎管理器**。
-
-```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.1
-```
-
-> 当前源码目标为**尚未发布的 `0.2.2`**，将构建移到打包阶段，消除本插件对消费者安装脚本授权的需求，见 [spec 011](docs/specs/011-prebuilt-plugin-install.md)。npm `0.2.1` 仍保留旧打包行为。宿主兼容集合沿用 [spec 010](docs/specs/010-dual-harness-compatibility.md)。`/asc` 是轻量引擎/能力卡；认证检查请运行 `/asc-doctor`。
 
 ---
 
@@ -60,7 +65,7 @@ brew install asc          # 或：curl -fsSL https://asccli.sh/install | bash
 asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /path/to/AuthKey.p8
 ```
 
-然后运行 `/asc`，或让 Agent 执行 `asc_setup` 的 `diagnose`。如果还有缺失，它会给出**恰好一个**下一步。不要把私钥贴进对话；认证始终在你自己的终端完成。
+然后运行 `/asc-doctor`，或让 Agent 执行 `asc_setup` 的 `diagnose`。如果还有缺失，它会给出**恰好一个**下一步。不要把私钥贴进对话；认证始终在你自己的终端完成。
 
 也可以让插件代下载引擎：开启 `allowProvision`，执行 `asc_setup` 的 `provision`。它会下载固定版本的 `asc`、校验官方 SHA-256，并缓存到 `$DSH_HOME/cache/asc-cli/`。
 
@@ -146,6 +151,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 | 文档 | 内容 |
 |---|---|
+| [更新日志](CHANGELOG.md) | 各版本的详细更新、破坏性变更与迁移说明 |
 | [契约](docs/CONTRACT.md) | 承诺与禁区、policy 矩阵、十条不变式 |
 | [命令面](docs/COMMANDS.md) | 工具 / action / job / skill / 命令 / 配置 / 结果 |
 | [架构](docs/ARCHITECTURE.md) | 分层、模块、数据流、扩展点 |
@@ -246,39 +252,13 @@ DSH 的技能扫描路径是 `<项目>/.dsh/skills`、`<项目>/.agents/skills`�
 
 ---
 
-## 从 0.1.6 升级到 0.2.0
+## 升级到 0.2.1
 
-先将 DeepSeek Harness 升级到 `0.2.1-rc.5`，完全退出 Desktop，再在原来安装插件的 profile 中更新：
+可以继续使用已验证的 Harness `0.2.1-rc.5`，也可以使用 `0.2.2-rc.1`；更新插件不要求升级宿主。完全退出 Desktop，在原 profile 中按[安装方式](#1--安装插件)更新插件，然后重新打开 Desktop 或重新加载 profile。
 
-```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
-```
+运行 `/asc` 查看能力卡，运行 `/asc-doctor` 检查引擎和认证。启用写工作流前核对 `asc-tools` 配置。经过验证的 asc `6.3.0` 仍受支持；可选代下载推荐 `6.5.0`，仍需显式确认与宿主审批。
 
-重新打开 Desktop 或重新加载 profile，运行 `/asc` 和 `/asc-doctor`，检查实际使用的引擎、认证与兼容状态。启用写工作流前，请核对 `asc-tools` 配置。
-
-0.2.0 适配两个上游当前默认发布渠道：DeepSeek Harness `0.2.1-rc.5` 和 asc `6.3.0`。请升级宿主与引擎，或开启 `allowProvision` 后显式安装新引擎。工具与作业名称不变。asc 支持线为 `>=6.3.0 <7.0.0`；本次实际验证版本为 `6.3.0`，每日上游检查发现后续漂移。独立 alpha 与未发布分支不属于本次兼容基线。
-
-`--report-file`、`--save-logs`、`--write-state` 等产物写入需要确认和审批。`publish` 的 `.ipa` + `MAC_OS` 在审批前拒绝；macOS 使用 `.pkg`。`versions phased-release guard` 即使 dry-run 也执行调用方指定的本地程序，因此一律拒绝。
-
-审批门使用宿主最终 guard 与真实人工批准收据，其他 pre-execute listener 不能静默免除插件策略。引擎诊断、普通工具与作业使用同一个已配置或缓存的二进制。
-
-## 从 0.1.3 升级
-
-0.1.4 收敛了工具面，旧工具已移除：
-
-| 0.1.3 | 0.1.4 |
-|---|---|
-| `asc_search` | `asc` 的 `discover` |
-| `asc_run` | `asc` 的 `run` |
-| `asc_apps` `list`/`view` | `asc` 的 `apps-list`/`apps-view` |
-| `asc_builds` `list`/`next-number` | `asc` 的 `builds-list`/`builds-next-number` |
-| `asc_builds` `upload`/`add-groups` | `asc_apply` 的 `upload`/`groups` |
-| `asc_testflight` `feedback`/`crashes`/`groups` | `asc` 的 `testflight-feedback`/`-crashes`/`-groups` |
-| `asc_metadata` `validate` | `asc` 的 `metadata-validate` |
-| `asc_metadata` `init`/`plan`/`apply` | `asc_apply` `metadata-init`；`asc_plan` `metadata-plan`；`asc_apply` `metadata-apply` |
-| `asc_release` `status`/`validate`/`stage`/`publish` | `asc_plan` `status`/`validate`；`asc_apply` `stage`/`publish` |
-
-`asc_job` 与 `asc_setup` 名称不变；作业新增 `compliance-sweep`。
+旧版本的更新记录和迁移映射统一保存在 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -319,7 +299,7 @@ node scripts/dev-patch.mjs
 dsh web --patch ./vendor/cordis.dev.patch.yml --no-open --port 3199
 ```
 
-`vendor/asc` 已被 gitignore。完整验证需要校验过 SHA-256 的基线二进制；`--unit-only` 明确表示引擎门禁未经验证。普通 CI 检查固定基线，每日任务对最新 release 跑 contract、分类审计与离线 smoke。开发 overlay 从当前 checkout 生成绝对路径。
+`vendor/asc` 已被 gitignore。完整验证需要校验过 SHA-256 的基线二进制；`--unit-only` 明确表示引擎门禁未经验证。普通 CI 同时检查已验证 pin 与最低保留引擎，并在 Node22/24 下用同一打包插件验证两个受支持宿主；每日任务对最新 release 跑 contract、分类审计与离线 smoke。开发 overlay 从当前 checkout 生成绝对路径。
 
 ## License
 
