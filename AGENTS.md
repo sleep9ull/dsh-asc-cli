@@ -88,6 +88,12 @@ action 的具体行为以 `src/registry.ts`、工具 schema、`src/approval.ts` 
 
 ## 构建与验证
 
+**版本更新的合并门禁**：只要变更了插件版本号，必须在版本号与源码定稿后执行 `npm run build`，重新生成该版本的 `lib/`，并通过 `node scripts/pack-manifest.mjs`，确认产物完整且与当前源码一一对应。`npm run verify` 已包含这两步，可作为本次构建与校验的证据。
+
+- 只有本次新生成的 `lib/` 校验通过、完整质量门及所需 CI checks 全绿，才允许合并；仅修改版本号、沿用旧 `lib/` 或引用历史构建结果均不放行。
+- 构建后若再次修改版本号或源码，必须重新构建、校验；PR 与交付报告需记录最终版本的构建及校验结果。
+- `lib/` 继续保持 gitignored，不提交 Git；必须在构建环境中实际生成，并确保成品包包含完整 `lib/`。
+
 ```bash
 npm run verify                             # 完整门：types/test/build/pack/combos/contract/classify/smoke；需 vendor/asc
 npm run verify -- --unit-only               # 显式仅本地门，不代表引擎验证
