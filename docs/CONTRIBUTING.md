@@ -89,7 +89,7 @@ node scripts/classify-audit.mjs ./vendor/asc
 1. 按 SemVer 判断版本（`0.x`；破坏性工具面变更用 `feat!` 并给迁移表）。
 2. `package.json` 与 `package-lock.json` 同步 bump。
 3. CHANGELOG 增加该版本章节（把 Unreleased 条目归入），写清 breaking/fixed/docs。
-4. 跑完整质量门 + contract；确认真实 `npm pack` 从尚无 `lib/` 的源码产出可加载的完整插件，安装包没有消费者安装脚本，并完成同包双宿主的禁用脚本严格安装验证。
+4. **版本更新后，合并前必须重新生成 `lib/`**：在最终版本号与源码上运行 `npm run build` 和 `node scripts/pack-manifest.mjs`（完整 `npm run verify` 已包含两步），记录本次构建与校验结果；构建后版本号或源码再变则重新执行。未生成、产物陈旧或校验失败不得合并，不能用旧构建证据代替。`lib/` 保持 gitignored，不提交 Git。完整质量门、contract 与所需 CI checks 必须全绿；确认真实 `npm pack` 从尚无 `lib/` 的源码产出可加载的完整插件，安装包没有消费者安装脚本，并完成同包双宿主的禁用脚本严格安装验证。
 5. 发版由维护者执行（当前无自动 publish workflow）；tag 与 npm publish 需明确授权。发布完成后再更新 README 的当前 npm 版本与安装命令，不把候选版本称为已发布。
 
 ---
@@ -109,6 +109,7 @@ node scripts/classify-audit.mjs ./vendor/asc
 - [ ] 关联 spec（或 PR 说明"无需 spec"及原因）
 - [ ] 一个逻辑变更；提交信息符合仓库风格
 - [ ] typecheck / test / build / contract 全绿；CI required checks 通过
+- [ ] 若更新版本号，最终版本已重新生成 `lib/` 并通过 pack-manifest，PR 记录本次有效构建证据
 - [ ] 文档同步矩阵逐项核对
 - [ ] 无密钥、无本地配置、无意外大文件
 - [ ] PR 描述包含：改了什么、为什么、如何验证、已知限制
