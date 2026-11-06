@@ -2,7 +2,12 @@
 
 All notable changes to this plugin are documented here.
 
-## Unreleased
+## 0.2.1 — Unreleased
+
+- Retain Harness `0.2.1-rc.5` while adapting `0.2.2-rc.1`; public host/peer declarations cover both exact combinations while development dependencies remain pinned to the new host. Use the same packed plugin for retained-host strict installation and real approval/guard regressions.
+- Adopt a maintenance policy that preserves the previous formal stable compatibility line while progressively adapting default-channel updates. Before 1.0, minor versions define compatibility lines; when no formal stable exists, keep the verified baseline and label RCs explicitly. Check official published versions, not the `latest` label alone.
+- Advance the verified asc provisioning pin to `6.5.0`, retaining the tested `6.3.0` baseline and declared `>=6.3.0 <7.0.0` support line. No automatic user-host upgrade or npm publication.
+- Compatibility and validation progress: [009](docs/specs/009-harness-022-asc-650.md), [010](docs/specs/010-dual-harness-compatibility.md).
 
 - Add advisory `versionNotice` results during normal tool use and on `/asc`, with per-session deduplication, a one-second extra wait budget, and source-aware upgrade guidance. Preserve business outcomes and all approval gates. `/asc` is now a lightweight engine/capabilities card; use `/asc-doctor` for authentication diagnostics.
 - Distinguish the declared stable support range, verified provisioning pin and unverified upstream releases; compare prereleases correctly. Freeze the executable for each business call and its version probe.
@@ -11,7 +16,7 @@ All notable changes to this plugin are documented here.
 - Harden maintenance recovery and synchronization: hold the ownership guard through final writes, require boolean exclusive-access confirmation, retain repair counts, detect orphan targets, and allow a successful third repair. Target keys cover independent Harness package versions; legacy v1 records require manual migration. Discovery reuses the compatibility module's asset mapping.
 - Preserve shared version-probe waiters when an explicit version result refreshes the cache; retain deadlines and disposal/provision cancellation for detached probes.
 - Verify Harness npm tarball bytes against canonical SHA-512 integrity and official registry signatures; record missing `gitHead` as an unknown source commit rather than blocking otherwise verified artifacts. Add fixed-target/lockfile re-verification, bounded downloads and v3 PR records; unfinished v2 records require explicit migration. Registry signatures do not establish source-build provenance.
-- Pin the verified Harness `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5` combination exactly, including host and plugin peers. Select maintenance candidates from the exact host's strict dependency/peer graph; preserve independent latest tags as observations rather than mixing incompatible releases. Recheck the fixed peer graph before installation and retain full integration gates before upgrades. Metadata resolution uses isolated temporary npm locks/cache with scripts disabled.
+- Preserve the verified Harness `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5` combination and add the candidate `0.2.2-rc.1` / `4.1.0` / `3.19.0` combination; pin each validation environment exactly and expose only the explicitly tested host/peer alternatives. Select maintenance candidates from the exact host's strict dependency/peer graph; preserve independent latest tags as observations rather than mixing incompatible releases. Recheck the fixed peer graph before installation and retain full integration gates before upgrades. Metadata resolution uses isolated temporary npm locks/cache with scripts disabled.
 - Specifications: [005](docs/specs/005-scheduled-upstream-maintenance.md), [006](docs/specs/006-asc-version-notices.md), [007](docs/specs/007-npm-artifact-verification.md), [008](docs/specs/008-harness-drift-triage.md).
 
 ## 0.2.0 — 2026-11-03 (upstream compatibility)

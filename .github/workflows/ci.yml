@@ -24,6 +24,14 @@ jobs:
       - run: npm ci
       - name: Types, unit and real Harness integration, build, package and guards
         run: npm run verify -- --unit-only
+      - name: Same package on both Harness versions (verified artifacts, strict install and real approvals)
+        run: node scripts/harness-matrix.mjs
+      - name: Preserve actual host locks, targets, package and verification results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-evidence-node-${{ matrix.node }}
+          path: vendor/harness-matrix-*/
 
   contract:
     runs-on: ubuntu-latest
@@ -42,3 +50,10 @@ jobs:
         run: node scripts/classify-audit.mjs ./vendor/asc
       - name: Offline smoke through real Harness subprocess
         run: node scripts/smoke.mjs ./vendor/asc
+      - name: Download retained minimum and verify SHA-256
+        run: node scripts/download-asc.mjs --minimum
+      - name: Retained engine contract, classification and offline smoke
+        run: |
+          node scripts/contract.mjs ./vendor/asc
+          node scripts/classify-audit.mjs ./vendor/asc
+          node scripts/smoke.mjs ./vendor/asc --latest

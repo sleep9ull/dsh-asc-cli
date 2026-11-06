@@ -6,14 +6,16 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { vendorAscPath } from './vendor-path.mjs'
 import {
-  PINNED_ASC_VERSION, UPSTREAM_LATEST_URL,
+  MIN_ASC_VERSION, PINNED_ASC_VERSION, UPSTREAM_LATEST_URL,
   checksumsUrl, parseChecksums, releaseAsset, releaseUrl,
 } from '../lib/compat.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const latest = process.argv.slice(2).includes('--latest')
-const unexpected = process.argv.slice(2).filter((arg) => arg !== '--latest')
+const minimum = process.argv.slice(2).includes('--minimum')
+const unexpected = process.argv.slice(2).filter((arg) => !['--latest', '--minimum'].includes(arg))
 if (unexpected.length) throw new Error(`Unknown arguments: ${unexpected.join(' ')}`)
+if (latest && minimum) throw new Error('--latest and --minimum are mutually exclusive')
 
 async function get(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(120_000) })
@@ -21,7 +23,7 @@ async function get(url) {
   return response
 }
 
-let version = PINNED_ASC_VERSION
+let version = minimum ? MIN_ASC_VERSION : PINNED_ASC_VERSION
 if (latest) {
   const release = await (await get(UPSTREAM_LATEST_URL)).json()
   version = String(release.tag_name ?? '').replace(/^v/, '')

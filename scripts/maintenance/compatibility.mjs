@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compareVersions } from '../../src/compat.ts'
+import { npmCommand } from '../npm-command.mjs'
 
 const execute = promisify(execFile)
 
@@ -18,7 +19,8 @@ export async function resolveHost(harness, { run = execute } = {}) {
     await writeFile(join(directory, 'global.npmrc'), '')
     const env = { PATH: process.env.PATH, HOME: directory, USERPROFILE: directory, NODE_OPTIONS: '--dns-result-order=ipv4first', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) }
     try {
-      await run('npm', args, { cwd: directory, env, timeout: 300_000, maxBuffer: 2 * 1024 * 1024 })
+      const command = npmCommand(args)
+      await run(command.file, command.args, { cwd: directory, env, timeout: 300_000, maxBuffer: 2 * 1024 * 1024 })
     } catch { throw new Error('Strict host dependency resolution failed; no compatible candidate selected (npm unavailable, peer conflict or registry failure)') }
     return JSON.parse(await readFile(join(directory, 'package-lock.json'), 'utf8'))
   } finally {
@@ -55,8 +57,17 @@ export function selectPackages(lock, harness, names) {
   })
 }
 
-export function compareBaseline(harness, pkg, lock) {
-  const baseline = /^(?:>=)?(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)(?: |$)/.exec(pkg.engines?.dsh ?? '')?.[1]
+export function exactVersions(declaration) {
+  if (typeof declaration !== 'string') return undefined
+  const versions = declaration.split('||').map(value => value.trim())
+  return versions.every(value => /^\d/.test(value) && Number.isFinite(compareVersions(value, value))) ? versions : undefined
+}
+
+export function compareBaseline(harness, pkg, lock, support) {
+  const declaration = pkg.engines?.dsh ?? ''
+  const supported = exactVersions(declaration)
+  // Retain historical >= baseline declarations; only exact unions represent verified support.
+  const baseline = supported?.slice().sort(compareVersions).at(-1) ?? (!declaration.includes('||') ? /^>=(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)(?: |$)/.exec(declaration)?.[1] : undefined)
   if (!baseline) throw new Error('Missing exact verified Harness baseline')
   assertSharedPackages(lock)
   const changes = []
@@ -73,10 +84,15 @@ export function compareBaseline(harness, pkg, lock) {
     const entry = lock.packages?.[`node_modules/${item.name}`]
     for (const section of ['peerDependencies', 'devDependencies']) {
       const declaration = pkg[section]?.[item.name]
-      if (declaration !== undefined && declaration !== entry?.version) throw new Error(`Declared ${section} pin differs from verified baseline: ${item.name}`)
+      if (declaration === undefined) continue
+      const versions = exactVersions(declaration)
+      if (!versions?.includes(entry?.version) || (section === 'devDependencies' && versions.length !== 1)) throw new Error(`Declared ${section} pin differs from verified baseline: ${item.name}`)
     }
     compare(item.name, entry?.version, item.version)
     if (entry?.version === item.version) assertResolved(item, entry)
+  }
+  for (const version of support?.anchors ?? []) {
+    if (!(supported ?? [baseline]).includes(version)) changes.push({ name: harness.name, installed: 'unsupported', candidate: version, reason: 'stable-anchor-required' })
   }
   return changes
 }

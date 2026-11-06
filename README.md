@@ -18,7 +18,7 @@ The [asc CLI](https://github.com/rorkai/App-Store-Connect-CLI) (MIT, Go) remains
 dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
 ```
 
-> The source tree includes **unreleased** version notices and maintenance tooling described below; npm `0.2.0` does not include these additions yet. `/asc` in this source version is a lightweight engine/capabilities card; use `/asc-doctor` for authentication diagnostics.
+> The source tree targets **unreleased `0.2.1`**, including retained-host compatibility, version notices and maintenance tooling described below; npm `0.2.0` does not include these additions yet. Validation status is recorded in [spec 010](docs/specs/010-dual-harness-compatibility.md). `/asc` in this source version is a lightweight engine/capabilities card; use `/asc-doctor` for authentication diagnostics.
 
 ---
 
@@ -127,14 +127,14 @@ They cover first-run choices, authentication and CI, release readiness, TestFlig
 |---|---|
 | Locate | `ascPath` → `ASC_CLI_PATH` → plugin cache → `PATH` |
 | Diagnose | version, declared range and verified pin, auth, default app, provisioning — one next step |
-| Provision | optional: pinned `asc 6.3.0`, SHA-256 verified, cached per platform |
+| Provision | optional: pinned `asc 6.5.0`, SHA-256 verified, cached per platform |
 | Update | ordinary calls and `/asc` show source-aware advisories; `/asc-doctor` shows full facts; never upgrades itself |
 
 With `checkUpdates: true` (the existing default), allowed calls can query the public GitHub release endpoint. Successful queries stay in memory for 24 hours; failures back off for 15 minutes. Ordinary calls wait at most one extra second, and checks have a five-second deadline. Notices preserve business success/failure and appear once per session/version combination; jobs show one top-level notice. Set `checkUpdates: false` to disable automatic checks and remote version queries; explicit local version/diagnostic commands still work.
 
 The verified recommendation is the plugin's pin, not an untested latest release. Guidance follows the executable actually selected: configured path, environment, plugin cache or PATH. A Homebrew upgrade may not affect a configured/cached binary. Update checks no longer read or write `update-check.json`; old files remain untouched, and restarting the plugin may query again.
 
-Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a local Desktop task plus repository scripts, GitHub gates and resumable main synchronization. Deployment and persistent write authorization are separate from installing the plugin; this does not publish npm releases automatically. Harness maintenance pins npm tarballs, verifies their SHA-512 bytes and registry signatures, and rechecks the fixed artifacts against the install lockfile. Missing `gitHead` is recorded as unknown source commit; registry signatures do not prove a source build. Updates select a candidate from the exact host's strict dependency/peer graph; independent `latest` tags remain observations. Host and peers stay pinned to the verified combination until isolated full integration checks pass. Resolution uses a temporary npm lock/cache with scripts disabled and does not install packages.
+Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a local Desktop task plus repository scripts, GitHub gates and resumable main synchronization. Deployment and persistent write authorization are separate from installing the plugin; this does not publish npm releases automatically. Harness maintenance pins npm tarballs, verifies their SHA-512 bytes and registry signatures, and rechecks the fixed artifacts against the install lockfile. Missing `gitHead` is recorded as unknown source commit; registry signatures do not prove a source build. Updates select a candidate from the exact host's strict dependency/peer graph; independent `latest` tags remain observations. Each development and validation environment keeps exact host/component pins and a verified lock; public host/peer declarations cover the tested support set. Maintenance retains the previous stable compatibility line while progressively adapting default-channel updates (major lines from 1.x, minor lines before 1.0). Without a formal stable release it retains the previous verified baseline and identifies RCs explicitly. The same plugin artifact must pass strict installation and real approval tests on the retained and new hosts; a new release cannot silently drop old users. See [the compatibility policy](docs/MAINTENANCE.md#0-长期兼容原则). Resolution uses a temporary npm lock/cache with scripts disabled and does not install packages.
 
 ---
 
@@ -181,9 +181,9 @@ Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a loc
 
 | Requirement | Version |
 |---|---|
-| DeepSeek Harness | verified combination: `0.2.1-rc.5`, Cordis `4.0.5`, Schemastery `3.18.5`; host and plugin peers pinned exactly |
+| DeepSeek Harness | source `0.2.1`: retained `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`, and `0.2.2-rc.1` / `4.1.0` / `3.19.0`; exact peer alternatives, no forced host upgrade. The same packed plugin is tested on both hosts; see spec 010 |
 | Node.js | `^22.19.0 \|\| >=24.0.0` (24 recommended) |
-| `asc` | verified baseline `6.3.0`; support line `>=6.3.0 <7.0.0` (`/asc-doctor` reports drift) |
+| `asc` | source `0.2.1`: verified pin `6.5.0`, retained baseline `6.3.0`; support line `>=6.3.0 <7.0.0` (`/asc-doctor` reports drift) |
 | App Store Connect API key | team or individual key, authenticated **outside** the agent |
 
 ---

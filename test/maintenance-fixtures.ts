@@ -34,9 +34,11 @@ export function artifactNetwork() {
     tarballs.set(manifest.dist.tarball, bytes)
   }
   const keys = [{ ...registryKey }]
+  const versions: string[] = ['0.2.1-rc.5']
   const fetch = async (url: string, _init?: RequestInit) => {
     calls.push(url)
     if (url === 'https://registry.npmjs.org/-/npm/v1/keys') return Response.json({ keys })
+    if (url === 'https://registry.npmjs.org/%40deepseek-ai%2Fdsh') return Response.json({ name: '@deepseek-ai/dsh', versions: Object.fromEntries(versions.map(version => [version, {}])), 'dist-tags': { next: '99.0.0-alpha.1', alpha: '99.0.0-alpha.2' } })
     if (tarballs.has(url)) return new Response(new Uint8Array(tarballs.get(url)!))
     for (const [name, manifest] of manifests) {
       const base = `https://registry.npmjs.org/${encodeURIComponent(name)}/`
@@ -51,5 +53,5 @@ export function artifactNetwork() {
     '': { dependencies: { '@deepseek-ai/dsh': manifests.get('@deepseek-ai/dsh')!.version } },
     ...Object.fromEntries([...manifests.values()].map(m => [`node_modules/${m.name}`, { version: m.version, integrity: m.dist.integrity, resolved: m.dist.tarball }])),
   } })
-  return { calls, manifests, tarballs, keys, fetch, resolve }
+  return { calls, manifests, tarballs, keys, versions, fetch, resolve }
 }

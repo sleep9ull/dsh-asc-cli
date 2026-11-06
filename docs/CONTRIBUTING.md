@@ -94,6 +94,8 @@ node scripts/classify-audit.mjs ./vendor/asc
 
 ## 6. 定期维护部署
 
+维护兼容原则见 [MAINTENANCE §0](MAINTENANCE.md#0-长期兼容原则) 与 [spec 010](specs/010-dual-harness-compatibility.md)：至少保留 dsh 上一兼容大版本正式稳定线，同时逐步适配默认渠道新版本；0.x 按 minor 划线，没有正式稳定版则保留已验证基线并如实说明。同一插件构建产物必须分别验证保留基线与新候选，用户兼容集合和精确开发锁分开，不能因追新排除稳定用户。
+
 维护实现与部署分开：参见 [MAINTENANCE](MAINTENANCE.md) 和 [spec 005](specs/005-scheduled-upstream-maintenance.md)。任务初建为暂停，在独立 worktree 手动 Run now 验证后启用；Desktop 必须运行且电脑唤醒。每次先恢复未收口 PR，再发现双上游新版本。
 
 只有显式记录的持久授权允许 routine 自动执行范围内适配、提交/push/PR/Squash 和指定主工作副本快进同步；同一授权可覆盖每轮单次 spec 的实施，不免除写 spec、质量门或越界复核。GitHub ruleset/auto-merge 在部署阶段单独配置，不让日常任务自行降低门禁。PR head 更新后旧验证证据失效；不通过额外 loop/cron 轮询 CI。
