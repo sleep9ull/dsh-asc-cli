@@ -1,24 +1,29 @@
 # ASC for DeepSeek Harness
 
+## What's new in 0.2.1
+
+- **Keep your existing Harness:** the same plugin supports `0.2.1-rc.5` and `0.2.2-rc.1`, so adding the newer host does not require existing users to upgrade.
+- **Updated asc baseline:** the verified recommendation and optional provisioning pin are now `6.5.0`, with tested `6.3.0` support retained. The plugin never upgrades the engine automatically.
+- **Version guidance during use:** ordinary calls and `/asc` show source-aware version notices. `/asc` is a lightweight capabilities card; `/asc-doctor` handles full environment and authentication diagnosis.
+- **Compatibility that stays tested:** maintenance retains the previous stable compatibility line while adapting default-channel updates, with the same packed plugin tested on both supported hosts under Node 22 and 24.
+
+For every release's detailed changes and migration notes, see [CHANGELOG.md](CHANGELOG.md).
+
+> This README describes **0.2.1**, merged into the source tree but not yet published to npm. The current npm release is **0.2.0**; see [installation options](#1--install-the-plugin) below.
+
+---
+
 **Ship to TestFlight, check release readiness, triage feedback and audit compliance — from a conversation.**
 
 English | [中文](README.zh.md)
 
 [![npm](https://img.shields.io/npm/v/@sleep9ull/dsh-asc-cli?label=npm&color=cb3837)](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
-
-Current npm release: [**0.2.0**](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli/v/0.2.0), verified with DeepSeek Harness `0.2.1-rc.5` and asc `6.3.0`. See the [changelog](CHANGELOG.md#020--2026-11-03-upstream-compatibility) and [upgrade steps](#upgrading-from-016-to-020).
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5%20%7C%200.2.2--rc.1-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
 App Store Connect is where iOS releases happen — and where teams lose hours to CLI flags, JSON blobs, half-documented states and approval rituals. This plugin puts it inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): install once, ask in plain language, and the agent runs the right workflow, showing a plan and stopping for approval before anything ships.
 
 The [asc CLI](https://github.com/rorkai/App-Store-Connect-CLI) (MIT, Go) remains the engine. This plugin is the product layer around it: five task-shaped **jobs**, a small **read / plan / apply** tool surface, **bundled skills** that teach the agent how to use it, and an **engine manager** that diagnoses, provisions and version-checks `asc`.
-
-```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
-```
-
-> The source tree targets **unreleased `0.2.1`**, including retained-host compatibility, version notices and maintenance tooling described below; npm `0.2.0` does not include these additions yet. Validation status is recorded in [spec 010](docs/specs/010-dual-harness-compatibility.md). `/asc` in this source version is a lightweight engine/capabilities card; use `/asc-doctor` for authentication diagnostics.
 
 ---
 
@@ -41,7 +46,11 @@ Every write follows the same shape: **plan first → `confirm: true` → host ap
 
 ### 1 · Install the plugin
 
-Open DeepSeek Harness Desktop once to initialize its profile, then fully quit it before installing. The command below installs `0.2.0`; replace `desktop` with your profile name if you use another profile.
+Open DeepSeek Harness Desktop once to initialize its profile, then fully quit it before installing. Replace `desktop` with your profile name if you use another profile.
+
+**For 0.2.1:** npm publication is pending; [build and install this source checkout](#development) to use the version described here.
+
+**For the current npm release, 0.2.0:** use the command below. Its feature set and upgrade requirements are recorded in [CHANGELOG.md](CHANGELOG.md#020--2026-11-03-upstream-compatibility).
 
 ```bash
 dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
@@ -56,7 +65,7 @@ brew install asc          # or: curl -fsSL https://asccli.sh/install | bash
 asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /path/to/AuthKey.p8
 ```
 
-Then run `/asc` — or ask the agent to run `asc_setup` with action `diagnose`. Nothing ready yet? The report gives exactly one next step. Do **not** paste a private key into the chat; authentication stays in your terminal.
+Then run `/asc-doctor` — or ask the agent to run `asc_setup` with action `diagnose`. Nothing ready yet? The report gives exactly one next step. Do **not** paste a private key into the chat; authentication stays in your terminal.
 
 Prefer the plugin to fetch the engine? Enable `allowProvision` and run `asc_setup` action `provision`: it downloads the pinned `asc`, verifies the released SHA-256, and caches it under `$DSH_HOME/cache/asc-cli/`.
 
@@ -142,6 +151,7 @@ Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a loc
 
 | Document | Covers |
 |---|---|
+| [Changelog](CHANGELOG.md) | Every version's detailed changes, breaking changes and migration notes |
 | [Contract](docs/CONTRACT.md) | What the plugin promises and refuses, the policy matrix, the ten invariants |
 | [Commands](docs/COMMANDS.md) | Tools, actions, jobs, skills, slash commands, config, result shape |
 | [Architecture](docs/ARCHITECTURE.md) | Layers, module map, data flow, extension points |
@@ -242,39 +252,13 @@ DeepSeek Harness scans `<project>/.dsh/skills`, `<project>/.agents/skills`, `cus
 
 ---
 
-## Upgrading from 0.1.6 to 0.2.0
+## Upgrading to 0.2.1
 
-After upgrading DeepSeek Harness to `0.2.1-rc.5`, fully quit Desktop and update the plugin in the profile where it is installed:
+Keep either verified Harness host, `0.2.1-rc.5` or `0.2.2-rc.1`; this plugin update does not require a host upgrade. Fully quit Desktop and install the plugin in the same profile using the [installation options](#1--install-the-plugin), then reopen Desktop or reload the profile.
 
-```bash
-dsh plugin --profile desktop add @sleep9ull/dsh-asc-cli@0.2.0
-```
+Run `/asc` for the capabilities card and `/asc-doctor` for engine and authentication diagnosis. Review `asc-tools` before enabling writes. The tested asc `6.3.0` baseline remains supported; optional provisioning recommends `6.5.0` and still requires explicit confirmation and host approval.
 
-Reopen Desktop or reload your profile, then run `/asc` and `/asc-doctor` to check the resolved engine, authentication and compatibility. Review your `asc-tools` configuration before enabling write workflows.
-
-0.2.0 targets the current default upstream releases: DeepSeek Harness `0.2.1-rc.5` and asc `6.3.0`. Upgrade the harness and engine, or explicitly provision the new engine after enabling `allowProvision`. Tool and job names stay the same. The supported asc line is `>=6.3.0 <7.0.0`; `6.3.0` is the version verified for this release, and daily upstream checks detect later drift. Independent alpha releases and unpublished upstream branches are outside this baseline.
-
-File-producing flags such as `--report-file`, `--save-logs` and `--write-state` require confirmation and approval. `publish` rejects `.ipa` with `MAC_OS` before approval; use `.pkg` for macOS. `versions phased-release guard` is refused because it executes a caller-selected local program, including in dry-run mode.
-
-The approval gate uses the host's final guard and a receipt from actual human approval, so another pre-execute listener cannot silently waive the plugin policy. Engine diagnostics, ordinary tools and jobs now resolve the same configured or cached binary.
-
-## Upgrading from 0.1.3
-
-0.1.4 consolidated the tool surface. Old tools are gone; use this mapping:
-
-| 0.1.3 | 0.1.4 |
-|---|---|
-| `asc_search` | `asc` action `discover` |
-| `asc_run` | `asc` action `run` |
-| `asc_apps` `list`/`view` | `asc` `apps-list`/`apps-view` |
-| `asc_builds` `list`/`next-number` | `asc` `builds-list`/`builds-next-number` |
-| `asc_builds` `upload`/`add-groups` | `asc_apply` `upload`/`groups` |
-| `asc_testflight` `feedback`/`crashes`/`groups` | `asc` `testflight-feedback`/`-crashes`/`-groups` |
-| `asc_metadata` `validate` | `asc` `metadata-validate` |
-| `asc_metadata` `init`/`plan`/`apply` | `asc_apply` `metadata-init`; `asc_plan` `metadata-plan`; `asc_apply` `metadata-apply` |
-| `asc_release` `status`/`validate`/`stage`/`publish` | `asc_plan` `status`/`validate`; `asc_apply` `stage`/`publish` |
-
-`asc_job` and `asc_setup` keep their names; jobs gained `compliance-sweep`.
+Older releases' changes and migration mappings are maintained in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -315,7 +299,7 @@ node scripts/dev-patch.mjs
 dsh web --patch ./vendor/cordis.dev.patch.yml --no-open --port 3199
 ```
 
-`vendor/asc` is git-ignored. Full verification requires the checksum-verified baseline binary; `--unit-only` explicitly leaves engine gates unverified. Ordinary CI checks the pinned baseline; nightly monitoring checks the latest release with contract, classification and offline smoke gates. Development overlays use absolute paths from the current checkout.
+`vendor/asc` is git-ignored. Full verification requires the checksum-verified baseline binary; `--unit-only` explicitly leaves engine gates unverified. Ordinary CI checks both the verified pin and retained minimum engine, and tests the same packed plugin on both supported Harness hosts under Node 22/24; nightly monitoring checks the latest release with contract, classification and offline smoke gates. Development overlays use absolute paths from the current checkout.
 
 ## License
 
