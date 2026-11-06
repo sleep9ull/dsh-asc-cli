@@ -84,7 +84,7 @@ I1–I10 无放宽：两宿主均必须验证只读默认、confirm、实际宿�
 - [x] 目标 asc 6.5.0 与保留的 6.3.0 实际引擎门禁完成；unit-only 不代替完整验证。
 - [x] Node22 / Node24 / contract CI 配置加上双宿主覆盖，原门禁不删除、不弱化；远端运行结果在 PR 阶段另行核验。
 - [x] README / README.zh / CHANGELOG / CONTRACT / AGENTS / TESTING / MAINTENANCE 及维护 skill 同步，明确支持集合和验证边界。
-- [ ] spec 009 关联此兼容约束；最终 PR 同时说明旧用户继续使用与新宿主适配的证据。
+- [x] spec 009 关联此兼容约束；[PR 15](https://github.com/sleep9ull/dsh-asc-cli/pull/15) 同时说明旧用户继续使用与新宿主适配的证据；远端检查与合并结果在 PR 上核验。
 
 ## 9. 测试计划
 
@@ -99,6 +99,18 @@ I1–I10 无放宽：两宿主均必须验证只读默认、confirm、实际宿�
 ## 10. 文档同步
 
 README/README.zh 写明两版安装与无需强制升级；CONTRACT/AGENTS 区分用户兼容集合和精确开发锁；TESTING 记录双宿主同产物验证；MAINTENANCE 与维护 skill 规定升级必须保留旧支持。无工具面变化，无需为此改动六个发布 skill 的工具说明；若其安装提示受影响则同步。
+
+## 10.1 PR 审查修复规格
+
+用户已授权 Review、必要修复及检查通过后 Squash Merge。审查修复属于人工续跑，累计 repairAttempts=5；不改变自动三轮上限。
+
+- 矩阵必须先显式 clean build 当前源码，再禁用生命周期脚本打包共同产物；新增离线回归捕获 stale lib 被认证。
+- 开发层新增 `scripts/npm-command.mjs`，统一 argv 调用 npm；Windows 经当前 Node 执行 npm CLI，不能直接 spawn `.cmd`，不启用 shell。矩阵与宿主图解析共用该入口，新增带空格和 shell 元字符的参数保留回归。
+- 复用 `compatibility.mjs` 的精确版本集合解析；矩阵继续检查重复项与完整覆盖。
+- 实际消费端锁、目标、共同 tarball、锁摘要和逐宿主结果保存到本 checkout 的新建独立 vendor 证据目录；仅清理临时消费者。CI 即使失败也上传证据。
+- 原 contract required job 同时验证 pin 与最低保留引擎，下载器新增互斥 `--minimum`，版本来源仍是 compat SSOT；保留全部三个 required check 名称。
+
+上述修复已实施。新增三条离线回归先红后绿，分别捕获旧 lib 被打包、Windows npm 参数破坏和最低引擎下载缺失；根环境完整八阶段再次通过，21 suites / 409 tests，真实 6.5.0 契约、分类审计与 smoke 通过。双消费端重跑与远端 Node22/24/contract 的最终证据随 PR 最终 head 核验，不能由根环境通过推定。原自动门仍拒绝超过三轮；本次用户授权的是该 PR 的人工收口。
 
 ## 11. 当前状态与阻塞
 

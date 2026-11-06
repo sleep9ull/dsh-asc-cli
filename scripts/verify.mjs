@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { vendorAscPath } from './vendor-path.mjs'
+import { npmCommand } from './npm-command.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const node = process.execPath
@@ -61,7 +62,8 @@ for (const step of steps) {
   console.log(`$ ${step.argv.join(' ')}`)
   const started = Date.now()
   try {
-    execFileSync(step.argv[0], step.argv.slice(1), { cwd: root, stdio: 'inherit' })
+    const command = step.argv[0] === npm ? npmCommand(step.argv.slice(1)) : { file: step.argv[0], args: step.argv.slice(1) }
+    execFileSync(command.file, command.args, { cwd: root, stdio: 'inherit' })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`\nverify: FAILED at "${step.title}" after ${seconds(Date.now() - started)}`)

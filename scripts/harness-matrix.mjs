@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /** Verify one packed plugin against every declared, independently locked host. */
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { npmCommand } from './npm-command.mjs'
+import { exactVersions } from './maintenance/compatibility.mjs'
 import { mkdtemp, readFile, writeFile, mkdir, cp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -12,14 +15,14 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
 if (args.length !== 0 && (args.length !== 2 || args[0] !== '--asc')) throw new Error('Usage: node scripts/harness-matrix.mjs [--asc /verified/asc]')
 const asc = args[1] === undefined ? undefined : resolve(args[1])
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const npm = 'npm'
 const directory = await mkdtemp(join(tmpdir(), 'asc-retained-host-'))
 const readJson = async path => JSON.parse(await readFile(path, 'utf8'))
 try {
   const pkg = await readJson(join(root, 'package.json'))
   const matrix = await readJson(join(root, 'test/fixtures/harness-support.json'))
-  const supported = pkg.engines.dsh.split('||').map(version => version.trim()).sort(compareVersions)
-  if (supported.some(version => !Number.isFinite(compareVersions(version, version))) || new Set(supported).size !== supported.length || matrix.development !== supported.at(-1) || !Array.isArray(matrix.retained)) throw new Error('Invalid declared host matrix')
+  const supported = exactVersions(pkg.engines?.dsh)?.sort(compareVersions)
+  if (!supported || new Set(supported).size !== supported.length || matrix.development !== supported.at(-1) || !Array.isArray(matrix.retained)) throw new Error('Invalid declared host matrix')
   const fixtureName = name => typeof name === 'string' && /^[a-zA-Z0-9.-]+\.json$/.test(name)
   const rows = []
   for (const row of matrix.retained) {
@@ -37,16 +40,25 @@ try {
     NODE_OPTIONS: '--dns-result-order=ipv4first', ASC_HARNESS_BUILT: '1',
     ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
   })
-  const run = (file, argv, cwd, home, capture = false) => execFileSync(file, argv, {
-    cwd, env: environment(home), timeout: 300_000, maxBuffer: 4 * 1024 * 1024,
-    stdio: capture ? 'pipe' : 'inherit', encoding: 'utf8',
-  })
+  const run = (file, argv, cwd, home, capture = false) => {
+    const command = file === npm ? npmCommand(argv) : { file, args: argv }
+    return execFileSync(command.file, command.args, {
+      cwd, env: environment(home), timeout: 300_000, maxBuffer: 4 * 1024 * 1024,
+      stdio: capture ? 'pipe' : 'inherit', encoding: 'utf8',
+    })
+  }
   await writeFile(join(directory, 'empty.npmrc'), '')
   await writeFile(join(directory, 'global.npmrc'), '')
   const configs = [`--userconfig=${join(directory, 'empty.npmrc')}`, `--globalconfig=${join(directory, 'global.npmrc')}`]
+  // Build trusted source explicitly; lifecycle scripts stay disabled while packing/installing.
+  run(npm, ['run', 'build', ...configs], root, directory)
   // No lifecycle scripts: every consumer installs exactly the same compiled artifact.
   const packed = JSON.parse(run(npm, ['pack', '--ignore-scripts', '--json', '--pack-destination', directory, ...configs, `--cache=${join(directory, 'pack-cache')}`], root, directory, true))
   if (packed.length !== 1 || !packed[0].filename || packed[0].name !== pkg.name) throw new Error('Unexpected package artifact')
+  await mkdir(join(root, 'vendor'), { recursive: true })
+  const evidence = await mkdtemp(join(root, 'vendor', 'harness-matrix-'))
+  await cp(join(directory, packed[0].filename), join(evidence, 'plugin.tgz'))
+  console.log(`harness-matrix: retained evidence ${evidence}`)
   for (const { harness, lock } of rows) {
     const checkout = join(directory, harness.version)
     await mkdir(checkout)
@@ -72,6 +84,12 @@ try {
     if (verification.status !== 'verified') throw new Error(JSON.stringify(verification))
     console.log(`harness-matrix: verified ${verification.packages} fixed artifacts for ${harness.version}; package ${pkg.name}@${pkg.version}, ${packed[0].integrity}`)
     const before = await readFile(join(checkout, 'package-lock.json'), 'utf8')
+    const hostEvidence = join(evidence, harness.version)
+    await mkdir(hostEvidence)
+    await writeFile(join(hostEvidence, 'package-lock.json'), before)
+    await writeFile(join(hostEvidence, 'target.json'), JSON.stringify(harness, null, 2) + '\n')
+    const result = { host: harness.version, plugin: { name: pkg.name, version: pkg.version, integrity: packed[0].integrity }, lockSha256: createHash('sha256').update(before).digest('hex'), status: 'verified-before-install' }
+    await writeFile(join(hostEvidence, 'result.json'), JSON.stringify(result, null, 2) + '\n')
     run(npm, ['ci', ...npmOptions], checkout, checkout)
     if (await readFile(join(checkout, 'package-lock.json'), 'utf8') !== before) throw new Error('Installation changed the verified lock')
     run(npm, ['run', 'verify', '--', '--unit-only'], checkout, checkout)
@@ -81,7 +99,10 @@ try {
       await cp(join(checkout, 'node_modules', pkg.name, 'lib'), join(checkout, 'lib'), { recursive: true })
       run(process.execPath, ['scripts/smoke.mjs', asc, '--latest'], checkout, checkout)
     }
-    console.log(`harness-matrix: host ${harness.version} passed using package integrity ${packed[0].integrity}`)
+    result.status = 'passed'
+    result.engineSmoke = asc ?? null
+    await writeFile(join(hostEvidence, 'result.json'), JSON.stringify(result, null, 2) + '\n')
+    console.log(`harness-matrix: host ${harness.version} passed using package integrity ${packed[0].integrity}; lock SHA-256 ${result.lockSha256}`)
   }
 } finally {
   await rm(directory, { recursive: true, force: true })

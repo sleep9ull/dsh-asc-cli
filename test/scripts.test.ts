@@ -36,7 +36,7 @@ import fs from 'node:fs'
 import childProcess from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { syncBuiltinESMExports } from 'node:module'
-import { PINNED_ASC_VERSION, releaseAsset } from './lib/compat.js'
+import { MIN_ASC_VERSION, PINNED_ASC_VERSION, releaseAsset } from './lib/compat.js'
 Object.defineProperty(process, 'platform', { value: ${JSON.stringify(platform)} })
 Object.defineProperty(process, 'arch', { value: 'x64' })
 const calls = []
@@ -67,7 +67,7 @@ if (probe === 'smoke.mjs') {
 }
 syncBuiltinESMExports()
 globalThis.fetch = async (url) => {
-  const asset = releaseAsset(PINNED_ASC_VERSION)
+  const asset = releaseAsset(process.argv.includes('--minimum') ? MIN_ASC_VERSION : PINNED_ASC_VERSION)
   const digest = createHash('sha256').update(${JSON.stringify(bytes)}).digest('hex')
   if (String(url).endsWith('_checksums.txt')) return new Response(digest + '  ' + asset + '\\n')
   if (String(url).endsWith('/' + asset)) return new Response(process.env.ASC_SCRIPT_CORRUPT ? 'tampered' : ${JSON.stringify(bytes)})
@@ -120,6 +120,13 @@ describe('vendor executable script integration', () => {
       expect(readFileSync(overlay, 'utf8')).toContain(JSON.stringify(fixture.engine))
     }
   }, 30_000)
+
+  it('downloads the retained minimum engine independently of the newer provisioning pin', () => {
+    const fixture = checkout('linux')
+    expect(fixture.run('download-asc.mjs', ['--minimum'])).toContain('compat baseline')
+    expect(readFileSync(fixture.engine, 'utf8')).toBe(bytes)
+    expect(() => fixture.run('download-asc.mjs', ['--minimum', '--latest'])).toThrow()
+  })
 
   it('rejects a corrupt Windows download without replacing the installed executable', () => {
     const fixture = checkout('win32')

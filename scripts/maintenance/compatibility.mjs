@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compareVersions } from '../../src/compat.ts'
+import { npmCommand } from '../npm-command.mjs'
 
 const execute = promisify(execFile)
 
@@ -18,7 +19,8 @@ export async function resolveHost(harness, { run = execute } = {}) {
     await writeFile(join(directory, 'global.npmrc'), '')
     const env = { PATH: process.env.PATH, HOME: directory, USERPROFILE: directory, NODE_OPTIONS: '--dns-result-order=ipv4first', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) }
     try {
-      await run('npm', args, { cwd: directory, env, timeout: 300_000, maxBuffer: 2 * 1024 * 1024 })
+      const command = npmCommand(args)
+      await run(command.file, command.args, { cwd: directory, env, timeout: 300_000, maxBuffer: 2 * 1024 * 1024 })
     } catch { throw new Error('Strict host dependency resolution failed; no compatible candidate selected (npm unavailable, peer conflict or registry failure)') }
     return JSON.parse(await readFile(join(directory, 'package-lock.json'), 'utf8'))
   } finally {
@@ -55,7 +57,7 @@ export function selectPackages(lock, harness, names) {
   })
 }
 
-function exactVersions(declaration) {
+export function exactVersions(declaration) {
   if (typeof declaration !== 'string') return undefined
   const versions = declaration.split('||').map(value => value.trim())
   return versions.every(value => /^\d/.test(value) && Number.isFinite(compareVersions(value, value))) ? versions : undefined
