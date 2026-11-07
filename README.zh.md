@@ -5,7 +5,7 @@
 - **旧版与新版宿主都能用**：同一插件兼容 Harness `0.2.1-rc.5` 和 `0.2.2-rc.1`，新增适配不会强制旧用户升级宿主。
 - **更新 asc 验证基线**：推荐版本和可选代下载版本升至 `6.5.0`，继续保留经过验证的 `6.3.0` 支持；插件不会自动升级引擎。
 - **使用时提供版本建议**：普通调用和 `/asc` 显示与实际引擎来源相关的版本提示；`/asc` 是轻量能力卡，完整环境与认证诊断交给 `/asc-doctor`。
-- **持续验证兼容性**：双上游维护保留上一正式稳定兼容线，并逐步适配默认渠道更新；同一打包插件在两个受支持宿主及 Node 22/24 下验证。
+- **持续验证兼容性**：0.2.1 加入保留两宿主的同包矩阵；当前源码扩展至固定最低宿主，要求和实际验证状态见下方。
 
 **各版本的详细更新与迁移说明统一查看 [CHANGELOG.md](CHANGELOG.md)。**
 
@@ -19,7 +19,7 @@
 
 [![npm](https://img.shields.io/npm/v/@sleep9ull/dsh-asc-cli?label=npm&color=cb3837)](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5%20%7C%200.2.2--rc.1-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.0--rc.2%20%7C%200.2.1--rc.5%20%7C%200.2.2--rc.1-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
 App Store Connect 是 iOS 发布流程的核心，也是团队最耗时间的地方：命令行参数、大段 JSON、状态机、审批与合规检查。这个插件把它搬进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：安装一次，用自然语言提出需求，Agent 会选对流程、先给出计划，并在真正改动线上之前停下来等你审批。
 
@@ -143,7 +143,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 推荐目标是插件已验证 pin，未验证的 latest 仅告知。提示针对实际执行的配置路径、环境变量、插件缓存或 PATH；Homebrew 升级可能不会改变配置/缓存中的二进制。更新查询不再读写 `update-check.json`，旧文件保留不动；插件重启后可能重新查询。
 
-开发维护机制见 [MAINTENANCE](docs/MAINTENANCE.md)：本地 Desktop 定时任务、仓库脚本、GitHub 门禁及可恢复的 main 同步。部署和持久写授权独立于插件安装，不自动发布 npm。Harness 维护固定 npm tarball，验证实际字节的 SHA-512 与注册表签名，并在安装前对照锁文件重新验证。缺少 `gitHead` 时记录未知源码 commit；注册表签名不证明源码构建来源。更新候选从精确宿主的严格 dependency/peer 图选择，各包独立 latest 仅作观察；每组开发/验证环境的宿主、组件和安装锁保持精确固定，用户宿主/peer 声明覆盖实际验证的支持集合。维护至少保留上一正式稳定兼容线，同时逐步适配默认渠道更新；1.x 以后按 major、0.x 按 minor 划线。没有正式稳定版时保留上一已验证基线，如实标明 RC。同一插件产物必须在保留与新增宿主上分别通过严格安装和真实审批测试，不能因追新静默排除旧用户。详见[长期兼容原则](docs/MAINTENANCE.md#0-长期兼容原则)。解析使用临时 npm lock/cache、关闭 scripts，不安装包。
+开发维护机制见 [MAINTENANCE](docs/MAINTENANCE.md)：本地 Desktop 定时任务、仓库脚本、GitHub 门禁及可恢复的 main 同步。部署和持久写授权独立于插件安装，不自动发布 npm。Harness 维护固定 npm tarball，验证实际字节的 SHA-512 与注册表签名，并在安装前对照锁文件重新验证。缺少 `gitHead` 时记录未知源码 commit；注册表签名不证明源码构建来源。更新候选从精确宿主的严格 dependency/peer 图选择，各包独立 latest 仅作观察；每组开发/验证环境的宿主、组件和安装锁保持精确固定，用户宿主/peer 声明覆盖实际验证的支持集合。[spec 012](docs/specs/012-fixed-compatibility-baselines.md) 固定最低 Harness `0.2.0-rc.2`、asc `6.0.0`，只有用户明确要求才能改变。持续评估默认渠道更新；正式稳定发布记录只描述上游事实，不自动移动兼容锚点。官方 npm 没有正式 Harness `0.2.0`，用户明确选择已发布的 RC。保留 `0.2.1-rc.5` / `0.2.2-rc.1`，开发仍为 `0.2.2-rc.1`，asc 已验证推荐仍为 `6.5.0`。每轮维护实际验证固定最低宿主/引擎、已有支持及新增候选；同一插件产物在宿主矩阵分别通过严格安装和真实审批/guard 后，才能认证新增兼容性。详见[长期兼容原则](docs/MAINTENANCE.md#0-长期兼容原则)。解析使用临时 npm lock/cache、关闭 scripts，不安装包。
 
 ---
 
@@ -182,6 +182,7 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 - **默认关闭值展开**：`asc` 会展开 flag 值里的 `@env:` / `@file:`；插件默认把行首 `@` 转义，除非显式开启 `allowValueExpansion`。
 - **凭据不进模型**：宿主会清洗 `*KEY*` 变量，插件因此显式转发 `ASC_KEY_ID`、`ASC_ISSUER_ID`、`ASC_PRIVATE_KEY_PATH`、`ASC_PRIVATE_KEY`，从不读取、保存或打印密钥内容，并对 `ASC_WEB_SESSION` 做 tombstone，避免 web 会话 cookie 进入子进程。
 - **永久拒绝**：`auth login/logout`、`asc web` 与 `versions phased-release guard`；分类器无法确认只读的命令转人工审批（`unknownCommands: ask`）或直接拒绝（`deny`）。
+- **引擎外置**：固定最低 `6.0.0`，已验证推荐 `6.5.0`；provision 默认关闭并校验 SHA-256。最低仅由用户明确改变，插件永不自动升级。
 - **无 shell**：argv 数组直传；诊断信息脱敏；默认关闭 telemetry。
 - **可选治理**：`auditLog` 记录执行内容；`approvedActions` 仅在写模式对已知动作跳过提示。
 
@@ -191,10 +192,12 @@ asc auth login --name "MyApp" --key-id ABC123 --issuer-id DEF456 --private-key /
 
 | 依赖 | 版本 |
 |---|---|
-| DeepSeek Harness | 源码 `0.2.2`：保留 `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`，并适配 `0.2.2-rc.1` / `4.1.0` / `3.19.0`；peer 为精确并集，不强制升级宿主。同一打包插件在两个宿主上分别验证，见 spec 010 |
+| DeepSeek Harness | 源码 `0.2.2`：固定最低 `0.2.0-rc.2`，保留 `0.2.1-rc.5` / `0.2.2-rc.1`；宿主/peer 为精确并集，开发仍为 `0.2.2-rc.1`。要求同包三宿主矩阵，实际验证证据记录于 spec 012 |
 | Node.js | `^22.19.0 \|\| >=24.0.0`（推荐 24） |
-| `asc` | 源码 `0.2.2`：已验证 pin `6.5.0`，保留基线 `6.3.0`；支持线 `>=6.3.0 <7.0.0`（`/asc-doctor` 会提示漂移） |
+| `asc` | 源码 `0.2.2`：固定最低 `6.0.0`、已验证推荐/代下载 pin `6.5.0`；声明支持 `>=6.0.0 <7.0.0`，不代表每个版本都已实测 |
 | App Store Connect API Key | 团队或个人 key，在 Agent 之外完成认证 |
+
+这些源码要求不会改变已发布的 `0.2.1` 包。固定最低只有用户明确要求才能改变，推荐 pin 更新不会提高最低要求。新增 `6.0.0` 引擎已通过真实 contract/分类审计/离线 smoke；最低宿主严格安装、类型检查和审批/guard 测试已通过，根目录完整八阶段 verify 已通过 415 tests 及本次构建。同包矩阵记录逐宿主的完整结果和产物身份，见 [spec 012](docs/specs/012-fixed-compatibility-baselines.md)。历史双宿主结果单独保留，见[验证边界](docs/TESTING.md#6-验证边界与剩余缺口)。
 
 ---
 
@@ -299,7 +302,7 @@ node scripts/dev-patch.mjs
 dsh web --patch ./vendor/cordis.dev.patch.yml --no-open --port 3199
 ```
 
-`vendor/asc` 已被 gitignore。完整验证需要校验过 SHA-256 的基线二进制；`--unit-only` 明确表示引擎门禁未经验证。普通 CI 同时检查已验证 pin 与最低保留引擎，并在 Node22/24 下用同一打包插件验证两个受支持宿主；每日任务对最新 release 跑 contract、分类审计与离线 smoke。开发 overlay 从当前 checkout 生成绝对路径。
+`vendor/asc` 已被 gitignore。完整验证需要校验过 SHA-256 的推荐二进制；`--unit-only` 明确表示引擎门禁未经验证。CI 配置为检查推荐 pin 和固定最低引擎，并在 Node22/24 下用同一包验证三个声明支持的 Harness 宿主；配置本身不代表已通过，每个环境须单独记录实际结果。每日监测对 latest 跑 contract、分类审计和离线 smoke；更新已验证推荐不会移动固定最低。开发 overlay 从当前 checkout 生成绝对路径。
 
 ## License
 

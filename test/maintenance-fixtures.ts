@@ -34,7 +34,7 @@ export function artifactNetwork() {
     tarballs.set(manifest.dist.tarball, bytes)
   }
   const keys = [{ ...registryKey }]
-  const versions: string[] = ['0.2.1-rc.5']
+  const versions: string[] = ['0.2.0-rc.2', '0.2.1-rc.5']
   const fetch = async (url: string, _init?: RequestInit) => {
     calls.push(url)
     if (url === 'https://registry.npmjs.org/-/npm/v1/keys') return Response.json({ keys })

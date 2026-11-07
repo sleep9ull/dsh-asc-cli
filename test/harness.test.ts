@@ -245,14 +245,14 @@ describe('real Harness tool pipeline', () => {
   ])('renders a version advisory through the real %s pipeline', async (name, args) => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ tag_name: '7.0.0' })))
     vi.stubGlobal('fetch', fetch)
-    const h = await harness({ config: { ascPath: process.execPath, checkUpdates: true }, version: '6.2.0 (commit: fixture)' })
+    const h = await harness({ config: { ascPath: process.execPath, checkUpdates: true }, version: '5.99.0 (commit: fixture)' })
     const invoke = (agent = h.agent) => h.execute({
       name: name as string, arguments: args, callId: ToolCallId('notice'), agent,
       signal: new AbortController().signal,
     })
     const first = await invoke()
     expect(first.isError).toBe(false)
-    expect(first.value).toMatchObject({ ok: true, versionNotice: { code: 'upgrade-required', installedVersion: '6.2.0' } })
+    expect(first.value).toMatchObject({ ok: true, versionNotice: { code: 'upgrade-required', installedVersion: '5.99.0' } })
     expect(first.content.some((part) => part.type === 'text' && part.text.includes(`Verified recommendation: ${PINNED_ASC_VERSION}`))).toBe(true)
     expect((await invoke()).value).not.toHaveProperty('versionNotice')
     expect((await invoke(agentForCall())).value).toHaveProperty('versionNotice')
@@ -274,7 +274,7 @@ describe('real Harness tool pipeline', () => {
 
   it('keeps the start card lightweight and shows the automatic version notice', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ tag_name: '7.0.0' }))))
-    const h = await harness({ config: { ascPath: process.execPath, checkUpdates: true }, version: '6.2.0' })
+    const h = await harness({ config: { ascPath: process.execPath, checkUpdates: true }, version: '5.99.0' })
     const card = await h.ctx.commands.execute(h.agent, '/asc', [], new AbortController().signal)
     expect(card?.result).toMatchObject({ kind: 'success', text: expect.stringContaining(`Verified recommendation: ${PINNED_ASC_VERSION}`) })
     expect(h.spawn).toHaveBeenCalledOnce()

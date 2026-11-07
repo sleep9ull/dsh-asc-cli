@@ -81,7 +81,7 @@ const spawn = (spec: SubprocessSpawnSpec) => {
 - `scripts/classify-audit.mjs`：从 `asc completion` 取全部路径，任何"写文件却分类为 read"的叶子都失败；
 - `scripts/pack-manifest.mjs`：构建后断言 `lib/` 文件集与 `src/` 一一对应，防止 stale 模块进包。
 
-四者都接在 `npm run verify` 与 CI 上。`test/packaging.test.ts` 通过 `npm test` 进入相同门禁：生产端启用 prepack，从没有 lib 的源码真实离线打包；消费者只解包并提供宿主 peers，不执行安装脚本、不提供编译器，即可加载插件与随包资源。它捕获重新引入 prepare/安装脚本、漏编译、漏打包资源及损坏入口的回归。实际包管理器禁用脚本严格安装由双宿主矩阵补充验证，不等同于真实 Desktop UI 实测。
+四者都接在 `npm run verify` 与 CI 上。`test/packaging.test.ts` 通过 `npm test` 进入相同门禁：生产端启用 prepack，从没有 lib 的源码真实离线打包；消费者只解包并提供宿主 peers，不执行安装脚本、不提供编译器，即可加载插件与随包资源。它捕获重新引入 prepare/安装脚本、漏编译、漏打包资源及损坏入口的回归。实际包管理器禁用脚本严格安装由含固定最低的三宿主矩阵补充验证，不等同于真实 Desktop UI 实测。
 
 `vitest.config.ts` 将发现范围限定为当前 checkout 的 `test/**/*.test.ts`，避免根目录运行测试时递归收集 `.claude/worktrees/` 下其他分支的测试。新增测试放在 `test/` 中（允许子目录）。测试发现隔离仅修正开发验证范围，不改变插件行为，无需产品 spec。
 
@@ -108,7 +108,7 @@ npm run verify               # 完整：typecheck → test → build → pack-ma
 npm run verify -- --unit-only # 显式仅本地检查，不代表已通过引擎门禁
 # 或分开跑
 npm run typecheck
-npm test                     # 22 个 suite；当前源码 410 tests，含稳定线/支持并集、安装图与免脚本成品包回归
+npm test                     # spec 012：22 suites / 415 tests，含固定最低及同包矩阵守卫回归
 npm run build                # clean + tsc，lib/ 与 src/ 一一对应
 node scripts/contract.mjs ./vendor/asc
 node scripts/contract-combos.mjs
@@ -121,9 +121,11 @@ CI：Node 22/24 跑 `verify --unit-only`，含真实宿主服务集成与 contra
 
 ## 6. 验证边界与剩余缺口
 
-spec 011（2026-11-06，源码 0.2.2）新增预构建成品包回归：从无 lib 状态运行完整八阶段通过，22 suites / 410 tests；同一个 0.2.2 tarball 在 0.2.1-rc.5 与 0.2.2-rc.1 两消费端禁用脚本严格安装，分别复验 16 个固定产物，均通过 410 tests、本地门禁及 asc 6.5.0 离线 smoke。证据在 `vendor/harness-matrix-eYO5Aq/`，两侧包摘要一致。当前机器的网络代理需临时转发给隔离 npm 子进程才能完成依赖解析；校验算法与严格安装参数未改变。此次实际运行 Node 24.14.0，未运行远端 Node22/24 CI，也未操作真实 Desktop profile 或发布 npm；0.2.1 已发布的事实已从官方 registry 核对。历史验证记录保留在下文。
+spec 012 要求固定最低 Harness 0.2.0-rc.2 的严格安装失败先复现，再验证同包三宿主；asc 6.0.0 与 6.5.0 分别跑真实 contract/classify/smoke。注入网络回归须证明 latest 跨线/稳定 patch 不移动最低，缺最低发布物/支持声明会报告缺口，不再要求 0.1.x。每轮维护都覆盖固定最低。本轮 asc 6.0.0 已通过 28 条 contract、1,927 条 completion 路径、11 组 flag 向量和真实 Harness 离线 smoke（6 次调用）；最低宿主 16 个固定产物及独立锁已生成复验，严格安装、typecheck 和真实审批/guard 测试已通过。首轮完整测试暴露 6 条旧版本提示夹具，修正后 81 条针对性测试通过；根目录完整 `npm run verify` 已通过全部八阶段（22 suites / 415 tests），最终 clean build 为 23 个源码生成 69 个 lib 产物并通过 pack-manifest；asc 6.5.0 通过 28 条 contract、1,995 条 completion 路径、11 组 flag 向量及 6 次调用的离线 smoke。最终同包三宿主矩阵已通过：0.2.0-rc.2 / 0.2.1-rc.5 / 0.2.2-rc.1 每组均在安装前复验 16 个固定产物、禁用脚本严格安装同一 tarball，通过 22 suites / 415 tests、五阶段本地门禁及 asc 6.0.0 离线 smoke。证据为 vendor/harness-matrix-5HEn0u/，三个 result.json 的 passed、包 SHA-512、实际锁 SHA-256 均另行核对一致；完整摘要见 spec 012。本轮运行 Node 24.14.0，隔离 npm 仅临时转发网络代理，不改变来源/严格校验；远端 Node22/24 CI、Desktop 端到端试跑、真实 Apple 账号操作和 npm 发布未执行。以下历史记录另行保留。
 
-spec 010 的 `npm run harness:matrix` 读取 test/fixtures/harness-support.json、两宿主固定产物、保留宿主锁及当前精确开发锁；两个消费端严格安装同一打包产物，在隔离环境执行真实审批集成和本地门禁。生产端先 clean build 当前源码再禁用生命周期脚本打包，避免认证 stale lib。声明的所有保留宿主必须有对应夹具，开发基线与最高精确支持项一致；新增支持不能静默跳过旧环境。实际消费端安装锁、目标、共同 plugin.tgz、锁 SHA-256 和逐宿主结果保存在本 checkout 新建的 `vendor/harness-matrix-*` 目录，临时安装目录仍清理；Node22/24 CI 上传证据，原 required check 名称保留。矩阵、宿主解析与 verify 共用无 shell 的 npm 启动方式；Windows 使用当前 Node 执行 npm CLI。
+历史证据：spec 011（2026-11-06，源码 0.2.2）新增预构建成品包回归：从无 lib 状态运行完整八阶段通过，22 suites / 410 tests；同一个 0.2.2 tarball 在 0.2.1-rc.5 与 0.2.2-rc.1 两消费端禁用脚本严格安装，分别复验 16 个固定产物，均通过 410 tests、本地门禁及 asc 6.5.0 离线 smoke。证据在 `vendor/harness-matrix-eYO5Aq/`，两侧包摘要一致。当前机器的网络代理需临时转发给隔离 npm 子进程才能完成依赖解析；校验算法与严格安装参数未改变。此次实际运行 Node 24.14.0，未运行远端 Node22/24 CI，也未操作真实 Desktop profile 或发布 npm；0.2.1 已发布的事实已从官方 registry 核对。历史验证记录保留在下文。
+
+spec 012 将 spec 010 的 `npm run harness:matrix` 扩为三个宿主：`0.2.0-rc.2` / `0.2.1-rc.5` / `0.2.2-rc.1`。读取 test/fixtures/harness-support.json、各宿主固定产物、独立安装锁与当前精确开发锁；三个消费端严格安装同一打包产物，在隔离环境执行真实审批/guard、工具/技能/命令及本地门禁。固定最低必须有环境且被实际运行，新增候选不能替换它；开发宿主仍为 0.2.2-rc.1。生产端先 clean build 当前源码再禁用生命周期脚本打包，避免认证 stale lib。声明的所有保留宿主必须有对应夹具，开发 pin 与最高精确支持项一致；新增支持不能跳过旧环境。实际消费端安装锁、目标、共同 plugin.tgz、锁 SHA-256 和逐宿主结果保存在新建的 `vendor/harness-matrix-*` 目录，临时安装目录仍清理；Node22/24 CI 上传证据，原 required check 名称保留。矩阵、宿主解析与 verify 共用无 shell 的 npm 启动方式；Windows 使用当前 Node 执行 npm CLI。
 
 2026-11-06 源码 0.2.1：用户明确授权人工续跑并实际记录累计第 4 轮。发布列表 HTTP 503 用例改为断言 unknown 且不暴露 harness/support 成功字段，不再锁定偶然错误文本。推荐 pin 更新后的提示回归使用当前 pin，并验证保留的 6.3.0 只收到 upgrade-recommended。新开发宿主 20 suites / 406 tests 和 asc 6.5.0 完整八阶段通过；保留引擎 6.3.0 的 contract / classify-audit / smoke 通过。同一 tarball 的两消费端矩阵也各通过 406 个测试、类型/构建/pack/参数守卫与保留引擎 smoke（两侧均复验 16 个固定产物）；Node22/24/contract 远端检查与本地结果分开。此前 405/406 和审批拒绝仅是 spec 中的历史记录，不代表当前状态。
 

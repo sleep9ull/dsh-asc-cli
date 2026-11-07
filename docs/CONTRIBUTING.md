@@ -79,7 +79,8 @@ node scripts/classify-audit.mjs ./vendor/asc
 | 新配置项 | `src/config.ts`（安全默认）、`docs/COMMANDS.md` 配置表、README 配置表、测试 |
 | policy / 安全边界 | `src/approval.ts`、`docs/CONTRACT.md` §3 + 修订记录、`AGENTS.md` 摘要、审批矩阵测试 |
 | 结果/错误契约 | `src/format.ts`、`docs/COMMANDS.md` §6、format 测试 |
-| 引擎/版本 | `src/compat.ts`、`docs/COMMANDS.md` §9、engine 测试 |
+| 引擎/版本 | `src/compat.ts`、`docs/COMMANDS.md` §9、engine 测试；最低变更须用户明确授权并登记契约修订 |
+| 宿主支持/维护推荐 | `scripts/maintenance/compatibility.mjs`、package/安装锁、矩阵产物/夹具、AGENTS/CONTRACT/MAINTENANCE、README/README.zh、测试及实际矩阵证据；固定最低不得自动移动 |
 | 发布 | `package.json` + `package-lock.json` 版本、CHANGELOG 章节、README 需求表（若变） |
 
 ---
@@ -89,14 +90,14 @@ node scripts/classify-audit.mjs ./vendor/asc
 1. 按 SemVer 判断版本（`0.x`；破坏性工具面变更用 `feat!` 并给迁移表）。
 2. `package.json` 与 `package-lock.json` 同步 bump。
 3. CHANGELOG 增加该版本章节（把 Unreleased 条目归入），写清 breaking/fixed/docs。
-4. **版本更新后，合并前必须重新生成 `lib/`**：在最终版本号与源码上运行 `npm run build` 和 `node scripts/pack-manifest.mjs`（完整 `npm run verify` 已包含两步），记录本次构建与校验结果；构建后版本号或源码再变则重新执行。未生成、产物陈旧或校验失败不得合并，不能用旧构建证据代替。`lib/` 保持 gitignored，不提交 Git。完整质量门、contract 与所需 CI checks 必须全绿；确认真实 `npm pack` 从尚无 `lib/` 的源码产出可加载的完整插件，安装包没有消费者安装脚本，并完成同包双宿主的禁用脚本严格安装验证。
+4. **版本更新后，合并前必须重新生成 `lib/`**：在最终版本号与源码上运行 `npm run build` 和 `node scripts/pack-manifest.mjs`（完整 `npm run verify` 已包含两步），记录本次构建与校验结果；构建后版本号或源码再变则重新执行。未生成、产物陈旧或校验失败不得合并，不能用旧构建证据代替。`lib/` 保持 gitignored，不提交 Git。完整质量门、contract 与所需 CI checks 必须全绿；确认真实 `npm pack` 从尚无 `lib/` 的源码产出可加载的完整插件，安装包没有消费者安装脚本，并完成同包三宿主（含固定最低）的禁用脚本严格安装验证。
 5. 发版由维护者执行（当前无自动 publish workflow）；tag 与 npm publish 需明确授权。发布完成后再更新 README 的当前 npm 版本与安装命令，不把候选版本称为已发布。
 
 ---
 
 ## 6. 定期维护部署
 
-维护兼容原则见 [MAINTENANCE §0](MAINTENANCE.md#0-长期兼容原则) 与 [spec 010](specs/010-dual-harness-compatibility.md)：至少保留 dsh 上一兼容大版本正式稳定线，同时逐步适配默认渠道新版本；0.x 按 minor 划线，没有正式稳定版则保留已验证基线并如实说明。同一插件构建产物必须分别验证保留基线与新候选，用户兼容集合和精确开发锁分开，不能因追新排除稳定用户。
+维护兼容原则见 [MAINTENANCE §0](MAINTENANCE.md#0-长期兼容原则) 与 [spec 012](specs/012-fixed-compatibility-baselines.md)：固定最低 Harness `0.2.0-rc.2`、asc `6.0.0`，只有用户明确要求才能改变。持续适配默认 latest，保留 `0.2.1-rc.5` / `0.2.2-rc.1`；开发宿主仍为 `0.2.2-rc.1`，asc 推荐仍为 `6.5.0`。正式稳定记录仅描述事实，替代 spec 010 的自动移动锚点。同一插件构建产物须分别验证三宿主及后续新增候选；所有维护运行都实际验证固定最低宿主和引擎。公开精确支持并集、开发锁与逐环境实测证据分开，不能以解析或扩大声明代替验证。
 
 维护实现与部署分开：参见 [MAINTENANCE](MAINTENANCE.md) 和 [spec 005](specs/005-scheduled-upstream-maintenance.md)。任务初建为暂停，在独立 worktree 手动 Run now 验证后启用；Desktop 必须运行且电脑唤醒。每次先恢复未收口 PR，再发现双上游新版本。
 

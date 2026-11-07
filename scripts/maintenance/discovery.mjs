@@ -4,7 +4,7 @@ import { join } from 'node:path'
 // Supported Node versions strip types, so discovery needs neither lib/ nor duplicated facts.
 import { UPSTREAM_REPO, releaseAsset } from '../../src/compat.ts'
 import { discoverPackage, registryKeys, npmJson } from './npm-artifact.mjs'
-import { resolveHost, selectPackages, assertResolved } from './compatibility.mjs'
+import { MIN_HARNESS_VERSION, resolveHost, selectPackages, assertResolved } from './compatibility.mjs'
 import { compareVersions } from '../../src/compat.ts'
 export { verifyHarness } from './npm-artifact.mjs'
 
@@ -16,23 +16,12 @@ async function get(url, fetchFn) {
   return response
 }
 
-/** Stable regression anchors come from published versions, never dist-tag names. */
-function stableSupport(latest, versions) {
+/** The user-approved minimum stays fixed regardless of default channels or stable lines. */
+function fixedSupport(latest, versions) {
   if (!Array.isArray(versions) || !versions.length || versions.some(version => typeof version !== 'string' || !/^\d/.test(version) || !Number.isFinite(compareVersions(version, version)))) throw new Error('Invalid Harness published versions')
   if (!versions.includes(latest)) throw new Error('Default Harness release missing from published versions')
-  const line = version => {
-    const [major, minor] = version.split('.')
-    return major === '0' ? `0.${minor}` : major
-  }
-  const currentLine = line(latest)
-  const stable = versions.filter(version => !version.split('+')[0].includes('-')).sort((a, b) => compareVersions(b, a))
-  const current = stable.find(version => line(version) === currentLine) ?? null
-  const previous = stable.find(version => line(version) !== currentLine && compareVersions(version, latest) < 0) ?? null
-  return {
-    status: stable.length ? 'stable-releases' : 'no-stable-release', currentLine, current, previous,
-    anchors: [current, previous].filter(Boolean),
-    reasons: [...(!current ? ['no-current-stable-release'] : []), ...(!previous ? ['no-previous-stable-line'] : [])],
-  }
+  if (!versions.includes(MIN_HARNESS_VERSION)) throw new Error(`Fixed minimum Harness release ${MIN_HARNESS_VERSION} missing from published versions`)
+  return { status: 'fixed-baseline', minimum: MIN_HARNESS_VERSION, anchors: [MIN_HARNESS_VERSION] }
 }
 
 export async function discoverHarness({ packageNames = [], fetch: fetchFn = globalThis.fetch, now = Date.now, resolve = resolveHost, versions } = {}) {
@@ -44,7 +33,7 @@ export async function discoverHarness({ packageNames = [], fetch: fetchFn = glob
       if (published.name !== harness.name || !published.versions || typeof published.versions !== 'object' || Array.isArray(published.versions)) throw new Error('Missing Harness published versions')
       versions = Object.keys(published.versions)
     }
-    const support = stableSupport(harness.version, versions)
+    const support = fixedSupport(harness.version, versions)
     const names = [...new Set(packageNames)].filter(name => name !== harness.name).sort()
     const graph = await resolve(harness)
     const selected = selectPackages(graph, harness, names)

@@ -37,7 +37,7 @@ jobs:
             const body = [
               'The scheduled contract test against the latest `asc` release failed.',
               '',
-              'Run `node scripts/download-asc.mjs --latest`, then the contract, classify-audit and offline smoke scripts locally. Review the failed stage and update the compatibility baseline only after verification.',
+              'Run `node scripts/download-asc.mjs --latest`, then the contract, classify-audit and offline smoke scripts locally. Review the failed stage, adapt to the latest release, and advance the recommended pin only after verification. Preserve the user-fixed asc 6.0.0 floor and verify it separately; only an explicit user request can change that minimum.',
             ].join('\n')
             const existing = await github.paginate(github.rest.issues.listForRepo, { owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'upstream-drift', per_page: 100 })
             if (!existing.some(issue => issue.title === title)) {
@@ -68,6 +68,7 @@ jobs:
           const report = JSON.parse(readFileSync('harness-watch.json', 'utf8'))
           const lines = ['## Harness compatibility discovery', `Status: ${report.status}`, 'Resolution is a candidate, not integration certification.']
           if (report.reason) lines.push(`Reason: ${report.reason}`)
+          if (report.support?.minimum) lines.push(`Fixed minimum Harness: ${report.support.minimum}`)
           for (const change of report.changes ?? []) lines.push(`- Candidate ${change.name}: ${change.installed} -> ${change.candidate}`)
           for (const item of report.observations ?? []) lines.push(`- Observation ${item.name}: latest ${item.version}, host-selected ${item.selected} (${item.reason})`)
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n')
@@ -83,7 +84,7 @@ jobs:
               '',
               `Inspect the harness-default-channel artifact: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               '',
-              'This is discovery evidence, not an integration certification. Follow docs/MAINTENANCE.md in an explicitly deployed Desktop maintenance routine. This workflow does not adapt code, create a PR, merge or publish.',
+              'This is discovery evidence, not an integration certification. Preserve the fixed Harness 0.2.0-rc.2 and asc 6.0.0 floors; only an explicit user request can change them. Verify the same plugin on the minimum, retained hosts and new candidate before advancing validated recommendations. Follow docs/MAINTENANCE.md in an explicitly deployed Desktop maintenance routine. This workflow does not adapt code, create a PR, merge or publish.',
             ].join('\n')
             const existing = await github.paginate(github.rest.issues.listForRepo, { owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'upstream-drift', per_page: 100 })
             if (!existing.some(issue => issue.title === title)) {

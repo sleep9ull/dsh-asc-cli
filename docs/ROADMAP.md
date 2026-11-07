@@ -19,7 +19,7 @@
 
 ## 1. 0.2.0 迁移与后续「Prove」
 
-源码 0.2.1 的兼容性增量见 [spec 009](specs/009-harness-022-asc-650.md) / [spec 010](specs/010-dual-harness-compatibility.md)：保留 Harness 0.2.1-rc.5 并适配 0.2.2-rc.1，同一打包插件按两个精确环境验证；asc 推荐 pin 6.5.0、保留最低 6.3.0。长期维护保留上一正式稳定兼容线并持续适配默认渠道；当前无正式稳定版时保留已验证 RC，不强制旧用户升级。源码版本不代表 npm 已发布。
+源码 0.2.2 按 [spec 012](specs/012-fixed-compatibility-baselines.md) 固定最低 Harness `0.2.0-rc.2`、asc `6.0.0`；保留 Harness `0.2.1-rc.5` / `0.2.2-rc.1`，开发仍为 `0.2.2-rc.1`，asc 已验证推荐仍为 `6.5.0`。三宿主严格安装同一打包插件，最低引擎和推荐 pin 分别执行真实门禁；本轮实际结果按 spec 012 记录，历史双宿主证据不代替新增最低验证。持续适配默认 latest，只有用户明确要求才能改变最低；正式稳定记录仅描述事实，不再按 spec 010 自动移动锚点。历史 0.2.1 的双宿主与 6.3.0 / 6.5.0 证据保留在 [spec 009](specs/009-harness-022-asc-650.md) / [spec 010](specs/010-dual-harness-compatibility.md)。源码版本不代表 npm 已发布。
 
 0.2.0 适配 Harness rc.5 / asc 6.3.0，加入真实审批收据、最终 guard、动态引擎路径及本地写 flag 防护。13 文件 / 242 测试通过；完整 verify 的 8 阶段全部通过，包含真实 6.3.0 引擎契约、分类审计和离线 smoke（[spec 004](specs/004-upstream-compatibility.md)）。以下保留未包含在本次迁移中的后续工作。
 

@@ -45,6 +45,35 @@ globalThis.fetch = () => { throw new Error('Unexpected network') }
   expect(readFileSync(join(directory, 'lib/index.js'), 'utf8')).toBe('fresh build')
 })
 
+it('refuses to certify a matrix that drops the user-fixed minimum host', () => {
+  const directory = fixture()
+  for (const name of ['scripts', 'src', 'test/fixtures', 'package.json', 'package-lock.json']) cpSync(new URL(name, root), join(directory, name), { recursive: true })
+  const packagePath = join(directory, 'package.json')
+  const declaration = process.env.ASC_HARNESS_BUILT === '1'
+    ? JSON.parse(readFileSync(new URL('node_modules/@sleep9ull/dsh-asc-cli/package.json', root), 'utf8'))
+    : JSON.parse(readFileSync(packagePath, 'utf8'))
+  declaration.engines.dsh = '0.2.1-rc.5 || 0.2.2-rc.1'
+  writeFileSync(packagePath, JSON.stringify(declaration))
+  const matrixPath = join(directory, 'test/fixtures/harness-support.json')
+  const matrix = JSON.parse(readFileSync(matrixPath, 'utf8'))
+  matrix.retained = matrix.retained.filter((row: { target: string }) => row.target !== 'minimum-harness-target.json')
+  writeFileSync(matrixPath, JSON.stringify(matrix))
+  const preload = join(directory, 'preload.mjs')
+  writeFileSync(preload, `
+import childProcess from 'node:child_process'
+import {syncBuiltinESMExports} from 'node:module'
+childProcess.execFileSync = () => { throw new Error('UNEXPECTED_BUILD_OR_INSTALL') }
+syncBuiltinESMExports()
+globalThis.fetch = () => { throw new Error('Unexpected network') }
+`)
+  let stderr = ''
+  try {
+    execFileSync(process.execPath, ['--import', preload, join(directory, 'scripts/harness-matrix.mjs')], { encoding: 'utf8', stdio: 'pipe' })
+  } catch (error) { stderr = String((error as { stderr: unknown }).stderr) }
+  expect(stderr).toContain('Fixed minimum Harness baseline must remain declared')
+  expect(stderr).not.toContain('UNEXPECTED_BUILD_OR_INSTALL')
+})
+
 it('executes the Windows npm CLI through Node while preserving paths and literal arguments', async () => {
   const modulePath = new URL('../scripts/npm-command.mjs', import.meta.url).href
   const { npmCommand } = await import(modulePath)

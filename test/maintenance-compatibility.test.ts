@@ -74,40 +74,52 @@ describe('compatible Harness target selection', () => {
   })
 })
 
-describe('stable Harness support discovery', () => {
+describe('fixed minimum Harness support discovery', () => {
   it.each([
-    { latest: '0.2.2-rc.1', versions: ['0.1.1', '0.1.9', '0.2.0', '0.2.1', '0.2.2-rc.1', '0.3.0-alpha.1'], current: '0.2.1', previous: '0.1.9' },
-    { latest: '2.1.0-rc.1', versions: ['0.9.9', '1.2.9', '1.8.1', '2.0.0', '2.0.4', '2.1.0-rc.1', '3.0.0-alpha.1'], current: '2.0.4', previous: '1.8.1' },
-    { latest: '0.3.0-rc.1', versions: ['0.1.9', '0.2.1', '0.2.3', '0.3.0-rc.1'], current: null, previous: '0.2.3' },
-    { latest: '1.0.0', versions: ['0.2.1', '0.2.3', '1.0.0'], current: '1.0.0', previous: '0.2.3' },
-    { latest: '1.0.0', versions: ['1.0.0', '1.1.0-alpha.1'], current: '1.0.0', previous: null },
-    { latest: '0.3.0', versions: ['0.1.9', '0.2.1', '0.2.3', '0.3.0'], current: '0.3.0', previous: '0.2.3' },
-  ])('retains stable anchors for default $latest without selecting other channels', async ({ latest, versions, current, previous }) => {
+    { latest: '0.2.2-rc.1', versions: ['0.1.9', '0.2.0-rc.2', '0.2.0', '0.2.1', '0.2.2-rc.1'] },
+    { latest: '0.2.9', versions: ['0.2.0-rc.2', '0.2.1', '0.2.8', '0.2.9'] },
+    { latest: '0.3.0-rc.1', versions: ['0.1.9', '0.2.0-rc.2', '0.2.3', '0.3.0-rc.1'] },
+    { latest: '1.0.0', versions: ['0.2.0-rc.2', '0.2.3', '1.0.0'] },
+    { latest: '2.1.0-rc.1', versions: ['0.2.0-rc.2', '1.8.1', '2.0.4', '2.1.0-rc.1', '3.0.0-alpha.1'] },
+  ])('keeps the exact minimum when default latest becomes $latest', async ({ latest, versions }) => {
     const net = artifactNetwork()
     const host = signedManifest('@deepseek-ai/dsh', latest, Buffer.from(`@deepseek-ai/dsh@${latest}`))
     net.manifests.set(host.name, host)
     net.tarballs.set(host.dist.tarball, Buffer.from(`@deepseek-ai/dsh@${latest}`))
     net.versions.splice(0, net.versions.length, ...versions)
     const found = await discoverHarness({ fetch: net.fetch, resolve: net.resolve })
-    expect(found).toMatchObject({ status: 'discovered', harness: { version: latest }, support: { status: 'stable-releases', current, previous, anchors: [current, previous].filter(Boolean) } })
-    if (!current) expect(found.support.reasons).toContain('no-current-stable-release')
-    if (!previous) expect(found.support.reasons).toContain('no-previous-stable-line')
+    expect(found).toMatchObject({ status: 'discovered', harness: { version: latest } })
+    expect(found.support).toEqual({ status: 'fixed-baseline', minimum: '0.2.0-rc.2', anchors: ['0.2.0-rc.2'] })
+    const { compareBaseline } = await import(modulePath + 'compatibility.mjs')
+    expect(compareBaseline(found.harness, { engines: { dsh: `0.2.0-rc.2 || ${latest}` } }, lockFor(), found.support)).toEqual([])
     expect(net.calls).toContain('https://registry.npmjs.org/%40deepseek-ai%2Fdsh')
     expect(net.calls.some(url => /\/(?:next|alpha)$/.test(url))).toBe(false)
   })
-  it('reports no stable release without blocking existing prerelease support or changing the fixed target', async () => {
+  it('keeps the fixed minimum when only prereleases are published and separates policy from target identity', async () => {
     const net = artifactNetwork()
-    const found = await discoverHarness({ fetch: net.fetch, resolve: net.resolve, versions: ['0.2.1-rc.5', '0.2.2-rc.1'] })
-    expect(found).toMatchObject({ status: 'discovered', support: { status: 'no-stable-release', anchors: [], current: null, previous: null } })
-    const { compareBaseline } = await import(modulePath + 'compatibility.mjs')
-    expect(compareBaseline(found.harness, { engines: { dsh: '0.2.1-rc.5' } }, lockFor(packageRecord()), found.support)).toEqual([])
+    const versions = ['0.2.0-rc.2', '0.2.1-rc.5', '0.2.2-rc.1']
+    const found = await discoverHarness({ fetch: net.fetch, resolve: net.resolve, versions })
+    expect(found).toMatchObject({ status: 'discovered', support: { status: 'fixed-baseline', minimum: '0.2.0-rc.2', anchors: ['0.2.0-rc.2'] } })
     const { discoverTargets } = await import(modulePath + 'discovery.mjs')
-    const result = await discoverTargets({ repository: 'owner/plugin', platform: 'linux', arch: 'x64', fetch: net.fetch, resolve: net.resolve })
-    expect(result.support.status).toBe('no-stable-release')
+    const result = await discoverTargets({ repository: 'owner/plugin', platform: 'linux', arch: 'x64', fetch: net.fetch, resolve: net.resolve, versions })
+    expect(result.support).toEqual(found.support)
     expect(result.target).not.toHaveProperty('support')
     expect(result.target.harness).not.toHaveProperty('support')
   })
-  it('fails closed when full release records are unavailable instead of assuming no stable versions', async () => {
+  it.each([
+    ['0.2.0-rc.1', '0.2.1-rc.5'],
+    ['0.1.9', '0.2.0', '0.2.1-rc.5', '0.2.3'],
+  ])('reports an unavailable exact minimum instead of substituting published %j', async (...versions) => {
+    const net = artifactNetwork()
+    net.versions.splice(0, net.versions.length, ...versions)
+    let resolved = false
+    const found = await discoverHarness({ fetch: net.fetch, resolve: async () => { resolved = true; return net.resolve() } })
+    expect(found).toMatchObject({ status: 'unknown', reason: expect.stringMatching(/minimum.*0\.2\.0-rc\.2/i) })
+    expect(found).not.toHaveProperty('harness')
+    expect(found).not.toHaveProperty('support')
+    expect(resolved).toBe(false)
+  })
+  it('fails closed when full release records are unavailable', async () => {
     const net = artifactNetwork()
     const fetch = async (url: string, init?: RequestInit) => url === 'https://registry.npmjs.org/%40deepseek-ai%2Fdsh' ? Response.json({ error: 'unavailable' }, { status: 503 }) : net.fetch(url, init)
     const result = await discoverHarness({ fetch, resolve: net.resolve })
@@ -119,14 +131,15 @@ describe('stable Harness support discovery', () => {
 
 describe('maintenance support CLI', () => {
   it.each([
-    { command: 'harness-watch', versions: ['0.1.9', '0.2.1', '0.2.2-rc.1'], status: 'drift', exit: 2 },
-    { command: 'discover', versions: ['0.1.9', '0.2.1', '0.2.2-rc.1'], status: 'discovered', exit: 0 },
-    { command: 'harness-watch', versions: ['0.2.1-rc.5', '0.2.2-rc.1'], status: 'unchanged', exit: 0 },
-  ])('reports support changes from $command with published $versions', async ({ command, versions, status, exit }) => {
+    { command: 'harness-watch', supported: false, versions: ['0.2.0-rc.2', '0.1.9', '0.2.1', '0.2.2-rc.1'], status: 'drift', exit: 2 },
+    { command: 'discover', supported: false, versions: ['0.2.0-rc.2', '0.2.2-rc.1'], status: 'discovered', exit: 0 },
+    { command: 'harness-watch', supported: true, versions: ['0.2.0-rc.2', '0.1.9', '0.2.9', '0.2.2-rc.1'], status: 'unchanged', exit: 0 },
+    { command: 'harness-watch', supported: true, versions: ['0.2.1-rc.5', '0.2.2-rc.1'], status: 'unknown', exit: 2 },
+  ])('reports fixed minimum support from $command with published $versions', async ({ command, supported, versions, status, exit }) => {
     const directory = await mkdtemp(join(tmpdir(), 'asc-support-cli-'))
     try {
       const host = '0.2.2-rc.1'
-      await writeFile(join(directory, 'package.json'), JSON.stringify({ engines: { dsh: `0.2.1-rc.5 || ${host}` } }))
+      await writeFile(join(directory, 'package.json'), JSON.stringify({ engines: { dsh: `${supported ? '0.2.0-rc.2 || ' : ''}0.2.1-rc.5 || ${host}` } }))
       await writeFile(join(directory, 'package-lock.json'), JSON.stringify(lockFor()))
       // Exercise the actual CLI with synthetic signed registry bytes and an injected npm resolver.
       const preload = `
@@ -163,21 +176,21 @@ describe('maintenance support CLI', () => {
       const result = JSON.parse(stdout)
       expect(code).toBe(exit)
       expect(result.status).toBe(status)
-      if (versions.includes('0.1.9')) {
-        expect(result.changes).toEqual([
-          { name: '@deepseek-ai/dsh', installed: 'unsupported', candidate: '0.2.1', reason: 'stable-anchor-required' },
-          { name: '@deepseek-ai/dsh', installed: 'unsupported', candidate: '0.1.9', reason: 'stable-anchor-required' },
-        ])
+      if (status === 'unknown') {
+        expect(result.reason).toMatch(/minimum.*0\.2\.0-rc\.2/i)
+        expect(result).not.toHaveProperty('changes')
       } else {
-        expect(result.changes).toEqual([])
-        expect(result.support.status).toBe('no-stable-release')
+        expect(result.changes).toEqual(supported ? [] : [
+          { name: '@deepseek-ai/dsh', installed: 'unsupported', candidate: '0.2.0-rc.2', reason: 'minimum-baseline-required' },
+        ])
+        expect(result.support).toEqual({ status: 'fixed-baseline', minimum: '0.2.0-rc.2', anchors: ['0.2.0-rc.2'] })
       }
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 })
 
 describe('compatible baseline comparison and isolated resolution', () => {
-  it.each(['0.2.1-rc.5 || 0.2.2-rc.1', '0.2.2-rc.1 || 0.2.1-rc.5'])('uses the latest exact supported host as the development baseline: %s', async dsh => {
+  it.each(['0.2.0-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1', '0.2.2-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.5'])('uses the latest exact supported host as the development baseline: %s', async dsh => {
     const { compareBaseline } = await import(modulePath + 'compatibility.mjs')
     const component = packageRecord('@deepseek-ai/cordis', '4.1.0')
     const pkg = { engines: { dsh }, peerDependencies: { [component.name]: '4.0.5 || 4.1.0' }, devDependencies: { [component.name]: '4.1.0' } }
@@ -197,25 +210,31 @@ describe('compatible baseline comparison and isolated resolution', () => {
     const component = packageRecord('@deepseek-ai/cordis', '4.1.0')
     expect(() => compareBaseline({ ...packageRecord(), packages: [component] }, { engines: { dsh: '0.2.1-rc.5' }, peerDependencies: { [component.name]: peer }, devDependencies: { [component.name]: dev } }, lockFor(component))).toThrow(/pin|declaration/)
   })
-  it('reports missing stable support anchors even when the default development graph is unchanged', async () => {
+  it.each([undefined, { status: 'fixed-baseline', minimum: '0.2.0-rc.2', anchors: ['0.2.0-rc.2'] }])('reports missing minimum support with unchanged development graph and support metadata %j', async support => {
     const { compareBaseline } = await import(modulePath + 'compatibility.mjs')
     const host = { ...packageRecord('@deepseek-ai/dsh', '0.2.2-rc.1'), packages: [] }
     const pkg = { engines: { dsh: '0.2.1-rc.5 || 0.2.2-rc.1' } }
-    const support = { status: 'stable-releases', anchors: ['0.2.1', '0.1.9'] }
     expect(compareBaseline(host, pkg, lockFor(), support)).toEqual([
-      { name: host.name, installed: 'unsupported', candidate: '0.2.1', reason: 'stable-anchor-required' },
-      { name: host.name, installed: 'unsupported', candidate: '0.1.9', reason: 'stable-anchor-required' },
+      { name: host.name, installed: 'unsupported', candidate: '0.2.0-rc.2', reason: 'minimum-baseline-required' },
     ])
-    expect(compareBaseline(host, { engines: { dsh: pkg.engines.dsh + ' || 0.2.1 || 0.1.9' } }, lockFor(), support)).toEqual([])
+    expect(compareBaseline(host, { engines: { dsh: '0.2.0-rc.2 || ' + pkg.engines.dsh } }, lockFor(), support)).toEqual([])
   })
-  it.each(['0.2.1-rc.5', '>=0.2.1-rc.5 <0.2.2-0'])('compares baseline %s and detects an actual compatible patch instead of excluded latest', async host => {
+  it('does not count a broad range as verified exact minimum support', async () => {
+    const { compareBaseline } = await import(modulePath + 'compatibility.mjs')
+    const host = { ...packageRecord('@deepseek-ai/dsh', '0.2.0-rc.2'), packages: [] }
+    expect(compareBaseline(host, { engines: { dsh: '>=0.2.0-rc.2' } }, lockFor())).toEqual([
+      { name: host.name, installed: 'unsupported', candidate: '0.2.0-rc.2', reason: 'minimum-baseline-required' },
+    ])
+  })
+  it.each(['0.2.0-rc.2 || 0.2.1-rc.5', '>=0.2.1-rc.5 <0.2.2-0'])('compares baseline %s and detects an actual compatible patch instead of excluded latest', async host => {
     const { compareBaseline } = await import(modulePath + 'compatibility.mjs')
     const pkg = { engines: { dsh: host }, peerDependencies: { '@deepseek-ai/cordis': '4.0.5' } }
     const selected = packageRecord('@deepseek-ai/cordis', '4.0.5')
     const baseline = { packages: { 'node_modules/@deepseek-ai/cordis': { version: selected.version, resolved: selected.tarball, integrity: selected.integrity } } }
     const current = { ...packageRecord(), packages: [selected] }
-    expect(compareBaseline(current, pkg, baseline)).toEqual([])
-    expect(compareBaseline({ ...current, packages: [packageRecord(selected.name, '4.0.6')] }, pkg, baseline)).toMatchObject([{ name: selected.name, installed: '4.0.5', candidate: '4.0.6' }])
+    const missingMinimum = host.startsWith('>=') ? [{ name: current.name, installed: 'unsupported', candidate: '0.2.0-rc.2', reason: 'minimum-baseline-required' }] : []
+    expect(compareBaseline(current, pkg, baseline)).toEqual(missingMinimum)
+    expect(compareBaseline({ ...current, packages: [packageRecord(selected.name, '4.0.6')] }, pkg, baseline)).toEqual([{ name: selected.name, installed: '4.0.5', candidate: '4.0.6' }, ...missingMinimum])
   })
   it('rejects an actual install lock with split shared instances even when fresh host resolution is clean', async () => {
     const { verifyHarness } = await import(modulePath + 'npm-artifact.mjs')
