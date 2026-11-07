@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { npmCommand } from './npm-command.mjs'
-import { exactVersions } from './maintenance/compatibility.mjs'
+import { exactVersions, MIN_HARNESS_VERSION } from './maintenance/compatibility.mjs'
 import { mkdtemp, readFile, writeFile, mkdir, cp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -23,6 +23,7 @@ try {
   const matrix = await readJson(join(root, 'test/fixtures/harness-support.json'))
   const supported = exactVersions(pkg.engines?.dsh)?.sort(compareVersions)
   if (!supported || new Set(supported).size !== supported.length || matrix.development !== supported.at(-1) || !Array.isArray(matrix.retained)) throw new Error('Invalid declared host matrix')
+  if (!supported.includes(MIN_HARNESS_VERSION)) throw new Error(`Fixed minimum Harness baseline must remain declared: ${MIN_HARNESS_VERSION}`)
   const fixtureName = name => typeof name === 'string' && /^[a-zA-Z0-9.-]+\.json$/.test(name)
   const rows = []
   for (const row of matrix.retained) {

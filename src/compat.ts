@@ -10,8 +10,8 @@
 /** Version provisioned by default when the user opts in. */
 export const PINNED_ASC_VERSION = '6.5.0'
 
-/** Compatibility bounds; future minors are monitored, not individually certified. */
-export const MIN_ASC_VERSION = '6.3.0'
+/** User-fixed minimum; only explicit user authorization may raise this baseline. */
+export const MIN_ASC_VERSION = '6.0.0'
 export const NEXT_ASC_MAJOR = '7.0.0'
 export const SUPPORTED_ASC_RANGE = `>=${MIN_ASC_VERSION} <${NEXT_ASC_MAJOR}`
 

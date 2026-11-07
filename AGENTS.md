@@ -35,7 +35,7 @@
 6. **工具面固定 5 个**：`asc` / `asc_plan` / `asc_apply` / `asc_job` / `asc_setup`；新能力扩 action 或 job，不新增命令型工具。
 7. **知识随包**：6 个 skill 以 rank 600 发布；工具名/action 变更必须同提交更新受影响 skill。
 7.1 **审批前校验**：已注册 action/job 的非法参数组合在 confirm/审批前拒绝（`ASC_INVALID_ARGUMENTS`）；守卫与 builder 共用同一校验。
-8. **引擎外置**：`asc` 不进 npm 包；pin `6.5.0`、区间 `>=6.3.0 <7.0.0`（`src/compat.ts` 是 SSOT）；provision 默认关、校验 SHA-256；永不自动升级。
+8. **引擎外置**：`asc` 不进 npm 包；固定最低 `6.0.0`、推荐 pin `6.5.0`、区间 `>=6.0.0 <7.0.0`（`src/compat.ts` 是 SSOT）；provision 默认关、校验 SHA-256；永不自动升级。
 9. **审计可关**：未配 `auditLog` 不写；best-effort、脱敏、`0o600`、单行 8 KB。
 10. **禁区**：`auth login/logout`、`asc web`、可执行任意本地程序的 `versions phased-release guard` 一律 `forbidden`；未识别命令走 `unknown`。
 
@@ -67,7 +67,7 @@ action 的具体行为以 `src/registry.ts`、工具 schema、`src/approval.ts` 
 
 维护层 npm 来源按 [spec 007](docs/specs/007-npm-artifact-verification.md)：固定官方 registry 的精确包与 tarball，实际验证 SHA-512 和注册表签名；缺失 gitHead 记 commit=null，不能冒充源码构建证明。安装前执行 `verify-harness --input target.json --lock-file package-lock.json` 重新核对固定目标；新 marker v3，未收口 v2 目标须显式迁移。此规则不改变插件 I1–I10。
 
-维护目标按 [spec 008](docs/specs/008-harness-drift-triage.md)：以精确默认宿主的完整依赖/peer 图选择兼容候选，独立包 latest 只作观察，不直接混装。候选解析不等于运行兼容；先严格解析、固定产物和安装锁复验，再完整集成验证，通过后才能更新已验证基线。每组开发/验证环境的宿主、相关组件和锁文件保持精确固定；用户 engines/peer 声明需覆盖实际验证的支持矩阵，不能把最新开发 pin 直接当成唯一用户要求。兼容保留原则见 [spec 010](docs/specs/010-dual-harness-compatibility.md)：最低保留 dsh 上一兼容大版本正式稳定线，并逐步适配默认渠道每次更新；1.x 及以后按 major，0.x 按 minor 划线。没有正式稳定版时如实记录，保留既有已验证基线，不把 RC/alpha 称为稳定版。同一插件产物须分别验证保留基线与新增候选，不能只放宽声明或只测新版本。组件冲突或回归时保留旧支持，禁止自动降级、force/legacy-peer-deps 或弱化检查。discover/watch 会在独立临时目录写 npm 解析锁/cache，不安装或执行包代码，不改用户配置，结束仅清理本次临时目录。
+维护目标按 [spec 008](docs/specs/008-harness-drift-triage.md)：以精确默认宿主的完整依赖/peer 图选择兼容候选，独立包 latest 只作观察，不直接混装。候选解析不等于运行兼容；先严格解析、固定产物和安装锁复验，再完整集成验证，通过后才能更新已验证推荐与开发 pin。每组开发/验证环境的宿主、相关组件和锁文件保持精确固定；用户 engines/peer 声明需覆盖实际验证的支持矩阵，不能把最新开发 pin 当成唯一用户要求。固定最低要求按 [spec 012](docs/specs/012-fixed-compatibility-baselines.md)（2026-11-07 用户授权）：Harness `0.2.0-rc.2`、asc `6.0.0`，只有用户明确要求才能改变；替代 spec 010 的上一稳定线/最新 patch 自动移动规则。正式稳定发布记录仅描述上游事实，不移动最低锚点；没有正式 `0.2.0`，不能把 RC 称为稳定版。保留 `0.2.1-rc.5` / `0.2.2-rc.1`，开发宿主仍为 `0.2.2-rc.1`，asc 推荐仍为 `6.5.0`。同一插件产物须覆盖三宿主及后续新增候选，所有维护运行都实际验证固定最低宿主和最低引擎；新增最低环境的通过证据须记录在 spec 012，不能沿用历史双宿主结果。组件冲突或回归时保留旧支持，禁止自动降级、force/legacy-peer-deps 或弱化检查。discover/watch 会在独立临时目录写 npm 解析锁/cache，不安装或执行包代码，不改用户配置，结束仅清理本次临时目录。
 
 普通工具与 `/asc` 的版本提示只推荐已验证 pin；声明支持范围不等于逐一实测。`checkUpdates: false` 关闭自动提示检查与远端查询；更新缓存仅驻内存，不能因提示安装引擎或写本地文件。
 

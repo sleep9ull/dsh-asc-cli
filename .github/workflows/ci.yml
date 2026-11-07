@@ -24,7 +24,7 @@ jobs:
       - run: npm ci
       - name: Types, unit and real Harness integration, build, package and guards
         run: npm run verify -- --unit-only
-      - name: Same package on both Harness versions (verified artifacts, strict install and real approvals)
+      - name: Same package on all supported Harness versions including fixed minimum (verified artifacts, strict install and real approvals)
         run: node scripts/harness-matrix.mjs
       - name: Preserve actual host locks, targets, package and verification results
         if: always()

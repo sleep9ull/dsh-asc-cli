@@ -14,7 +14,7 @@ const outcome: AscToolResult = { ok: false, exitCode: 3, command: 'asc apps', du
 function fixture() {
   const engine = {
     snapshot: vi.fn(() => snapshot),
-    inspectVersion: vi.fn(async () => ({ version: '6.2.0', missing: false })),
+    inspectVersion: vi.fn(async () => ({ version: '5.99.0', missing: false })),
     latestVersion: vi.fn(async () => ({ latest: '7.0.0', checkedAt: new Date().toISOString(), cached: false })),
     rememberVersion: vi.fn(),
   } as unknown as AscEngine
@@ -43,7 +43,9 @@ describe('version notices', () => {
     expect(versionNotice(snapshot, { version: '6.4.0-rc.1', missing: false }, '6.4.0')?.code).toBe('outside-supported-range')
     expect(versionNotice(snapshot, { version: 'garbage', missing: false }, '7.0.0')?.code).toBe('version-unknown')
     expect(versionNotice(snapshot, { version: PINNED_ASC_VERSION, missing: false })).toBeUndefined()
-    expect(versionNotice(snapshot, { version: '6.3.0', missing: false })).toMatchObject({ code: 'upgrade-recommended', recommendedVersion: PINNED_ASC_VERSION })
+    for (const version of ['6.0.0', '6.2.0', '6.3.0']) {
+      expect(versionNotice(snapshot, { version, missing: false })).toMatchObject({ code: 'upgrade-recommended', recommendedVersion: PINNED_ASC_VERSION })
+    }
     const cached = versionNotice({ ...snapshot, resolution: { ...snapshot.resolution, source: 'cache' } }, { version: PINNED_ASC_VERSION, missing: false }, '7.0.0')
     expect(cached?.hint).not.toContain('brew')
     expect(cached?.hint).toContain(PINNED_ASC_VERSION)
@@ -69,7 +71,7 @@ describe('version notices', () => {
     const first = notices.run(exec, run)
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await first).toEqual(outcome)
-    finish({ version: '6.2.0', missing: false })
+    finish({ version: '5.99.0', missing: false })
     await Promise.resolve()
     expect((await notices.run(exec, run)).versionNotice?.code).toBe('upgrade-required')
   })
@@ -91,18 +93,18 @@ describe('version notices', () => {
       return { ok: true, job: 'release-check', steps: [step] }
     })
     expect(result.versionNotice?.code).toBe('upgrade-required')
-    expect(result.ascVersion).toBe('6.2.0')
+    expect(result.ascVersion).toBe('5.99.0')
   })
 
   it('reuses an explicit version result and does not spawn another version probe', async () => {
     const { engine, notices, exec } = fixture()
     const result = await notices.run(exec, async () => {
       const selected = notices.execution('/fixture', true)
-      notices.observedVersion(selected, '6.2.0 (commit: fixture)')
-      return { ok: true, text: '6.2.0 (commit: fixture)' }
+      notices.observedVersion(selected, '5.99.0 (commit: fixture)')
+      return { ok: true, text: '5.99.0 (commit: fixture)' }
     })
     expect(engine.inspectVersion).not.toHaveBeenCalled()
-    expect(engine.rememberVersion).toHaveBeenCalledWith(snapshot, '6.2.0')
+    expect(engine.rememberVersion).toHaveBeenCalledWith(snapshot, '5.99.0')
     expect(result.versionNotice?.code).toBe('upgrade-required')
   })
 
@@ -116,7 +118,7 @@ describe('version notices', () => {
     await vi.advanceTimersByTimeAsync(0)
     controller.abort()
     expect(await cancelled).toEqual(outcome)
-    finish({ version: '6.2.0', missing: false })
+    finish({ version: '5.99.0', missing: false })
     expect((await notices.run(exec, run)).versionNotice?.code).toBe('upgrade-required')
     notices.dispose()
     expect(await notices.run({ ...exec, agent: { session: {} } }, run)).toEqual(outcome)

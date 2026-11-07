@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import { compareVersions } from '../../src/compat.ts'
 import { npmCommand } from '../npm-command.mjs'
 
+export const MIN_HARNESS_VERSION = '0.2.0-rc.2'
+
 const execute = promisify(execFile)
 
 /** Resolve metadata only. No node_modules, lifecycle scripts, user config or shared cache. */
@@ -63,7 +65,7 @@ export function exactVersions(declaration) {
   return versions.every(value => /^\d/.test(value) && Number.isFinite(compareVersions(value, value))) ? versions : undefined
 }
 
-export function compareBaseline(harness, pkg, lock, support) {
+export function compareBaseline(harness, pkg, lock) {
   const declaration = pkg.engines?.dsh ?? ''
   const supported = exactVersions(declaration)
   // Retain historical >= baseline declarations; only exact unions represent verified support.
@@ -91,8 +93,7 @@ export function compareBaseline(harness, pkg, lock, support) {
     compare(item.name, entry?.version, item.version)
     if (entry?.version === item.version) assertResolved(item, entry)
   }
-  for (const version of support?.anchors ?? []) {
-    if (!(supported ?? [baseline]).includes(version)) changes.push({ name: harness.name, installed: 'unsupported', candidate: version, reason: 'stable-anchor-required' })
-  }
+  // Minimum support is independent of development upgrades and discovery metadata.
+  if (!supported?.includes(MIN_HARNESS_VERSION)) changes.push({ name: harness.name, installed: 'unsupported', candidate: MIN_HARNESS_VERSION, reason: 'minimum-baseline-required' })
   return changes
 }

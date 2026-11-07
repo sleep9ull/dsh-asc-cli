@@ -5,7 +5,7 @@
 - **Keep your existing Harness:** the same plugin supports `0.2.1-rc.5` and `0.2.2-rc.1`, so adding the newer host does not require existing users to upgrade.
 - **Updated asc baseline:** the verified recommendation and optional provisioning pin are now `6.5.0`, with tested `6.3.0` support retained. The plugin never upgrades the engine automatically.
 - **Version guidance during use:** ordinary calls and `/asc` show source-aware version notices. `/asc` is a lightweight capabilities card; `/asc-doctor` handles full environment and authentication diagnosis.
-- **Compatibility that stays tested:** maintenance retains the previous stable compatibility line while adapting default-channel updates, with the same packed plugin tested on both supported hosts under Node 22 and 24.
+- **Compatibility checks:** 0.2.1 added the same-package matrix for both retained hosts. The current source extends it to a fixed minimum host; see the requirements and verification status below.
 
 For every release's detailed changes and migration notes, see [CHANGELOG.md](CHANGELOG.md).
 
@@ -19,7 +19,7 @@ English | [中文](README.zh.md)
 
 [![npm](https://img.shields.io/npm/v/@sleep9ull/dsh-asc-cli?label=npm&color=cb3837)](https://www.npmjs.com/package/@sleep9ull/dsh-asc-cli)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.5%20%7C%200.2.2--rc.1-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.0--rc.2%20%7C%200.2.1--rc.5%20%7C%200.2.2--rc.1-4b5563)](https://github.com/deepseek-ai/deepseek-harness)
 
 App Store Connect is where iOS releases happen — and where teams lose hours to CLI flags, JSON blobs, half-documented states and approval rituals. This plugin puts it inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): install once, ask in plain language, and the agent runs the right workflow, showing a plan and stopping for approval before anything ships.
 
@@ -143,7 +143,7 @@ With `checkUpdates: true` (the existing default), allowed calls can query the pu
 
 The verified recommendation is the plugin's pin, not an untested latest release. Guidance follows the executable actually selected: configured path, environment, plugin cache or PATH. A Homebrew upgrade may not affect a configured/cached binary. Update checks no longer read or write `update-check.json`; old files remain untouched, and restarting the plugin may query again.
 
-Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a local Desktop task plus repository scripts, GitHub gates and resumable main synchronization. Deployment and persistent write authorization are separate from installing the plugin; this does not publish npm releases automatically. Harness maintenance pins npm tarballs, verifies their SHA-512 bytes and registry signatures, and rechecks the fixed artifacts against the install lockfile. Missing `gitHead` is recorded as unknown source commit; registry signatures do not prove a source build. Updates select a candidate from the exact host's strict dependency/peer graph; independent `latest` tags remain observations. Each development and validation environment keeps exact host/component pins and a verified lock; public host/peer declarations cover the tested support set. Maintenance retains the previous stable compatibility line while progressively adapting default-channel updates (major lines from 1.x, minor lines before 1.0). Without a formal stable release it retains the previous verified baseline and identifies RCs explicitly. The same plugin artifact must pass strict installation and real approval tests on the retained and new hosts; a new release cannot silently drop old users. See [the compatibility policy](docs/MAINTENANCE.md#0-长期兼容原则). Resolution uses a temporary npm lock/cache with scripts disabled and does not install packages.
+Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a local Desktop task plus repository scripts, GitHub gates and resumable main synchronization. Deployment and persistent write authorization are separate from installing the plugin; this does not publish npm releases automatically. Harness maintenance pins npm tarballs, verifies their SHA-512 bytes and registry signatures, and rechecks the fixed artifacts against the install lockfile. Missing `gitHead` is recorded as unknown source commit; registry signatures do not prove a source build. Updates select a candidate from the exact host's strict dependency/peer graph; independent `latest` tags remain observations. Each development and validation environment keeps exact host/component pins and a verified lock; public host/peer declarations cover the tested support set. [Spec 012](docs/specs/012-fixed-compatibility-baselines.md) fixes the minimum at Harness `0.2.0-rc.2` and asc `6.0.0`; only an explicit user request may change either floor. Default-channel updates continue to enter evaluation. Formal stable-release records describe upstream facts and do not move compatibility anchors automatically. No formal Harness `0.2.0` exists, so the user explicitly selected the published RC. Keep the existing `0.2.1-rc.5` and `0.2.2-rc.1` hosts; development stays on `0.2.2-rc.1`, and the verified asc recommendation stays at `6.5.0`. Every maintenance run must validate the fixed minimum host and engine as well as retained support and the candidate. The same plugin artifact must pass strict installation and real approval/guard tests across the host matrix before new compatibility is certified. See [the compatibility policy](docs/MAINTENANCE.md#0-长期兼容原则). Resolution uses a temporary npm lock/cache with scripts disabled and does not install packages.
 
 ---
 
@@ -182,6 +182,7 @@ Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a loc
 - **No value expansion by default.** `asc` expands `@env:` / `@file:` in flag values; the plugin escapes a leading `@` unless `allowValueExpansion: true`.
 - **Credentials stay outside the model.** The plugin forwards `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY_PATH`, `ASC_PRIVATE_KEY` because the harness scrubs credential-shaped variables, never reads, stores or prints key material, and tombstones `ASC_WEB_SESSION` so a web-session cookie never reaches the child.
 - **Always refused:** `auth login/logout`, `asc web`, and `versions phased-release guard`; commands the classifier cannot prove read-only are escalated to a human (`unknownCommands: ask`) or refused (`deny`).
+- **External engine.** Fixed minimum `6.0.0`, verified recommendation `6.5.0`; provisioning stays off by default and verifies SHA-256. Only an explicit user request may change the minimum; the plugin never upgrades itself.
 - **No shell.** argv is passed as an array; diagnostics are redacted; telemetry is off by default.
 - **Opt-in governance.** `auditLog` records what ran; `approvedActions` can skip the prompt for known actions in write mode only.
 
@@ -191,10 +192,12 @@ Developer maintenance is documented in [MAINTENANCE](docs/MAINTENANCE.md): a loc
 
 | Requirement | Version |
 |---|---|
-| DeepSeek Harness | source `0.2.2`: retained `0.2.1-rc.5` / Cordis `4.0.5` / Schemastery `3.18.5`, and `0.2.2-rc.1` / `4.1.0` / `3.19.0`; exact peer alternatives, no forced host upgrade. The same packed plugin is tested on both hosts; see spec 010 |
+| DeepSeek Harness | source `0.2.2`: fixed minimum `0.2.0-rc.2`, retained `0.2.1-rc.5` and `0.2.2-rc.1`; exact host/peer alternatives. Development stays on `0.2.2-rc.1`. The three-host same-package matrix is required; validation evidence is tracked in spec 012 |
 | Node.js | `^22.19.0 \|\| >=24.0.0` (24 recommended) |
-| `asc` | source `0.2.2`: verified pin `6.5.0`, retained baseline `6.3.0`; support line `>=6.3.0 <7.0.0` (`/asc-doctor` reports drift) |
+| `asc` | source `0.2.2`: fixed minimum `6.0.0`, verified recommendation/provisioning pin `6.5.0`; declared support `>=6.0.0 <7.0.0`, not evidence that every release was tested |
 | App Store Connect API key | team or individual key, authenticated **outside** the agent |
+
+These source requirements do not change the published `0.2.1` package. Only an explicit user request may change the fixed minimums; a newer recommended pin does not raise them. The new `6.0.0` engine passed real contract/classification/offline-smoke gates. Minimum-host strict installation, typechecking and approval/guard tests passed; the root eight-stage verify passed 415 tests with a fresh build. The same-package matrix records each host's complete result and package identity; see [spec 012](docs/specs/012-fixed-compatibility-baselines.md). Earlier two-host results remain historical evidence; see [TESTING](docs/TESTING.md#6-验证边界与剩余缺口).
 
 ---
 
@@ -299,7 +302,7 @@ node scripts/dev-patch.mjs
 dsh web --patch ./vendor/cordis.dev.patch.yml --no-open --port 3199
 ```
 
-`vendor/asc` is git-ignored. Full verification requires the checksum-verified baseline binary; `--unit-only` explicitly leaves engine gates unverified. Ordinary CI checks both the verified pin and retained minimum engine, and tests the same packed plugin on both supported Harness hosts under Node 22/24; nightly monitoring checks the latest release with contract, classification and offline smoke gates. Development overlays use absolute paths from the current checkout.
+`vendor/asc` is git-ignored. Full verification requires the checksum-verified recommended binary; `--unit-only` explicitly leaves engine gates unverified. CI is configured to check the recommended pin and fixed minimum engine and to run the same packed plugin on all three declared Harness hosts under Node 22/24. Configuration does not establish a passed run; record each environment's results separately. Nightly monitoring checks latest with contract, classification and offline smoke gates; a newer validated recommendation never moves the fixed floors. Development overlays use absolute paths from the current checkout.
 
 ## License
 

@@ -4,6 +4,9 @@ All versions' detailed changes, breaking changes and migration notes are maintai
 
 ## 0.2.2 — Unreleased
 
+- Fix minimum requirements at Harness `0.2.0-rc.2` (the user-selected published RC because no formal `0.2.0` exists) and asc `6.0.0`; only an explicit user request may change them. Continue adapting default latest without moving floors with stable lines or patches. This supersedes the moving policy recorded under 0.2.1; historical release and validation records remain intact. See [spec 012](docs/specs/012-fixed-compatibility-baselines.md).
+- Expand the source host/peer matrix to `0.2.0-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1`, keeping development on `0.2.2-rc.1` and the verified asc recommendation at `6.5.0`; declare asc `>=6.0.0 <7.0.0`. Require the same package on all three hosts and real minimum/recommended-engine gates. Track per-host validation and package identity in spec 012; earlier two-host passes do not certify the added minimum. Keep routine AUTO_TO_PR, scheduling, locking, provenance and three-repair boundaries.
+
 - Move compilation from `prepare` to `prepack`, including the compiled-file manifest check. Distribute prebuilt npm packages or `.tgz` files with no consumer install scripts; GitHub source URLs are not the supported end-user installation entry. Add an offline regression that packs unbuilt source and loads the extracted plugin, skills and patch without running install scripts. Build explicitly before CI engine checks. See [spec 011](docs/specs/011-prebuilt-plugin-install.md).
 - Correct the installation guide to identify the published npm `0.2.1` and the unreleased `0.2.2` fix separately; preserve the existing host/peer compatibility set.
 

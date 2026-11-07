@@ -52,8 +52,9 @@ describe('compatibility helpers', () => {
     expect(compareVersions('5.16.0', '5.16.0')).toBe(0)
     expect(compareVersions('5.15.9', '5.16.0')).toBe(-1)
     expect(compareVersions('6.0.0', '5.16.0')).toBe(1)
-    expect(compatStatus('6.3.0')).toBe('supported')
-    expect(compatStatus('6.2.9')).toBe('older')
+    expect(compatStatus('6.0.0')).toBe('supported')
+    expect(compatStatus('6.2.9')).toBe('supported')
+    expect(compatStatus('5.99.0')).toBe('older')
     expect(compatStatus('6.99.0')).toBe('supported')
     expect(compatStatus('7.0.0')).toBe('newer')
     expect(compatStatus(undefined)).toBe('unknown')
@@ -192,7 +193,7 @@ describe('engine probes', () => {
   })
 
   it.each([
-    ['6.2.0', 'upgrade-required'],
+    ['5.99.0', 'upgrade-required'],
     ['7.0.0', 'outside-supported-range'],
     ['invalid output', 'version-unknown'],
   ])('diagnoses %s without claiming ready or suggesting a blind install', async (version, code) => {

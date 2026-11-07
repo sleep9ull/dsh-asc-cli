@@ -4,15 +4,16 @@
 
 ## 0. 长期兼容原则
 
-2026-11-06 用户明确要求保留稳定用户与持续更新用户两条使用路径，实施规格见 [spec 010](specs/010-dual-harness-compatibility.md)。
+2026-11-07 用户批准 [spec 012](specs/012-fixed-compatibility-baselines.md)，以固定最低要求替代 [spec 010](specs/010-dual-harness-compatibility.md) 的上一稳定线/最新 patch 自动移动规则。
 
-- **最低支持**：保留 dsh 上一兼容大版本的正式稳定线；当前线稳定版也保留。1.x 及以后按 major，0.x 按 minor 划分兼容线。每条需保留稳定线以最新正式 patch 为回归验证锚点，维护跟随其修复更新。
-- **持续适配**：默认渠道每次更新都进入评估，按实际完整宿主图固定候选；同一插件产物对保留基线和新候选分别验证，通过后新增支持。新版本回归不能通过删除旧支持、强制用户升级或弱化审批测试解决。
-- **真实发布**：从官方已发布版本记录识别正式稳定版，不能把 latest 标签、RC 或 alpha 等同稳定版；仍不追踪 next/alpha 标签。尚无正式稳定版或上一稳定线时记录原因，保留既有已验证基线。
-- **声明与验证分开**：用户 engines/peer 覆盖已验证支持集合；开发依赖、每个环境的宿主/组件图和安装锁仍精确固定。兼容并集不能代替实际严格安装与安全回归。
-- **交付边界**：支持矩阵、来源、锁文件及验证结果随 PR 记录；解析、unit-only、配置更新或支持范围声明都不能单独当作兼容认证。AUTO_TO_PR、I1–I10、审批、锁与累计修复预算不变。
+- **固定最低支持**：Harness `0.2.0-rc.2`、asc `6.0.0`，只有用户明确要求才能改变；latest、major/minor 或稳定 patch 更新都不移动最低锚点。不要求低于固定最低的历史线，也不能静默替换缺失的最低发布物或支持声明。
+- **持续适配**：默认渠道每次更新都进入评估，按精确宿主完整图固定候选；验证通过后推进推荐/开发 pin、增加支持，保留固定最低与已有支持。开发升级与最低兼容要求分别比较，最低环境不构成开发降级。
+- **真实发布**：官方 npm 没有正式 `0.2.0`，用户明确选择 `0.2.0-rc.2`；RC 不称为稳定版。正式稳定发布记录仅描述上游事实，不再自动产生回归锚点。latest 可为 RC，仍不追踪 next/alpha 标签。
+- **声明与验证分开**：固定最低、最新已验证推荐、精确开发 pin 和实际验证证据分别报告。开发宿主仍为 `0.2.2-rc.1`，asc 推荐仍为 `6.5.0`；`engines.dsh` 扩为 `0.2.0-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1`，peer 覆盖三个精确环境。每组宿主/组件图、产物与安装锁精确固定。
+- **验证门禁**：所有维护运行都验证固定最低宿主和引擎；同一插件产物在最低、既有 `0.2.1-rc.5` / `0.2.2-rc.1` 与新增候选上分别严格安装，验证真实审批/guard、工具/技能/命令及本地门禁；asc `6.0.0` 和推荐 pin 分别跑 contract/classify/smoke。本轮三宿主同包验证与双引擎门禁已通过，实际证据见 spec 012；后续适配仍须重新验证，历史结果不能代替。
+- **交付边界**：AUTO_TO_PR、计划时间/启用状态、独立 worktree、审批、锁/恢复、来源验证和累计三轮修复预算不变。解析、unit-only、配置更新或声明范围都不构成兼容认证。main 未包含 spec 012 及其固定最低/三宿主实现时报告 BOOTSTRAP_REQUIRED，不能让新 prompt 代替实现。
 
-当前事实：2026-11-06 官方 npm 记录没有不带预发布后缀的 dsh 正式稳定版。本轮保留已验证 0.2.1-rc.5 并适配固定候选 0.2.2-rc.1，插件目标为 0.2.1；两者都是 RC。spec 010 的双宿主安装/测试入口、稳定线发现和兼容声明已实现。第三轮的错误文本断言与宿主审批阻塞记录保留在 spec；后续用户明确授权人工续跑，累计第 4 轮已成功记录，实际引擎执行已获准，新宿主 406 个测试及 asc 6.5.0 完整八阶段通过，6.3.0 引擎回归也通过。同包双消费端各通过 406 个测试及本地五阶段，并各通过保留引擎 smoke；PR 检查另行核验，不能拿历史 405/406 失败或任务文字代替当前证据。运行所用基线未包含 spec 010 与兼容矩阵实现时报告 BOOTSTRAP_REQUIRED，不以任务文字替代代码门禁。
+历史证据（spec 010，稳定线策略已由 spec 012 替代）：2026-11-06 官方 npm 记录没有不带预发布后缀的 dsh 正式稳定版。本轮保留已验证 0.2.1-rc.5 并适配固定候选 0.2.2-rc.1，插件目标为 0.2.1；两者都是 RC。spec 010 的双宿主安装/测试入口、稳定线发现和兼容声明已实现。第三轮的错误文本断言与宿主审批阻塞记录保留在 spec；后续用户明确授权人工续跑，累计第 4 轮已成功记录，实际引擎执行已获准，新宿主 406 个测试及 asc 6.5.0 完整八阶段通过，6.3.0 引擎回归也通过。同包双消费端各通过 406 个测试及本地五阶段，并各通过保留引擎 smoke；PR 检查另行核验，不能拿历史 405/406 失败或任务文字代替当前证据。运行所用基线未包含 spec 010 与兼容矩阵实现时报告 BOOTSTRAP_REQUIRED，不以任务文字替代代码门禁。
 
 ## 1. 已提供的入口
 
@@ -24,7 +25,7 @@ node scripts/maintenance/cli.mjs harness-watch
 
 需要 Node ^22.19.0 或 >=24 和 npm，不新增运行时依赖。脚本直接导入 `src/compat.ts`，无需 build。按 [spec 008](specs/008-harness-drift-triage.md)，先验签并验证 `@deepseek-ai/dsh` latest 的实际 tarball，再用该精确宿主在独立临时目录执行 npm package-lock-only / ignore-scripts / strict-peer-deps，解析完整 dependency/peer 图，不安装或执行包。配置、HOME 和 cache 均隔离，npm 总时限 5 分钟；结束只清理本次目录，不改 checkout 或用户配置。相关共享包必须唯一且顶层可解析。包可以独立版本号，但不能将各自 latest 直接混装；所选精确版本必须再核对官方 manifest、签名、实际 tarball SHA-512 与解析锁身份。各包独立 latest 仍实际验签验摘要，差异保留在 observations（旧默认标签或宿主解析未采用的版本）。查询 latest 标签，不查询 next/alpha 标签。
 
-npm 字节读取仍按 [spec 007](specs/007-npm-artifact-verification.md)：metadata 最大 2 MiB、tarball 最大 64 MiB，单次请求/body 限 30 秒，官方 ECDSA P-256 验签，tarball 只在内存校验、不解压执行。gitHead 缺失为 commit=null，签名不证明源码构建来源。随后查询 asc stable release 的 tag/commit/平台资产/SHA-256。输出 validation 明确为 dependency-resolution-only；完整集成测试通过前都只是候选。
+npm 字节读取仍按 [spec 007](specs/007-npm-artifact-verification.md)：metadata 最大 2 MiB、tarball 最大 64 MiB，单次请求/body 限 30 秒，官方 ECDSA P-256 验签，tarball 只在内存校验、不解压执行。gitHead 缺失为 commit=null，签名不证明源码构建来源。随后查询 asc stable release 的 tag/commit/平台资产/SHA-256。输出 validation 明确为 dependency-resolution-only；support.minimum 报告固定最低宿主，稳定发布记录仅作描述；完整集成测试通过前都只是候选。
 
 所有命令输出 JSON（help 除外）。退出码 0 为成功，2 表示 unknown/drift/blocked/pending，1 表示输入或执行错误。HTTP 超时/元数据缺失为 unknown，不能解释成无更新。`harness-watch` 比较宿主图选出的候选与 package.json/lockfile 已验证基线：相同为 unchanged，适用新候选为 drift，降级或同版本身份变化为 unknown。独立 latest 差异留在 observations，不等于当前组合故障。它会写临时解析目录，但不安装包、不改代码，也不验证新组合的真实集成。GitHub upstream-watch 保存报告 artifact，漂移/无法查询时开独立去重 issue；自动适配只属于另行部署的 Desktop routine。
 
@@ -99,7 +100,7 @@ const evidence = {
   evidence: {
     target, head: '<同一个SHA>',
     fullVerify: true,       // 完整目标版本 npm run verify
-    baselineVerify: true,  // 保留支持的旧基线实际验证完成；无旧基线时记录不适用理由
+    baselineVerify: true,  // 固定最低宿主/引擎及已有支持实际验证完成
   },
   policy: {
     enforced: true,         // 实际生效的 PR/required checks/force-push/base 保护已核验
@@ -179,6 +180,8 @@ Desktop 必须打开且机器唤醒；关闭期间不保证准时执行，漏跑
 2026-11-06，用户明确补充本文件 §0 的长期兼容原则，要求按此完成插件 0.2.1 适配。已通过 Desktop update_scheduled_task 实际更新原 `daily-dsh-asc-upstream-maintenance` 的 prompt 和 description，保留既有 cron、启用状态、独立 worktree、AUTO_TO_PR 与授权边界；不新增任务或放宽权限。spec 010 及矩阵实现尚未进入 main，后续自动运行须报告 BOOTSTRAP_REQUIRED 并关联已知未完成分支，不能仅凭新 prompt 宣称已实现。后续用户明确要求“逐项审批继续”，第三轮 record 已实际获准，代码/矩阵入口已加入本分支；第三轮两宿主测试各 405/406，需人工授权后才能追加修复。实际引擎执行再次被自动审批拒绝。
 
 任务配置更新不等于端到端验收完成。npm manifest 缺少 `gitHead` 按 spec 007 使用已验签并验证 SHA-512 的发布物，不再单独阻塞；缺少有效注册表签名或摘要仍阻塞。PR、Auto-fix 和目标版本完整验证的实际结果须逐轮报告。
+
+2026-11-07 用户批准 spec 012：已通过 Desktop `update_scheduled_task` 实际更新原 `daily-dsh-asc-upstream-maintenance` 的完整 prompt/description，固定最低 Harness 0.2.0-rc.2、asc 6.0.0，持续适配默认 latest；原 cron、启用状态、独立 worktree、AUTO_TO_PR、来源/锁/三轮预算保持。未运行实际维护或执行 GitHub 写/发布。main 纳入 spec 012 与固定最低/三宿主实现前保持 BOOTSTRAP_REQUIRED。本轮 asc 6.0.0 实际通过 28 条 contract、1,927 条 completion 路径、11 组副作用 flag 向量及真实 Harness 离线 smoke（6 次引擎调用）；同一插件包的三个隔离宿主均完成 16 个固定产物与安装锁复验、禁用脚本严格安装、415 tests、五阶段本地门禁与最低 asc 6.0.0 离线 smoke，包 SHA-512 相同。根目录完整八阶段也通过，含推荐 asc 6.5.0。证据在本轮 vendor/harness-matrix-5HEn0u/ 和 spec 012；实际运行 Node 24.14.0，未运行远端 Node22/24 CI 或 Desktop 端到端试跑。
 
 ## 6. 本地测试
 

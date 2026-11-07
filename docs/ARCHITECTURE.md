@@ -32,9 +32,9 @@ spec 007 将 Harness 维护来源改为固定 npm 发布物：新增 `scripts/ma
 
 spec 008 新增 `scripts/maintenance/compatibility.mjs`：用隔离配置的 npm package-lock-only / strict-peer-deps 解析精确宿主的完整依赖图，校核相关共享组件唯一性与固定产物身份；临时目录仅作解析且不执行包代码。discovery 选择该图中的相关包，独立 latest 只作 observations；watch 共用候选比较，不把 observations 当安装目标。npm 解析可满足不等于实测兼容，基线推进仍需完整验证和 PR。
 
-开发层 `scripts/npm-command.mjs` 统一 npm argv：Windows 通过当前 Node 执行 npm CLI，Unix 保留 npm 可执行入口，不使用 shell；双宿主矩阵与维护宿主图解析共用。矩阵在生产端 clean build 后打包，实际消费端锁、目标、共同 tarball 与结果持久保存到新建的 vendor 证据目录，CI 上传该目录，临时安装目录仍清理。
+开发层 `scripts/npm-command.mjs` 统一 npm argv：Windows 通过当前 Node 执行 npm CLI，Unix 保留 npm 可执行入口，不使用 shell；三宿主矩阵与维护宿主图解析共用。矩阵在生产端 clean build 后打包，实际消费端锁、目标、共同 tarball 与结果持久保存到新建的 vendor 证据目录，CI 上传该目录，临时安装目录仍清理。
 
-spec 010 的双宿主验证入口 `scripts/harness-matrix.mjs` 属于开发层：读取两宿主固定目标、保留宿主安装锁与当前精确开发锁，在隔离 HOME/npm 配置/cache 的临时 checkout 中复验产物再严格安装同一 tarball；两个消费端均从安装包加载插件，运行真实宿主测试。夹具仅根据宿主公开 pipeline export 选择旧单调用或新批次执行入口，生产插件仍只注册既有服务与最终 guard。用户 engines/peer 支持并集和精确开发锁分离；维护 discovery 检查正式稳定线保留，固定候选身份及 v3 key 不变。矩阵入口不进入 npm 发布包，不修改真实 profile。
+spec 012 将 spec 010 的开发层入口 `scripts/harness-matrix.mjs` 扩为三宿主：固定最低 0.2.0-rc.2、保留 0.2.1-rc.5、开发 0.2.2-rc.1。读取各宿主固定目标、独立锁与开发锁，在隔离 HOME/npm 配置/cache 的临时 checkout 中复验产物再严格安装同一 tarball，从安装包加载插件并验证真实审批/guard、工具/技能/命令。兼容层只按实际公开 API 差异调整，生产插件缺少写路径宿主能力仍拒绝。`scripts/maintenance/compatibility.mjs` 导出 `MIN_HARNESS_VERSION`（0.2.0-rc.2），`src/compat.ts` 导出 `MIN_ASC_VERSION`（6.0.0）；最低仅由用户明确改变。discovery 的 support.minimum 报告固定最低，正式稳定发布记录仅描述事实，不自动移动锚点。公开 engines/peer 精确并集、开发 pin、已验证推荐与实际矩阵证据分开，每轮维护验证最低宿主/引擎。固定候选身份、v3 key、锁/恢复与来源规则不变。矩阵不进入 npm 发布包、不改真实 profile；新增最低环境的实际结果按 spec 012 记录。
 
 版本提示由 `src/control/version-notice.ts` 协调：engine 提供同一执行快照下的版本事实和有界内存缓存，compat 提供版本判断，format 定义及渲染可选 `versionNotice`。runtime 绑定实际执行快照，顶层工具/命令统一装饰结果，job 内部不重复提示。取消等待者不取消共享检查；插件卸载清理检查。查询不再读写磁盘更新缓存。
 
@@ -49,7 +49,7 @@ spec 010 的双宿主验证入口 `scripts/harness-matrix.mjs` 属于开发层�
 | `src/format.ts` | 结果契约：summary / errorClass / hint / projector / `maxDataBytes`（UTF-8 字节） | 模型可见形状的唯一来源 |
 | `src/audit.ts` | 选开 JSONL：脱敏、`0o600`、best-effort | 失败不影响调用 |
 | `src/config.ts` | Schema 与默认值 | 默认值即安全边界 |
-| `src/compat.ts` | asc pin / 兼容区间 / release 资源 | 版本事实的 SSOT |
+| `src/compat.ts` | asc 固定最低 / 推荐 pin / 兼容区间 / release 资源 | 引擎版本事实 SSOT；最低仅用户明确改变 |
 | `src/control/binary.ts` | engine/runtime 共用的动态二进制与缓存路径解析 | 缓存解析为宿主侧绝对路径，诊断、普通工具、job 使用同一路径；provision 后重新解析 |
 | `src/control/engine.ts` | 引擎管理：locate / diagnose / provision / update check；本地和远端内存缓存 | provision 默认关、校验 SHA-256；共享检查有 deadline，单个等待者取消不污染其他调用 |
 | `src/control/version-notice.ts` | 来源相关的提示与顶层调用协调、会话去重 | 审批后启动、最多额外等待 1s，不改业务 outcome；无缓存文件 |

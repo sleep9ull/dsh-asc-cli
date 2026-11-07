@@ -3,6 +3,10 @@
   "developmentTarget": "development-harness-target.json",
   "retained": [
     {
+      "target": "minimum-harness-target.json",
+      "lock": "minimum-harness-lock.json"
+    },
+    {
       "target": "retained-harness-target.json",
       "lock": "retained-harness-lock.json"
     }
